@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -118,10 +118,29 @@ def healthz(store: ReadStore) -> str:
 
 
 @router.get("/", response_class=HTMLResponse)
-def job_list(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+def job_list(
+    request: Request,
+    state: State,
+    store: ReadStore,
+    filters: Annotated[views.ListFilters, Query()],
+) -> HTMLResponse:
     ctx = state.row_context()
-    rows = views.sort_rows([r for r in views.load_rows(store, ctx) if r.stage == "ranked"])
-    return render(request, state, "list.html", rows=rows, ranking=ctx.config)
+    rows = views.load_rows(store, ctx, filters.view)
+    options = views.filter_options(rows, ctx.config)
+    rows = views.sort_rows(views.apply_filters(rows, filters), filters.sort)
+    response = render(
+        request,
+        state,
+        "_rows.html" if is_htmx(request) else "list.html",
+        rows=rows,
+        filters=filters,
+        options=options,
+        ranking=ctx.config,
+        new_days=filters.new or views.NEW_DAYS,
+    )
+    # The same URL returns a fragment or a full page; keep caches from mixing them up.
+    response.headers["Vary"] = "HX-Request"
+    return response
 
 
 def create_app(config: Config) -> FastAPI:

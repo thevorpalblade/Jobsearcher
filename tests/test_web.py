@@ -2,7 +2,7 @@ import os
 import re
 import zipfile
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from jobsearcher import cli
 from jobsearcher.config import Config
-from jobsearcher.models import Job
+from jobsearcher.models import Contact, Job, SourceRef
 from jobsearcher.ranking import load_ranking_config
 from jobsearcher.ranking.config import RankingConfig, TargetRole
 from jobsearcher.ranking.ranker import JobAssessment, Ranking, input_hash
@@ -40,9 +40,9 @@ class Web:
     store: Store
     config: Config
 
-    def add(self, job: Job, assessment: JobAssessment | None = None, **ranking) -> Job:
-        """Store a job and, optionally, a current ranking for it."""
-        self.store.upsert_job(job)
+    def add(self, job: Job, assessment: JobAssessment | None = None, seen=None, **ranking) -> Job:
+        """Store a job (first seen at `seen`) and, optionally, a current ranking for it."""
+        self.store.upsert_job(job, now=seen)
         if assessment is not None:
             rconfig = load_ranking_config(self.config.ranking_config)
             model = ranking.pop("model", self.config.llm.ranking.model)
@@ -176,3 +176,89 @@ def test_prefilter_memo_reuses_results_until_the_filters_change():
     assert memo.get(record, config, config.filter_fingerprint()) is first
     config.target_roles[0].exclude_occupations = ["Bygg"]
     assert memo.get(record, config, config.filter_fingerprint()) is not first
+
+
+@pytest.fixture
+def filter_jobs(web):
+    now = datetime.now(UTC)
+    web.add(
+        make_job(
+            1,
+            "Projektledare Remote",
+            location="Göteborg",
+            remote=True,
+            deadline=now + timedelta(days=5),
+            contacts=[Contact(name="Per", provenance="llm:ad_text")],
+            sources=[SourceRef(source="jobtech_links", source_id="1")],
+        ),
+        make_assessment(90, 90, language="en", matched_role="Project manager"),
+    )
+    web.add(
+        make_job(2, "HRBP Stockholm", deadline=now + timedelta(days=30)),
+        make_assessment(70, 70, swedish="required"),
+    )
+    web.add(
+        make_job(3, "Projektledare Merit", deadline=now - timedelta(days=1)),
+        make_assessment(60, 60, swedish="merit", matched_role="Project manager"),
+        seen=now - timedelta(days=10),
+    )
+    return web
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("", ["Projektledare Remote", "HRBP Stockholm", "Projektledare Merit"]),
+        ("min_score=60", ["Projektledare Remote", "HRBP Stockholm"]),
+        ("source=jobtech_links", ["Projektledare Remote"]),
+        ("location=stockholm", ["HRBP Stockholm", "Projektledare Merit"]),
+        ("remote=true", ["Projektledare Remote"]),
+        ("remote=false", ["HRBP Stockholm", "Projektledare Merit"]),
+        ("deadline_within=10", ["Projektledare Remote"]),  # past deadlines are hidden too
+        ("role=project+manager", ["Projektledare Remote", "Projektledare Merit"]),
+        ("language=sv", ["HRBP Stockholm", "Projektledare Merit"]),
+        ("swedish=exclude_required", ["Projektledare Remote", "Projektledare Merit"]),
+        ("swedish=not_mentioned", ["Projektledare Remote"]),
+        ("has_contact=true", ["Projektledare Remote"]),
+        ("new=3", ["Projektledare Remote", "HRBP Stockholm"]),
+        ("q=hrbp", ["HRBP Stockholm"]),
+        ("q=company+3", ["Projektledare Merit"]),
+        ("sort=deadline", ["Projektledare Merit", "Projektledare Remote", "HRBP Stockholm"]),
+        ("sort=fit&swedish=exclude_required", ["Projektledare Remote", "Projektledare Merit"]),
+    ],
+)
+def test_list_filters(filter_jobs, query, expected):
+    response = filter_jobs.client.get(f"/?{query}")
+    assert response.status_code == 200
+    assert _titles(response.text) == expected
+
+
+def test_empty_filter_fields_are_ignored(filter_jobs):
+    # What a submitted form sends without JavaScript.
+    query = (
+        "view=ranked&q=&min_score=&role=&source=&location=&remote=&deadline_within="
+        "&language=&swedish=any&new=&sort=score"
+    )
+    response = filter_jobs.client.get(f"/?{query}")
+    assert response.status_code == 200
+    assert len(_titles(response.text)) == 3
+    assert filter_jobs.client.get("/?min_score=abc").status_code == 422
+
+
+def test_htmx_requests_get_only_the_rows(filter_jobs):
+    full = filter_jobs.client.get("/?q=hrbp")
+    assert "<html" in full.text and 'id="rows"' in full.text
+    fragment = filter_jobs.client.get("/?q=hrbp", headers={"HX-Request": "true"})
+    assert "<html" not in fragment.text and "<table" in fragment.text
+    assert _titles(fragment.text) == ["HRBP Stockholm"]
+    assert fragment.headers["Vary"] == "HX-Request"
+    restore = filter_jobs.client.get(
+        "/?q=hrbp", headers={"HX-Request": "true", "HX-History-Restore-Request": "true"}
+    )
+    assert "<html" in restore.text
+
+
+def test_new_badge(filter_jobs):
+    rows = _row_html(filter_jobs.client.get("/").text)
+    assert "chip new" in rows["HRBP Stockholm"]
+    assert "chip new" not in rows["Projektledare Merit"]

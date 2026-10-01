@@ -24,7 +24,7 @@ def make_job(n, title, text="", published_day=1, **fields):
         location=fields.pop("location", "Stockholm"),
         description=text,
         published_at=datetime(2026, 9, published_day, tzinfo=UTC),
-        sources=[SourceRef(source="platsbanken", source_id=str(n))],
+        sources=fields.pop("sources", [SourceRef(source="platsbanken", source_id=str(n))]),
         **fields,
     )
 

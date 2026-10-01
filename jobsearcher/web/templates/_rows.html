@@ -22,6 +22,7 @@
       <td class="num muted">{% if a %}{{ a.fit_score }} / {{ a.success_score }}{% endif %}</td>
       <td>
         <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
+        {% if row.age_days <= new_days %}<span class="chip new">new</span>{% endif %}
         {% if row.stale %}<span class="chip warn" title="Ranked before a CV, role or model change">stale</span>{% endif %}
         {% if row.unparseable %}<span class="chip warn">will be re-ranked</span>{% endif %}
       </td>
