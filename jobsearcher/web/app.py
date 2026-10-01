@@ -279,9 +279,10 @@ def set_state(
 def set_notes(
     request: Request,
     job_id: str,
-    notes: Annotated[str, Form()],
     state: State,
     store: WriteStore,
+    # An emptied textarea arrives as a missing field; that clears the notes.
+    notes: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
     if store.get_job(job_id) is None:
         raise HTTPException(404)

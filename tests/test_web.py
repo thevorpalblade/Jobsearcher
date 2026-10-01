@@ -523,6 +523,12 @@ def test_tracking_buttons_and_notes(web):
     assert (app.state, app.notes) == ("applied", "Called <b>Per</b>")
     assert "applied" in _row_html(web.client.get("/").text)["Projektledare"]
 
+    # Clearing the notes (an empty field) and going back to "new" untracks the job.
+    assert web.client.post(f"/jobs/{job.id}/notes", data={"notes": ""}, headers=HX).is_success
+    assert web.store.get_application(job.id).notes == ""
+    web.client.post(f"/jobs/{job.id}/state", data={"state": "new"}, headers=HX)
+    assert web.store.get_application(job.id) is None
+
     assert (
         web.client.post(f"/jobs/{job.id}/state", data={"state": "bogus"}, headers=HX).status_code
         == 422
