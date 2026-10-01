@@ -61,18 +61,45 @@ class Ranking(BaseModel):
     assessment: JobAssessment
 
 
+class ScoreBreakdown(BaseModel):
+    """How a final score is put together, for display."""
+
+    fit: int
+    success: int
+    fit_weight: float
+    success_weight: float
+    combined: int  # weighted fit/success, before adjustments
+    adjustments: list[tuple[str, int]]  # (label, points), only the ones that apply
+    total: int  # clamped to 0-100
+
+
+def score_breakdown(assessment: JobAssessment, config: RankingConfig) -> ScoreBreakdown:
+    """Combined score from the current weights and adjustments, step by step."""
+    combined = config.weights.combine(assessment.fit_score, assessment.success_score)
+    adj = config.adjustments
+    lines: list[tuple[str, int]] = []
+    if assessment.language == "en":
+        lines.append(("Ad written in English", adj.english_ad))
+    if assessment.swedish == "required":
+        lines.append(("Swedish required", adj.swedish_required))
+    elif assessment.swedish == "merit":
+        lines.append(("Swedish a merit", adj.swedish_merit))
+    total = combined + sum(points for _, points in lines)
+    return ScoreBreakdown(
+        fit=assessment.fit_score,
+        success=assessment.success_score,
+        fit_weight=config.weights.fit,
+        success_weight=config.weights.success,
+        combined=combined,
+        adjustments=lines,
+        total=max(0, min(100, total)),
+    )
+
+
 def final_score(assessment: JobAssessment, config: RankingConfig) -> int:
     """Combined score from the current weights and adjustments (computed on read, so
     editing them in ranking.yaml takes effect without re-ranking)."""
-    score = config.weights.combine(assessment.fit_score, assessment.success_score)
-    adj = config.adjustments
-    if assessment.language == "en":
-        score += adj.english_ad
-    if assessment.swedish == "required":
-        score += adj.swedish_required
-    elif assessment.swedish == "merit":
-        score += adj.swedish_merit
-    return max(0, min(100, score))
+    return score_breakdown(assessment, config).total
 
 
 SYSTEM_PROMPT = """\
@@ -233,8 +260,10 @@ def run_ranking(
 def ranked_jobs(store: Store, config: RankingConfig) -> list[tuple[Job, Ranking, int]]:
     """Open jobs with their current ranking and final score, best first."""
     out: list[tuple[Job, Ranking, int]] = []
-    for job_id, data in store.latest_rankings().items():
-        job = store.get_job(job_id)
+    rankings = store.latest_rankings()
+    jobs = {job.id: job for job in store.iter_jobs() if job.id in rankings}
+    for job_id, data in rankings.items():
+        job = jobs.get(job_id)
         if job is None:
             continue
         try:
