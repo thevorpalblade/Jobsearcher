@@ -104,11 +104,18 @@ class ScheduleConfig(BaseModel):
     timezone: str = "Europe/Stockholm"
 
 
+class WebConfig(BaseModel):
+    # `jobsearcher web` defaults; the Docker service passes --host 0.0.0.0.
+    host: str = "127.0.0.1"
+    port: int = 8080
+
+
 class Config(BaseModel):
     search: SearchConfig = Field(default_factory=SearchConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    web: WebConfig = Field(default_factory=WebConfig)
     data_dir: Path = Path("data")
     # Relative paths are resolved against the directory containing config.yaml.
     ranking_config: Path = Path("ranking.yaml")

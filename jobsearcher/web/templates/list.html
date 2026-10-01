@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="rows">
+  {% if not rows %}<p class="muted">No jobs yet. Run <code>jobsearcher run</code> to search and rank.</p>{% endif %}
+</div>
+{% endblock %}
