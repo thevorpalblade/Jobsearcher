@@ -27,5 +27,8 @@ RUN if [ "$INSTALL_CLAUDE_CODE" = "true" ]; then \
         curl -fsSL https://claude.ai/install.sh | bash && claude --version; \
     fi
 
+# The web UI (`jobsearcher web`, a second compose service) listens here.
+EXPOSE 8080
+
 ENTRYPOINT ["jobsearcher"]
 CMD ["daemon"]

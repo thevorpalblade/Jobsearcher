@@ -13,7 +13,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M1 Search: Platsbanken + JobTech Links, dedupe, contacts, expiry | Done; first live run 2026-10-01 (outside Docker) |
 | M2a LLM layer: Kimi, NVIDIA (e.g. GLM), Claude API, Claude Code (subscription), budget | Done; Claude Code and NVIDIA GLM tested live, no real Kimi or Anthropic API call |
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done, **never run on real ads**; `calibrate` command missing |
-| M3 Local web UI | **Not started** (next) |
+| M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
 | M5 Contacts from company sites, application tracking | **Not started** |
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
@@ -71,20 +71,30 @@ could not be built there.
       lists the labels). "Projektledare" is mostly construction/engineering in
       Sweden, which is what the occupation filters are for.
 
-## 2. Web UI (M3), next up
+## 2. Web UI (M3)
 
-PLAN.md §6. Not started: there is no FastAPI dependency or web service yet.
+PLAN.md §6; implementation notes and decisions in
+[docs/m3-web-ui.md](docs/m3-web-ui.md).
 
-- [ ] FastAPI + Jinja/HTMX app (`jobsearcher web`), served on port 8080 by a
-      second service in `docker-compose.yml` sharing the `data/` volume. LAN
-      only; remote access via Tailscale or WireGuard, never a public port.
-- [ ] Ranked list with filters (score, source, location, remote, deadline),
-      using `ranking.ranked_jobs(store, config)`, which already returns
-      `(job, ranking, final_score)` best first.
-- [ ] Job page: ad text, scores, rationale, matched/missing requirements, red
-      flags, contacts **with provenance**, Apply link, all source links.
-- [ ] Budget widget (`BudgetTracker.month_to_date()` and `subscription_usage()`).
-- [ ] Later (after M4): draft downloads and a Regenerate button.
+- [x] FastAPI + Jinja/HTMX app (`jobsearcher web`), served on port 8080 by the
+      `web` service in `docker-compose.yml` sharing the `data/` volume (SQLite in
+      WAL mode, a read-only connection per request). LAN only; set `WEB_BIND`
+      on a server with a public IP.
+- [x] Job list: all ranked jobs by final score, with filters (view, score,
+      source, location, remote, deadline, role, occupation, language, Swedish
+      requirement, contact, first seen, search) and sorting; HTMX updates the
+      table and the URL, and it also works without JavaScript.
+- [x] Job page: ad text, score breakdown, rationale, matched/missing
+      requirements, red flags, a stale badge, contacts **with provenance**,
+      Apply link, all source links, prefilter diagnostics; `/jobs/<id>.json`.
+- [x] Pending/excluded views and `/prefilter` (the web `occupations --groups`).
+- [x] Budget widget in the header and `/status` (last runs, counts, spend by model).
+- [ ] **Run it in Docker** on the server (`docker compose up -d --build`), check
+      that compose builds `jobsearcher:local` once for both services and that
+      the healthcheck passes.
+- [ ] Later (after M4): draft downloads and a Regenerate button. Regenerate
+      should queue a request for the daemon, so the web container never needs
+      API keys or the Claude token.
 
 ## 3. Drafting (M4)
 

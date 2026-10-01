@@ -1,6 +1,7 @@
 services:
   jobsearcher:
     build: .
+    image: jobsearcher:local
     container_name: jobsearcher
     restart: unless-stopped
     command: ["daemon"]
@@ -12,3 +13,25 @@ services:
       - ./ranking.yaml:/config/ranking.yaml:ro
       - ./cvs:/cvs:ro
       - ./data:/data
+
+  # Local web UI on port 8080. It needs no secrets, so there is no env_file. data/ is
+  # read-write for SQLite's WAL files and application tracking; cvs/ is only read to
+  # flag rankings made before a CV change. Docker's published ports bypass ufw and
+  # firewalld: on a server with a public IP, set WEB_BIND to a LAN or Tailscale address.
+  web:
+    image: jobsearcher:local
+    container_name: jobsearcher-web
+    restart: unless-stopped
+    command: ["web", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      TZ: Europe/Stockholm
+    ports:
+      - "${WEB_BIND:-0.0.0.0}:8080:8080"
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./ranking.yaml:/config/ranking.yaml:ro
+      - ./cvs:/cvs:ro
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 60s

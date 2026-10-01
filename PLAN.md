@@ -165,7 +165,7 @@ reports how well the model's ranking agrees.
 - Rendering: Markdown → **PDF** (Typst or WeasyPrint template) and **DOCX**
   (pandoc) for hand editing.
 
-## 6. Module 4: Web UI (local)
+## 6. Module 4: Web UI (local) ✅ (M3 implemented; see docs/m3-web-ui.md)
 
 Served by a FastAPI container on the LAN (`http://<server>:8080`). For
 access from outside, use Tailscale or WireGuard rather than exposing a port.
@@ -224,8 +224,8 @@ past the budget.
 | M1 | Platsbanken + JobTech Links search with contacts, dedupe and expiry | ✅ (needs first live run) |
 | M2a | LLM layer: Kimi + Claude providers, budget tracking and enforcement | ✅ |
 | M2 | Ranking: `ranking.yaml`, prefilter, LLM scoring, contacts from ad text | ✅ (calibration command still to do) |
-| M3 | Local web UI (list, detail, apply link, contacts) | next |
-| M4 | Drafting: tailored CV + cover letter, grounding check, PDF/DOCX | |
+| M3 | Local web UI (list, detail, apply link, contacts) | ✅ (`jobsearcher web`; see docs/m3-web-ui.md) |
+| M4 | Drafting: tailored CV + cover letter, grounding check, PDF/DOCX | next |
 | M5 | Contacts from company sites, application tracking | |
 | M6 | Company crawler | |
 | M7 | Optional: LinkedIn/Indeed adapters | |
