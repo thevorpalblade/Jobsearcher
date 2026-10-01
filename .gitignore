@@ -9,6 +9,7 @@ dist/
 # Personal data: never commit
 config.yaml
 ranking.yaml
+companies.yaml
 .env
 data/
 cvs/
