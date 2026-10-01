@@ -438,3 +438,51 @@ def test_expired_jobs_are_hidden_unless_asked_for(web):
     assert _titles(web.client.get("/").text) == ["Projektledare ny"]
     assert _titles(web.client.get("/?view=expired").text) == ["Projektledare gammal"]
     assert "expired" in web.client.get(f"/jobs/{old.id}").text
+
+
+def _usage(store, model, purpose, cost, tokens=(1000, 200)):
+    store.record_llm_usage(datetime.now(UTC), model, purpose, *tokens, 0, 0, cost)
+
+
+def test_budget_widget_on_every_page(web):
+    job = web.add(make_job(1, "Projektledare"), make_assessment())
+    _usage(web.store, "kimi-k2.6", "ranking", 1.23)
+    _usage(web.store, "claude-code/claude-opus-5-5", "drafting", 0.0, (5000, 1000))
+    for path in ("/", f"/jobs/{job.id}", "/prefilter", "/status", "/partials/budget"):
+        html = web.client.get(path).text
+        assert "LLM $1.23 of $20.00" in html, path
+        assert "Claude Code: 1 calls, 6,000 tokens" in html, path
+    assert 'hx-trigger="every 60s"' in web.client.get("/partials/budget").text
+    # Drafting pauses at 80% of the budget: the marker sits there.
+    assert 'class="marker" style="left: 80.0%"' in web.client.get("/").text
+    # HTMX list updates don't recompute it.
+    assert "LLM $" not in web.client.get("/", headers={"HX-Request": "true"}).text
+
+
+def test_status_page(web):
+    web.add(make_job(1, "Projektledare"), make_assessment())
+    web.add(make_job(2, "Projektledare B"), make_assessment(), input_hash="stale")
+    web.add(make_job(3, "Lagerarbetare"))
+    web.store.set_last_run("platsbanken", datetime(2026, 9, 30, 4, 0, tzinfo=UTC))
+    _usage(web.store, "kimi-k2.6", "ranking", 0.5)
+    _usage(web.store, "kimi-k2.6", "ranking", 0.25)
+    html = web.client.get("/status").text
+    assert "2026-09-30 06:00" in html  # shown in Europe/Stockholm time
+    assert '<a href="/?view=ranked">2</a>' in html and "1 stale" in html
+    assert '<a href="/?view=excluded">1</a>' in html
+    assert '<td>kimi-k2.6</td><td>ranking</td><td class="num">2</td>' in html
+    assert "$0.75" in html
+
+
+def test_llm_usage_summary(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    _usage(store, "a", "ranking", 1.0)
+    _usage(store, "a", "ranking", 2.0)
+    _usage(store, "b", "drafting", 0.5)
+    store.record_llm_usage(datetime(2000, 1, 1, tzinfo=UTC), "a", "ranking", 1, 1, 0, 0, 9.0)
+    summary = store.llm_usage_summary(datetime(2026, 1, 1, tzinfo=UTC))
+    assert [(u.model, u.purpose, u.calls, u.cost_usd) for u in summary] == [
+        ("a", "ranking", 2, 3.0),
+        ("b", "drafting", 1, 0.5),
+    ]
+    assert summary[0].input_tokens == 2000

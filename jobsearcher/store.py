@@ -89,6 +89,18 @@ class JobRecord:
         )
 
 
+@dataclass
+class UsageSummary:
+    model: str
+    purpose: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_usd: float
+
+
 class Store:
     def __init__(
         self,
@@ -357,7 +369,23 @@ class Store:
         ).fetchone()
         return float(row[0])
 
+    def llm_usage_summary(self, since: datetime) -> list[UsageSummary]:
+        """Calls, tokens and cost since `since`, per model and purpose, costliest first."""
+        rows = self.conn.execute(
+            "SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,"
+            " SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,"
+            " SUM(cache_write_tokens) AS cache_write_tokens, SUM(cost_usd) AS cost_usd"
+            " FROM llm_usage WHERE ts >= ? GROUP BY model, purpose"
+            " ORDER BY cost_usd DESC, calls DESC",
+            (since.isoformat(),),
+        )
+        return [UsageSummary(**dict(row)) for row in rows]
+
     # --- run bookkeeping --------------------------------------------------
+
+    def last_runs(self) -> dict[str, datetime]:
+        rows = self.conn.execute("SELECT source, last_run FROM runs ORDER BY source")
+        return {row["source"]: datetime.fromisoformat(row["last_run"]) for row in rows}
 
     def last_run(self, source: str) -> datetime | None:
         row = self.conn.execute("SELECT last_run FROM runs WHERE source = ?", (source,)).fetchone()

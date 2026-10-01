@@ -18,6 +18,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from jobsearcher.config import LLMConfig
+from jobsearcher.llm.budget import BudgetTracker
 from jobsearcher.models import Job, JobStatus
 from jobsearcher.ranking.config import RankingConfig, load_ranking_config
 from jobsearcher.ranking.prefilter import PrefilterResult, prefilter_status
@@ -360,6 +362,42 @@ def prefilter_summary(rows: list[JobRow], config: RankingConfig) -> list[RoleSum
         fields.sort(key=lambda f: -f.count)
         out.append(RoleSummary(role.name, kept + excluded, kept, excluded, fields))
     return out
+
+
+@dataclass
+class BudgetInfo:
+    spent: float  # USD this month, pay-per-token providers only
+    budget: float
+    drafting_limit: float  # drafting pauses here
+    subscription_calls: int  # Claude Code on the subscription: not in `spent`
+    subscription_tokens: int
+
+    @property
+    def percent(self) -> float:
+        return min(100.0, 100 * self.spent / self.budget) if self.budget > 0 else 100.0
+
+    @property
+    def drafting_percent(self) -> float:
+        return min(100.0, 100 * self.drafting_limit / self.budget) if self.budget > 0 else 0.0
+
+    @property
+    def level(self) -> str:
+        """CSS class for the bar: "", "warn" (drafting paused) or "over"."""
+        if self.spent >= self.budget:
+            return "over"
+        return "warn" if self.spent >= self.drafting_limit else ""
+
+
+def budget_info(store: Store, config: LLMConfig) -> BudgetInfo:
+    tracker = BudgetTracker(store, config)
+    calls, tokens = tracker.subscription_usage()
+    return BudgetInfo(
+        spent=tracker.month_to_date(),
+        budget=config.monthly_budget_usd,
+        drafting_limit=tracker.limit_for("drafting"),
+        subscription_calls=calls,
+        subscription_tokens=tokens,
+    )
 
 
 def safe_url(url: str | None) -> str | None:

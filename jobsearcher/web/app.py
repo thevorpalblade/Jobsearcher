@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher.config import Config, load_config
 from jobsearcher.contacts import is_generic_email
+from jobsearcher.models import JobStatus
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.ranker import job_details
 from jobsearcher.store import Store
@@ -101,8 +102,16 @@ def _make_templates(tz: ZoneInfo) -> Jinja2Templates:
 
 
 def render(
-    request: Request, state: WebState, name: str, status_code: int = 200, **context: Any
+    request: Request,
+    state: WebState,
+    name: str,
+    store: Store | None = None,
+    status_code: int = 200,
+    **context: Any,
 ) -> HTMLResponse:
+    """Render a template. Pass the store for full pages: their header shows the budget."""
+    if store is not None:
+        context["budget"] = views.budget_info(store, state.config.llm)
     return state.templates.TemplateResponse(
         request, name, {"config": state.config, **context}, status_code=status_code
     )
@@ -133,10 +142,12 @@ def job_list(
     rows = views.load_rows(store, ctx, filters.view)
     options = views.filter_options(rows, ctx.config)
     rows = views.sort_rows(views.apply_filters(rows, filters), filters.sort)
+    fragment = is_htmx(request)
     response = render(
         request,
         state,
-        "_rows.html" if is_htmx(request) else "list.html",
+        "_rows.html" if fragment else "list.html",
+        None if fragment else store,
         rows=rows,
         filters=filters,
         options=options,
@@ -157,10 +168,39 @@ def prefilter_page(request: Request, state: State, store: ReadStore) -> HTMLResp
         request,
         state,
         "prefilter.html",
+        store,
         summary=views.prefilter_summary(rows, ctx.config),
         total=len(rows),
         stages=stages,
         ranking=ctx.config,
+    )
+
+
+@router.get("/partials/budget", response_class=HTMLResponse)
+def budget_partial(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    """The header's budget widget, polled by HTMX every minute."""
+    return render(request, state, "_budget.html", store)
+
+
+@router.get("/status", response_class=HTMLResponse)
+def status_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    ctx = state.row_context()
+    rows = views.load_rows(store, ctx, "all")
+    counts = {stage: sum(r.stage == stage for r in rows) for stage in views.STAGES}
+    counts["stale"] = sum(r.stale for r in rows)
+    counts["unparseable"] = sum(r.unparseable for r in rows)
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return render(
+        request,
+        state,
+        "status.html",
+        store,
+        open_jobs=len(rows),
+        expired_jobs=store.count_jobs(JobStatus.EXPIRED),
+        counts=counts,
+        last_runs=store.last_runs(),
+        usage=store.llm_usage_summary(month_start),
+        month_start=month_start,
     )
 
 
@@ -185,6 +225,7 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
         request,
         state,
         "job.html",
+        store,
         row=row,
         job=record.job,
         ranked_at=latest[1] if latest else None,

@@ -16,7 +16,7 @@
       <a href="/prefilter">Prefilter</a>
       <a href="/status">Status</a>
     </nav>
-    {% block budget %}{% endblock %}
+    {% if budget %}{% include "_budget.html" %}{% endif %}
   </header>
   <main>
     {% block content %}{% endblock %}
