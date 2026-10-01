@@ -16,7 +16,7 @@ For what is still unfinished, see [REMAINING_WORK.md](REMAINING_WORK.md).
 | Sources (v1) | **Platsbanken** (JobTech JobSearch API) + **JobTech Links**. LinkedIn/Indeed postponed. |
 | CV input | One **master CV in Markdown** |
 | Contact info | **Free sources only** |
-| Application tracking | Later (DB table reserved, no UI yet) |
+| Application tracking | Minimal: state + notes per job in the web UI (M3) |
 | Target roles | HR Business Partner, change management, operations manager, project manager (in `ranking.yaml`) |
 | Locations | Stockholm, Gothenburg, Malmö, Lund, Uppsala (+ remote) |
 | Language | English-language ads score higher; ads requiring Swedish score lower |
@@ -175,7 +175,7 @@ access from outside, use Tailscale or WireGuard rather than exposing a port.
   contacts with provenance, **Apply** link, downloads for the tailored CV and
   cover letter, and a **Regenerate** button.
 - Budget widget: spend this month vs. $20.
-- Later: application tracking (applied / interview / rejected, notes).
+- Application tracking: shortlisted / applied / interview / rejected / ignored, plus notes (done in M3).
 
 ## 7. Budget ($20 / month)
 
@@ -224,9 +224,9 @@ past the budget.
 | M1 | Platsbanken + JobTech Links search with contacts, dedupe and expiry | ✅ (needs first live run) |
 | M2a | LLM layer: Kimi + Claude providers, budget tracking and enforcement | ✅ |
 | M2 | Ranking: `ranking.yaml`, prefilter, LLM scoring, contacts from ad text | ✅ (calibration command still to do) |
-| M3 | Local web UI (list, detail, apply link, contacts) | ✅ (`jobsearcher web`; see docs/m3-web-ui.md) |
+| M3 | Local web UI (list, detail, apply link, contacts) | ✅ (`jobsearcher web`, incl. application tracking; see docs/m3-web-ui.md) |
 | M4 | Drafting: tailored CV + cover letter, grounding check, PDF/DOCX | next |
-| M5 | Contacts from company sites, application tracking | |
+| M5 | Contacts from company sites (application tracking: done in M3) | |
 | M6 | Company crawler | |
 | M7 | Optional: LinkedIn/Indeed adapters | |
 

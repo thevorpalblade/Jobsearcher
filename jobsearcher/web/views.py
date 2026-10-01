@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from jobsearcher.config import LLMConfig
 from jobsearcher.llm.budget import BudgetTracker
-from jobsearcher.models import Job, JobStatus
+from jobsearcher.models import Application, ApplicationState, Job, JobStatus
 from jobsearcher.ranking.config import RankingConfig, load_ranking_config
 from jobsearcher.ranking.prefilter import PrefilterResult, prefilter_status
 from jobsearcher.ranking.ranker import Ranking, ScoreBreakdown, input_hash, score_breakdown
@@ -108,10 +108,15 @@ class JobRow:
     unparseable: bool = False
     days_left: int | None = None  # until the deadline; negative once past
     age_days: float = 0.0  # since first seen
+    application: Application | None = None  # tracking state; None = new
 
     @property
     def job(self) -> Job:
         return self.record.job
+
+    @property
+    def state(self) -> ApplicationState:
+        return self.application.state if self.application else ApplicationState.NEW
 
     @property
     def match_place(self) -> str:
@@ -147,7 +152,12 @@ class RowContext:
         self.fingerprint = self.config.filter_fingerprint()
 
 
-def make_row(record: JobRecord, ranking_json: str | None, ctx: RowContext) -> JobRow:
+def make_row(
+    record: JobRecord,
+    ranking_json: str | None,
+    ctx: RowContext,
+    application: Application | None = None,
+) -> JobRow:
     job = record.job
     prefilter = ctx.memo.get(record, ctx.config, ctx.fingerprint)
     ranking: Ranking | None = None
@@ -181,19 +191,25 @@ def make_row(record: JobRecord, ranking_json: str | None, ctx: RowContext) -> Jo
         stage=stage,
         stale=stale,
         unparseable=unparseable,
+        application=application,
         days_left=days_left,
     )
 
 
 def load_rows(store: Store, ctx: RowContext, view: str = "ranked") -> list[JobRow]:
-    """Rows for a list view. Open jobs normally; expired ones only when asked for."""
+    """Rows for a list view. Open jobs normally; expired ones only when asked for, and
+    tracked jobs whether open or expired."""
     if view == "expired":
         records = store.job_records(JobStatus.EXPIRED, limit=EXPIRED_LIMIT)
         rankings = store.latest_rankings(status=JobStatus.EXPIRED)
+    elif view == "tracked":
+        records = store.tracked_job_records()
+        rankings = store.latest_rankings(status=None)
     else:
         records = store.job_records(JobStatus.OPEN)
         rankings = store.latest_rankings(status=JobStatus.OPEN)
-    return [make_row(r, rankings.get(r.job.id), ctx) for r in records]
+    apps = store.applications()
+    return [make_row(r, rankings.get(r.job.id), ctx, apps.get(r.job.id)) for r in records]
 
 
 class ListFilters(BaseModel):
@@ -230,6 +246,8 @@ def _matches(row: JobRow, f: ListFilters) -> bool:
     job = row.job
     a = row.ranking.assessment if row.ranking else None
     if f.view in ("ranked", "pending", "excluded") and row.stage != f.view:
+        return False
+    if f.view != "tracked" and row.state == ApplicationState.IGNORED:
         return False
     if f.min_score is not None and (row.score is None or row.score < f.min_score):
         return False

@@ -43,7 +43,7 @@
   {% endfor %}
 </div>
 
-{% block tracking %}{% endblock %}
+{% block tracking %}{% with application = row.application %}{% include "_tracking.html" %}{% endwith %}{% endblock %}
 
 <div class="cols">
 <section>

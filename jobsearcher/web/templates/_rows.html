@@ -7,7 +7,7 @@
     <tr>
       <th>Score</th><th>Fit / succ.</th><th>Title</th><th>Company</th><th>Location</th>
       <th>Remote</th><th>Deadline</th><th>Lang.</th><th title="Contact person known">✉</th>
-      <th>Sources</th>
+      <th>Sources</th><th>Tracking</th>
       {% if show_prefilter %}<th>Prefilter</th>{% endif %}
     </tr>
   </thead>
@@ -46,6 +46,10 @@
       </td>
       <td>{% if job.contacts %}✉{% endif %}</td>
       <td class="small muted">{{ job.sources|map(attribute="source")|unique|join(", ") }}</td>
+      <td>
+        {% if row.application %}<span class="chip" title="{{ row.application.notes }}">{{ row.state.value }}</span>{% endif %}
+        {% if job.status == "expired" %}<span class="chip bad">expired</span>{% endif %}
+      </td>
       {% if show_prefilter %}
       <td class="small">
         {% if row.exclusion_reason %}{{ row.exclusion_reason }}{% else %}{{ row.prefilter.roles|join(", ") }}{% endif %}

@@ -15,11 +15,11 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done, **never run on real ads**; `calibrate` command missing |
 | M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
-| M5 Contacts from company sites, application tracking | **Not started** |
+| M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 48 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 103 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -125,9 +125,11 @@ PLAN.md §5. Not started apart from the empty `drafts` table in
 - [ ] Fallback contact: a pre-built LinkedIn/Google search link (company + role)
       when no contact person is known (PLAN.md §2, item 5).
 - [ ] Contacts from the company's own career/contact page (shares code with M6).
-- [ ] Application tracking: states new / shortlisted / applied / interview /
-      rejected / ignored, plus notes. **There is no `applications` table yet**;
-      add one in `store.py` and expose it in the web UI.
+- [x] Application tracking (built with M3): states new / shortlisted / applied /
+      interview / rejected / ignored plus notes, in the `applications` table, set
+      from the job page. Ignored jobs are hidden from the list; `view=tracked`
+      shows every tracked job, expired ones included.
+- [ ] Optional: reminders or a follow-up date per tracked application.
 
 ## 5. Company crawler (M6)
 

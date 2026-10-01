@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from jobsearcher import cli
 from jobsearcher.config import Config
-from jobsearcher.models import Contact, Job, SourceRef
+from jobsearcher.models import ApplicationState, Contact, Job, SourceRef
 from jobsearcher.ranking import load_ranking_config
 from jobsearcher.ranking.config import RankingConfig, TargetRole
 from jobsearcher.ranking.prefilter import matched_roles
@@ -486,3 +486,76 @@ def test_llm_usage_summary(tmp_path):
         ("b", "drafting", 1, 0.5),
     ]
     assert summary[0].input_tokens == 2000
+
+
+HX = {"HX-Request": "true"}
+
+
+def test_store_application_tracking(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    job = make_job(1, "Projektledare")
+    store.upsert_job(job)
+    assert store.get_application(job.id) is None
+    store.set_application(job.id, ApplicationState.APPLIED, "Sent 1 Oct")
+    app = store.get_application(job.id)
+    assert (app.state, app.notes) == (ApplicationState.APPLIED, "Sent 1 Oct")
+    assert set(store.applications()) == {job.id}
+    # Notes keep a "new" job tracked; without them it is untracked again.
+    assert store.set_application(job.id, ApplicationState.NEW, "Ask Per").state == "new"
+    assert store.set_application(job.id, ApplicationState.NEW, "  ") is None
+    assert store.get_application(job.id) is None
+
+
+def test_tracking_buttons_and_notes(web):
+    job = web.add(make_job(1, "Projektledare"), make_assessment())
+    page = web.client.get(f"/jobs/{job.id}").text
+    assert 'hx-post="/jobs/' in page and 'value="applied"' in page
+
+    response = web.client.post(f"/jobs/{job.id}/state", data={"state": "applied"}, headers=HX)
+    assert response.status_code == 200
+    assert "<html" not in response.text and 'id="tracking"' in response.text
+    assert 'value="applied" class="on"' in response.text
+    response = web.client.post(
+        f"/jobs/{job.id}/notes", data={"notes": "Called <b>Per</b>"}, headers=HX
+    )
+    assert "Called &lt;b&gt;Per&lt;/b&gt;" in response.text
+    app = web.store.get_application(job.id)
+    assert (app.state, app.notes) == ("applied", "Called <b>Per</b>")
+    assert "applied" in _row_html(web.client.get("/").text)["Projektledare"]
+
+    assert (
+        web.client.post(f"/jobs/{job.id}/state", data={"state": "bogus"}, headers=HX).status_code
+        == 422
+    )
+    assert (
+        web.client.post("/jobs/nope/state", data={"state": "applied"}, headers=HX).status_code
+        == 404
+    )
+
+
+def test_posts_without_hx_request_are_refused(web):
+    job = web.add(make_job(1, "Projektledare"))
+    for path, data in (("state", {"state": "applied"}), ("notes", {"notes": "x"})):
+        response = web.client.post(f"/jobs/{job.id}/{path}", data=data)
+        assert response.status_code == 403
+    assert web.store.get_application(job.id) is None
+
+
+def test_ignored_jobs_are_hidden_except_in_tracked_view(web):
+    job = web.add(make_job(1, "Projektledare ignorerad"), make_assessment())
+    web.add(make_job(2, "Projektledare"), make_assessment())
+    web.client.post(f"/jobs/{job.id}/state", data={"state": "ignored"}, headers=HX)
+    assert _titles(web.client.get("/").text) == ["Projektledare"]
+    assert _titles(web.client.get("/?view=all").text) == ["Projektledare"]
+    assert _titles(web.client.get("/?view=tracked").text) == ["Projektledare ignorerad"]
+
+
+def test_tracked_jobs_stay_visible_after_expiry(web):
+    job = web.add(make_job(1, "Projektledare sökt"), make_assessment())
+    web.client.post(f"/jobs/{job.id}/state", data={"state": "applied"}, headers=HX)
+    web.store.conn.execute("UPDATE jobs SET last_seen = '2000-01-01'")
+    web.store.conn.commit()
+    assert web.store.expire_jobs(expire_after_days=3) == 1
+    assert _titles(web.client.get("/").text) == []
+    rows = _row_html(web.client.get("/?view=tracked").text)
+    assert "applied" in rows["Projektledare sökt"] and "expired" in rows["Projektledare sökt"]

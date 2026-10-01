@@ -40,7 +40,9 @@ docker compose logs -f
 (`http://<server>:8080`): the ranked job list with filters, a page per job
 (score breakdown, rationale, contacts with their source, apply links), the
 prefilter's view of each target role's occupations, LLM spend and pipeline
-status. Edits to `ranking.yaml` weights and adjustments show up on the next page
+status. On a job's page you can mark it shortlisted, applied, interview,
+rejected or ignored and keep notes; `Tracked` lists those jobs, expired ones
+included, and ignored jobs drop out of the main list. Edits to `ranking.yaml` weights and adjustments show up on the next page
 load, with no re-ranking.
 
 There is no login: keep it on your LAN and use Tailscale or WireGuard from

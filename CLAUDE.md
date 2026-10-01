@@ -23,7 +23,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
 ## Layout
 
 - `jobsearcher/sources/`: one adapter per job board, returning normalised `models.Job`
-- `jobsearcher/store.py`: SQLite store (jobs, job_sources, rankings, drafts, llm_usage)
+- `jobsearcher/store.py`: SQLite store (jobs, job_sources, rankings, drafts, llm_usage,
+  applications); WAL mode, so the web UI can read while the daemon writes
 - `jobsearcher/llm/`: provider-neutral `complete(system, context, prompt, schema)`.
   Every call goes through `BudgetedLLM`, which records cost and enforces the budget.
 - `jobsearcher/ranking/`: `ranking.yaml` config, prefilter, scoring, `final_score`

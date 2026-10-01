@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from jobsearcher.models import Contact, Job, JobStatus
+from jobsearcher.models import Application, ApplicationState, Contact, Job, JobStatus
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     cache_write_tokens  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS llm_usage_ts ON llm_usage(ts);
+
+-- Application tracking from the web UI. A job without a row is "new".
+CREATE TABLE IF NOT EXISTS applications (
+    job_id      TEXT PRIMARY KEY REFERENCES jobs(id),
+    state       TEXT NOT NULL,  -- shortlisted|applied|interview|rejected|ignored (or new + notes)
+    notes       TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -323,6 +331,44 @@ class Store:
             (job_id,),
         ).fetchone()
         return (row["data"], datetime.fromisoformat(row["created_at"])) if row else None
+
+    # --- application tracking --------------------------------------------
+
+    def applications(self) -> dict[str, Application]:
+        rows = self.conn.execute("SELECT job_id, state, notes, updated_at FROM applications")
+        return {row["job_id"]: Application(**dict(row)) for row in rows}
+
+    def get_application(self, job_id: str) -> Application | None:
+        row = self.conn.execute(
+            "SELECT job_id, state, notes, updated_at FROM applications WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        return Application(**dict(row)) if row else None
+
+    def set_application(
+        self, job_id: str, state: ApplicationState, notes: str, now: datetime | None = None
+    ) -> Application | None:
+        """Save a job's tracking state and notes. Back to "new" without notes removes
+        the row, so the job counts as untracked again."""
+        with self.conn:
+            if state == ApplicationState.NEW and not notes.strip():
+                self.conn.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))
+                return None
+            app = Application(job_id=job_id, state=state, notes=notes, updated_at=now or _now())
+            self.conn.execute(
+                "INSERT OR REPLACE INTO applications (job_id, state, notes, updated_at)"
+                " VALUES (?, ?, ?, ?)",
+                (job_id, app.state, app.notes, app.updated_at.isoformat()),
+            )
+        return app
+
+    def tracked_job_records(self) -> list[JobRecord]:
+        """Every job with a tracking row, open or expired, most recently seen first."""
+        rows = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs"
+            " WHERE id IN (SELECT job_id FROM applications) ORDER BY last_seen DESC"
+        )
+        return [JobRecord.from_row(row) for row in rows]
 
     # --- LLM usage -------------------------------------------------------
 

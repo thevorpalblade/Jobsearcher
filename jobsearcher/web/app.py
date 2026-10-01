@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher.config import Config, load_config
 from jobsearcher.contacts import is_generic_email
-from jobsearcher.models import JobStatus
+from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.ranker import job_details
 from jobsearcher.store import Store
@@ -220,7 +220,7 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
         raise HTTPException(404)
     latest = store.latest_ranking(job_id)
     ctx = state.row_context()
-    row = views.make_row(record, latest[0] if latest else None, ctx)
+    row = views.make_row(record, latest[0] if latest else None, ctx, store.get_application(job_id))
     return render(
         request,
         state,
@@ -230,7 +230,64 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
         job=record.job,
         ranked_at=latest[1] if latest else None,
         ranking=ctx.config,
+        states=list(ApplicationState),
     )
+
+
+def require_htmx(request: Request) -> None:
+    """Writes must come from HTMX. Without a login, this is the CSRF guard: a custom
+    header makes a cross-site request need a CORS preflight, which this app never
+    allows, so plain cross-site form posts are refused."""
+    if "HX-Request" not in request.headers:
+        raise HTTPException(403, "Write requests must come from the web UI")
+
+
+def _tracking_response(
+    request: Request, state: WebState, store: Store, job_id: str, app: Application | None
+) -> HTMLResponse:
+    job = store.get_job(job_id)
+    return render(
+        request,
+        state,
+        "_tracking.html",
+        job=job,
+        application=app,
+        states=list(ApplicationState),
+    )
+
+
+@router.post(
+    "/jobs/{job_id}/state", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def set_state(
+    request: Request,
+    job_id: str,
+    new_state: Annotated[ApplicationState, Form(alias="state")],
+    state: State,
+    store: WriteStore,
+) -> HTMLResponse:
+    if store.get_job(job_id) is None:
+        raise HTTPException(404)
+    current = store.get_application(job_id)
+    app = store.set_application(job_id, new_state, current.notes if current else "")
+    return _tracking_response(request, state, store, job_id, app)
+
+
+@router.post(
+    "/jobs/{job_id}/notes", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def set_notes(
+    request: Request,
+    job_id: str,
+    notes: Annotated[str, Form()],
+    state: State,
+    store: WriteStore,
+) -> HTMLResponse:
+    if store.get_job(job_id) is None:
+        raise HTTPException(404)
+    current = store.get_application(job_id)
+    app = store.set_application(job_id, current.state if current else ApplicationState.NEW, notes)
+    return _tracking_response(request, state, store, job_id, app)
 
 
 def create_app(config: Config) -> FastAPI:
