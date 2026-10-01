@@ -165,6 +165,7 @@ def cmd_companies(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.companies import load_companies
     from jobsearcher.companies.crawl import resolve_feeds
     from jobsearcher.companies.http import PoliteClient
+    from jobsearcher.sources.ats.common import feed_source
 
     if not config.companies_config.exists():
         print(f"No company list at {config.companies_config}", file=sys.stderr)
@@ -188,7 +189,7 @@ def cmd_companies(config: Config, args: argparse.Namespace) -> int:
         ats = company.ats.type if company.ats else (row["ats_type"] if row else None)
         ref = company.ats.ref if company.ats else (row["ats_ref"] if row else None)
         by_type[ats or ("not checked" if row is None else "none found")] += 1
-        jobs = open_jobs.get(f"{ats}:{company.slug}", 0) if ats else 0
+        jobs = open_jobs.get(feed_source(ats, ref), 0) if ats and ref else 0
         note = "" if ats else (row["error"] or "") if row else "not checked yet"
         print(f"{company.name[:34]:34} {ats or '-':15} {jobs:4}  {(ref or note)[:70]}")
     print("\n" + ", ".join(f"{t}: {n}" for t, n in by_type.most_common()))

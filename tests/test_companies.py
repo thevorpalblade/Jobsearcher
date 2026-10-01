@@ -122,9 +122,9 @@ def test_teamtailor_follows_pages_and_drops_jobs_abroad():
     assert job.description == "Du blir HRBP."
     assert job.employment_type == "full time"
     assert job.sources == [
-        SourceRef(source="teamtailor:acme-sverige-ab", source_id="uuid-1", url=job.url)
+        SourceRef(source="teamtailor:jobb-acme-se", source_id="uuid-1", url=job.url)
     ]
-    assert job.id == make_job_id("teamtailor:acme-sverige-ab", "uuid-1")
+    assert job.id == make_job_id("teamtailor:jobb-acme-se", "uuid-1")
 
 
 VARBI_RSS = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
@@ -350,16 +350,16 @@ def _job(n, source="platsbanken"):
 def test_failed_feed_is_reported_and_not_expired():
     store = Store(":memory:")
     old = datetime.now(UTC) - timedelta(days=10)
-    store.upsert_job(_job(1, "lever:acme-sverige-ab"), now=old)
+    store.upsert_job(_job(1, "lever:acme"), now=old)
     store.upsert_job(_job(2, "teamtailor:other"), now=old)
     feed_report = CompanyCrawlReport()
     from jobsearcher.companies.crawl import CompanyFeed
 
     feeds = [CompanyFeed(ACME, "lever", "acme")]
     assert list(crawl_feeds(feeds, FakeClient({}), keep_all, feed_report)) == []
-    assert feed_report.failed == ["lever:acme-sverige-ab"]
+    assert feed_report.failed == ["lever:acme"]
     assert store.expire_jobs(3, skip_sources=set(feed_report.failed)) == 1
-    assert store.get_job(_job(1, "lever:acme-sverige-ab").id).status == JobStatus.OPEN
+    assert store.get_job(_job(1, "lever:acme").id).status == JobStatus.OPEN
     assert store.get_job(_job(2, "teamtailor:other").id).status == JobStatus.EXPIRED
 
 
@@ -373,4 +373,17 @@ def test_run_search_includes_company_jobs():
     )
     assert (report.new, report.companies.with_feed, report.companies.jobs) == (1, 1, 1)
     [job] = store.iter_jobs()
-    assert job.sources[0].source == "varbi:acme-sverige-ab"
+    assert job.sources[0].source == "varbi:acme"
+
+
+def test_companies_sharing_a_feed_merge():
+    """A region and its hospital both point at the region's Varbi feed."""
+    store = Store(":memory:")
+    config = Config(search=SearchConfig(locations=["Stockholm"]))
+    region = ACME.model_copy(update={"ats": AtsRef(type="varbi", ref="acme")})
+    hospital = Company(
+        name="Acme sjukhus", location="Stockholm", ats=AtsRef(type="varbi", ref="acme")
+    )
+    client = FakeClient({"https://acme.varbi.com/en/what:rssfeed/": VARBI_RSS})
+    run_search(config, store, [], [], companies=[region, hospital], company_client=client)
+    assert store.count_jobs() == 1

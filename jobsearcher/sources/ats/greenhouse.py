@@ -9,7 +9,14 @@ from typing import Any
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
-from jobsearcher.sources.ats.common import AtsClient, Wanted, html_to_text, is_sweden, swedish_city
+from jobsearcher.sources.ats.common import (
+    AtsClient,
+    Wanted,
+    feed_source,
+    html_to_text,
+    is_sweden,
+    swedish_city,
+)
 from jobsearcher.sources.base import parse_datetime
 
 API = "https://boards-api.greenhouse.io/v1/boards/{ref}/jobs"
@@ -18,12 +25,12 @@ API = "https://boards-api.greenhouse.io/v1/boards/{ref}/jobs"
 def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) -> Iterator[Job]:
     data: Any = client.get_json(API.format(ref=ref), {"content": "true"})
     for job in data.get("jobs") or []:
-        parsed = parse_job(job, company)
+        parsed = parse_job(job, company, feed_source("greenhouse", ref))
         if parsed is not None:
             yield parsed
 
 
-def parse_job(job: dict[str, Any], company: Company) -> Job | None:
+def parse_job(job: dict[str, Any], company: Company, source: str) -> Job | None:
     title, url = job.get("title"), job.get("absolute_url")
     if not title or not url or not job.get("id"):
         return None
@@ -38,7 +45,6 @@ def parse_job(job: dict[str, Any], company: Company) -> Job | None:
         return None
     location = swedish_city(swedish[0]) or swedish[0]
     source_id = str(job["id"])
-    source = f"greenhouse:{company.slug}"
     return Job(
         id=make_job_id(source, source_id),
         title=title.strip(),

@@ -38,7 +38,19 @@ ATS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 # Shared hosts every page on that ATS links to, not a customer (e.g. Teamtailor's
 # tracking script at tt.teamtailor.com).
-_IGNORED_REFS = {"www", "api", "embed", "static", "assets", "cdn", "app", "jobs", "careers", "tt"}
+_IGNORED_REFS = {
+    "www",
+    "api",
+    "embed",
+    "static",
+    "assets",
+    "cdn",
+    "app",
+    "jobs",
+    "careers",
+    "tt",
+    "feeds",
+}
 
 # A careers site served by Teamtailor under the company's own domain.
 _TEAMTAILOR_HOSTED = re.compile(r"teamtailor-cdn\.com|assets\.teamtailor|teamtailor\.com/assets")

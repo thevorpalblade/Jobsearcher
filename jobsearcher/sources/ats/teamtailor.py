@@ -8,26 +8,33 @@ from typing import Any
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
-from jobsearcher.sources.ats.common import AtsClient, Wanted, html_to_text, is_sweden
+from jobsearcher.sources.ats.common import (
+    AtsClient,
+    Wanted,
+    feed_source,
+    html_to_text,
+    is_sweden,
+)
 from jobsearcher.sources.base import parse_datetime
 
 MAX_PAGES = 20
 
 
 def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) -> Iterator[Job]:
+    source = feed_source("teamtailor", ref.rstrip("/"))
     url: str | None = ref.rstrip("/") + "/jobs.json"
     for _ in range(MAX_PAGES):
         if not url:
             return
         feed: Any = client.get_json(url)
         for item in feed.get("items") or []:
-            job = parse_item(item, company)
+            job = parse_item(item, company, source)
             if job is not None:
                 yield job
         url = feed.get("next_url")
 
 
-def parse_item(item: dict[str, Any], company: Company) -> Job | None:
+def parse_item(item: dict[str, Any], company: Company, source: str) -> Job | None:
     posting = item.get("_jobposting") or {}
     title = item.get("title") or posting.get("title")
     job_url = item.get("url")
@@ -45,7 +52,6 @@ def parse_item(item: dict[str, Any], company: Company) -> Job | None:
     address = (swedish or addresses or [{}])[0]
     remote = posting.get("jobLocationType") == "TELECOMMUTE" or None
 
-    source = f"teamtailor:{company.slug}"
     return Job(
         id=make_job_id(source, source_id),
         title=title.strip(),

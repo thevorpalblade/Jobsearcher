@@ -11,7 +11,7 @@ from email.utils import parsedate_to_datetime
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
-from jobsearcher.sources.ats.common import AtsClient, Wanted, html_to_text
+from jobsearcher.sources.ats.common import AtsClient, Wanted, feed_source, html_to_text
 
 _JOB_ID = re.compile(r"jobID:(\d+)")
 
@@ -23,12 +23,12 @@ def feed_url(ref: str) -> str:
 def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) -> Iterator[Job]:
     root = ET.fromstring(client.get_text(feed_url(ref)))
     for item in root.iter("item"):
-        job = parse_item(item, ref, company)
+        job = parse_item(item, company, feed_source("varbi", ref))
         if job is not None:
             yield job
 
 
-def parse_item(item: ET.Element, ref: str, company: Company) -> Job | None:
+def parse_item(item: ET.Element, company: Company, source: str) -> Job | None:
     title = (item.findtext("title") or "").strip()
     link = (item.findtext("link") or "").strip()
     if not title or not link:
@@ -41,7 +41,6 @@ def parse_item(item: ET.Element, ref: str, company: Company) -> Job | None:
             published = parsedate_to_datetime(item.findtext("pubDate"))
         except (TypeError, ValueError):
             published = None
-    source = f"varbi:{company.slug}"
     return Job(
         id=make_job_id(source, source_id),
         title=title,

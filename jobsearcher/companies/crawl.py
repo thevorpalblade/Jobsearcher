@@ -15,6 +15,7 @@ from jobsearcher.companies.http import PoliteClient
 from jobsearcher.config import CompaniesSettings
 from jobsearcher.models import Job
 from jobsearcher.sources.ats import FETCHERS
+from jobsearcher.sources.ats.common import feed_source
 from jobsearcher.store import Store
 
 log = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class CompanyFeed:
 
     @property
     def source(self) -> str:
-        return f"{self.ats_type}:{self.company.slug}"
+        return feed_source(self.ats_type or "", self.ats_ref or "")
 
     @property
     def supported(self) -> bool:

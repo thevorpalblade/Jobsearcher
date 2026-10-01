@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from html.parser import HTMLParser
 from typing import Protocol
 
-from jobsearcher.companies.config import Company
+from jobsearcher.companies.config import Company, slugify
 from jobsearcher.models import Job
 
 # Called by adapters before an expensive per-job request (e.g. fetching the full ad):
@@ -26,6 +26,13 @@ class AtsClient(Protocol):
     def get_json(self, url: str, params: dict | None = None) -> object: ...
 
     def get_text(self, url: str, params: dict | None = None) -> str: ...
+
+
+def feed_source(ats_type: str, ref: str) -> str:
+    """Source name for jobs from one ATS feed, e.g. "varbi:sll". Named after the feed,
+    not the company, so companies sharing a feed (a region and its hospitals) produce
+    the same (source, source_id) pairs and their jobs merge instead of duplicating."""
+    return f"{ats_type}:{slugify(ref.split('://')[-1])}"
 
 
 _BLOCK_TAGS = {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr"}

@@ -9,7 +9,7 @@ from typing import Any
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
-from jobsearcher.sources.ats.common import AtsClient, Wanted, html_to_text
+from jobsearcher.sources.ats.common import AtsClient, Wanted, feed_source, html_to_text
 from jobsearcher.sources.base import parse_datetime
 
 API = "https://api.smartrecruiters.com/v1/companies/{ref}/postings"
@@ -25,7 +25,7 @@ def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) ->
         )
         postings = data.get("content") or []
         for posting in postings:
-            job = parse_posting(posting, company)
+            job = parse_posting(posting, company, feed_source("smartrecruiters", ref))
             if job is None or not wanted(job):
                 continue
             detail: Any = client.get_json(f"{API.format(ref=ref)}/{posting['id']}")
@@ -35,7 +35,7 @@ def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) ->
             return
 
 
-def parse_posting(posting: dict[str, Any], company: Company) -> Job | None:
+def parse_posting(posting: dict[str, Any], company: Company, source: str) -> Job | None:
     title, posting_id = posting.get("name"), posting.get("id")
     if not title or not posting_id:
         return None
@@ -43,7 +43,6 @@ def parse_posting(posting: dict[str, Any], company: Company) -> Job | None:
     if (loc.get("country") or "se").lower() != "se":
         return None
     source_id = str(posting_id)
-    source = f"smartrecruiters:{company.slug}"
     return Job(
         id=make_job_id(source, source_id),
         title=title.strip(),

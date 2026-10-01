@@ -8,7 +8,14 @@ from typing import Any
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
-from jobsearcher.sources.ats.common import AtsClient, Wanted, html_to_text, is_sweden, swedish_city
+from jobsearcher.sources.ats.common import (
+    AtsClient,
+    Wanted,
+    feed_source,
+    html_to_text,
+    is_sweden,
+    swedish_city,
+)
 
 API = "https://api.lever.co/v0/postings/{ref}"
 
@@ -16,12 +23,12 @@ API = "https://api.lever.co/v0/postings/{ref}"
 def fetch_jobs(client: AtsClient, ref: str, company: Company, wanted: Wanted) -> Iterator[Job]:
     postings: Any = client.get_json(API.format(ref=ref), {"mode": "json"})
     for posting in postings or []:
-        job = parse_posting(posting, company)
+        job = parse_posting(posting, company, feed_source("lever", ref))
         if job is not None:
             yield job
 
 
-def parse_posting(posting: dict[str, Any], company: Company) -> Job | None:
+def parse_posting(posting: dict[str, Any], company: Company, source: str) -> Job | None:
     title, url = posting.get("text"), posting.get("hostedUrl")
     if not title or not url or not posting.get("id"):
         return None
@@ -44,7 +51,6 @@ def parse_posting(posting: dict[str, Any], company: Company) -> Job | None:
         parts.append(f"{block.get('text', '')}\n{html_to_text(items)}")
     parts.append(posting.get("additionalPlain") or "")
     created = posting.get("createdAt")
-    source = f"lever:{company.slug}"
     return Job(
         id=make_job_id(source, posting["id"]),
         title=title.strip(),
