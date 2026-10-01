@@ -4,6 +4,8 @@ A personal pipeline that finds open positions, ranks them against my CV,
 drafts tailored application documents, and presents everything in a web UI
 running on my home server.
 
+For what is still unfinished, see [REMAINING_WORK.md](REMAINING_WORK.md).
+
 ## Decisions so far
 
 | Topic | Decision |
