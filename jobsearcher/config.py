@@ -28,6 +28,15 @@ class SearchConfig(BaseModel):
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
+    # Careers sites (ATS feeds) of the companies in companies.yaml.
+    companies: bool = True
+
+
+class CompaniesSettings(BaseModel):
+    # Re-detect each company's ATS after this many days (careers sites rarely move).
+    redetect_after_days: int = 7
+    # Pause between requests to the same domain, to crawl politely.
+    min_request_interval_s: float = 1.0
 
 
 class Provider(StrEnum):
@@ -113,6 +122,8 @@ class Config(BaseModel):
     # Relative paths are resolved against the directory containing config.yaml.
     ranking_config: Path = Path("ranking.yaml")
     cv_path: Path = Path("cvs/master.md")
+    companies_config: Path = Path("companies.yaml")
+    companies: CompaniesSettings = Field(default_factory=CompaniesSettings)
 
     @property
     def db_path(self) -> Path:
@@ -141,6 +152,7 @@ def load_config(path: str | Path | None = None) -> Config:
         ("data_dir", "JOBSEARCHER_DATA_DIR"),
         ("ranking_config", "JOBSEARCHER_RANKING_CONFIG"),
         ("cv_path", "JOBSEARCHER_CV"),
+        ("companies_config", "JOBSEARCHER_COMPANIES"),
     ):
         value = Path(os.environ.get(env) or getattr(config, field))
         setattr(config, field, value if value.is_absolute() else base / value)

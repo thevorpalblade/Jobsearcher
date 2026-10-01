@@ -157,6 +157,44 @@ def cmd_occupations(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_companies(config: Config, args: argparse.Namespace) -> int:
+    """Target companies with their detected ATS and open jobs; --detect re-checks."""
+    from collections import Counter
+    from datetime import UTC, datetime
+
+    from jobsearcher.companies import load_companies
+    from jobsearcher.companies.crawl import resolve_feeds
+    from jobsearcher.companies.http import PoliteClient
+
+    if not config.companies_config.exists():
+        print(f"No company list at {config.companies_config}", file=sys.stderr)
+        return 2
+    companies = load_companies(config.companies_config)
+    store = Store(config.db_path)
+    if args.detect:
+        client = PoliteClient(min_interval_s=config.companies.min_request_interval_s)
+        _, detected = resolve_feeds(
+            companies, store, client, config.companies, datetime.now(UTC), force=args.force
+        )
+        print(f"detected {detected} of {len(companies)} companies", file=sys.stderr)
+
+    rows = store.company_ats()
+    open_jobs: Counter[str] = Counter(
+        s.source for job in store.iter_jobs() for s in job.sources if ":" in s.source
+    )
+    by_type: Counter[str] = Counter()
+    for company in companies:
+        row = rows.get(company.slug)
+        ats = company.ats.type if company.ats else (row["ats_type"] if row else None)
+        ref = company.ats.ref if company.ats else (row["ats_ref"] if row else None)
+        by_type[ats or ("not checked" if row is None else "none found")] += 1
+        jobs = open_jobs.get(f"{ats}:{company.slug}", 0) if ats else 0
+        note = "" if ats else (row["error"] or "") if row else "not checked yet"
+        print(f"{company.name[:34]:34} {ats or '-':15} {jobs:4}  {(ref or note)[:70]}")
+    print("\n" + ", ".join(f"{t}: {n}" for t, n in by_type.most_common()))
+    return 0
+
+
 def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
     """Send one tiny request to each configured model to verify keys and pricing."""
     from pydantic import BaseModel
@@ -254,6 +292,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_occ.add_argument("--groups", action="store_true", help="also list occupation groups")
 
+    p_comp = sub.add_parser(
+        "companies", help="target companies: detected ATS and open jobs (companies.yaml)"
+    )
+    p_comp.add_argument("--detect", action="store_true", help="detect ATS for unchecked/stale")
+    p_comp.add_argument("--force", action="store_true", help="with --detect: re-check all")
+
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
 
@@ -273,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         "list": cmd_list,
         "show": cmd_show,
         "occupations": cmd_occupations,
+        "companies": cmd_companies,
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
         "daemon": cmd_daemon,

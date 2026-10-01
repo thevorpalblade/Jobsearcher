@@ -1,0 +1,100 @@
+"""Helpers shared by the ATS adapters."""
+
+from __future__ import annotations
+
+import html
+import re
+from collections.abc import Callable, Iterator
+from html.parser import HTMLParser
+from typing import Protocol
+
+from jobsearcher.companies.config import Company
+from jobsearcher.models import Job
+
+# Called by adapters before an expensive per-job request (e.g. fetching the full ad):
+# returns False for jobs the pipeline would drop anyway (wrong place, excluded words).
+Wanted = Callable[[Job], bool]
+
+
+class AtsFetcher(Protocol):
+    def __call__(
+        self, client: AtsClient, ref: str, company: Company, wanted: Wanted
+    ) -> Iterator[Job]: ...
+
+
+class AtsClient(Protocol):
+    def get_json(self, url: str, params: dict | None = None) -> object: ...
+
+    def get_text(self, url: str, params: dict | None = None) -> str: ...
+
+
+_BLOCK_TAGS = {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr"}
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.skip = 0
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in {"script", "style"}:
+            self.skip += 1
+        elif tag in _BLOCK_TAGS:
+            self.parts.append("\n- " if tag == "li" else "\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.skip:
+            self.skip -= 1
+        elif tag in _BLOCK_TAGS and tag != "li":  # an item's start already broke the line
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.skip:
+            self.parts.append(data)
+
+
+def html_to_text(markup: str | None) -> str:
+    """Readable plain text from an HTML job description (ranking reads plain text)."""
+    if not markup:
+        return ""
+    parser = _TextExtractor()
+    parser.feed(html.unescape(markup) if "&lt;" in markup else markup)
+    text = "".join(parser.parts)
+    text = re.sub(r"[ \t\xa0]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+# Swedish cities that ATS postings commonly name without a country.
+SWEDISH_CITIES = (
+    "stockholm", "göteborg", "gothenburg", "malmö", "malmo", "lund", "uppsala", "solna",
+    "sundbyberg", "kista", "södertälje", "linköping", "norrköping", "västerås", "örebro",
+    "helsingborg", "jönköping", "umeå", "luleå", "karlstad", "växjö", "gävle", "sundsvall",
+)  # fmt: skip
+
+
+def swedish_city(text: str | None) -> str | None:
+    """The first Swedish city named in `text`, as written there, else None."""
+    if not text:
+        return None
+    lowered = text.lower()
+    for city in SWEDISH_CITIES:
+        i = lowered.find(city)
+        if i >= 0:
+            return text[i : i + len(city)]
+    return None
+
+
+_SWEDEN = re.compile(r"\b(sweden|sverige|schweden|suède)\b", re.IGNORECASE)
+
+
+def is_sweden(country: str | None, *texts: str | None) -> bool | None:
+    """True/False when the country is known (from a code/name or the location text),
+    None when it can't be told."""
+    if country:
+        c = country.strip().lower()
+        return c in {"se", "swe", "sweden", "sverige"}
+    if any(t and _SWEDEN.search(t) for t in texts):
+        return True
+    return None

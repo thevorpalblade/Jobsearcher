@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     cache_write_tokens  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS llm_usage_ts ON llm_usage(ts);
+
+-- Where each target company (companies.yaml, by slug) posts its jobs, as detected.
+CREATE TABLE IF NOT EXISTS company_ats (
+    company      TEXT PRIMARY KEY,
+    ats_type     TEXT,            -- NULL when no supported ATS was found
+    ats_ref      TEXT,
+    careers_url  TEXT,
+    checked_at   TEXT NOT NULL,
+    error        TEXT
+);
 """
 
 
@@ -173,27 +183,40 @@ class Store:
             "SELECT COUNT(*) FROM jobs WHERE status = ?", (status,)
         ).fetchone()[0]
 
-    def expire_jobs(self, expire_after_days: int, now: datetime | None = None) -> int:
+    def expire_jobs(
+        self,
+        expire_after_days: int,
+        now: datetime | None = None,
+        skip_sources: set[str] | frozenset[str] = frozenset(),
+    ) -> int:
         """Mark jobs expired when unseen for a while or past their deadline.
 
+        Jobs listed on any of `skip_sources` (sources that failed this run, so their
+        jobs weren't re-seen) are left alone unless past their deadline.
         Contact details of expired jobs are deleted (GDPR data minimisation).
         """
         now = now or _now()
         cutoff = (now - timedelta(days=expire_after_days)).isoformat()
         rows = self.conn.execute(
-            "SELECT id, data FROM jobs WHERE status = ? AND (last_seen < ? OR deadline < ?)",
-            (JobStatus.OPEN, cutoff, now.isoformat()),
+            "SELECT id, data, COALESCE(deadline < ?, 0) AS past_deadline FROM jobs"
+            " WHERE status = ? AND (last_seen < ? OR deadline < ?)",
+            (now.isoformat(), JobStatus.OPEN, cutoff, now.isoformat()),
         ).fetchall()
+        expired = 0
         with self.conn:
             for row in rows:
                 job = Job.model_validate_json(row["data"])
+                skipped = any(s.source in skip_sources for s in job.sources)
+                if skipped and not row["past_deadline"]:
+                    continue
+                expired += 1
                 job.status = JobStatus.EXPIRED
                 job.contacts = []
                 self.conn.execute(
                     "UPDATE jobs SET status = ?, data = ? WHERE id = ?",
                     (JobStatus.EXPIRED, job.model_dump_json(), row["id"]),
                 )
-        return len(rows)
+        return expired
 
     def save_job(self, job: Job) -> None:
         """Overwrite a stored job's data (e.g. after adding contacts) without touching
@@ -272,6 +295,30 @@ class Store:
             "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE ts >= ?", (since.isoformat(),)
         ).fetchone()
         return float(row[0])
+
+    # --- target companies ------------------------------------------------
+
+    def company_ats(self) -> dict[str, sqlite3.Row]:
+        """Detection results for every company, keyed by company slug."""
+        rows = self.conn.execute("SELECT * FROM company_ats")
+        return {row["company"]: row for row in rows}
+
+    def save_company_ats(
+        self,
+        company: str,
+        ats_type: str | None,
+        ats_ref: str | None,
+        careers_url: str | None,
+        error: str | None = None,
+        when: datetime | None = None,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO company_ats"
+                " (company, ats_type, ats_ref, careers_url, checked_at, error)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (company, ats_type, ats_ref, careers_url, (when or _now()).isoformat(), error),
+            )
 
     # --- run bookkeeping --------------------------------------------------
 
