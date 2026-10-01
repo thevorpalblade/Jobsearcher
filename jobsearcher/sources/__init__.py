@@ -9,7 +9,7 @@ def enabled_sources(config: Config) -> list[SourceAdapter]:
     if config.sources.platsbanken:
         sources.append(PlatsbankenSource())
     if config.sources.jobtech_links:
-        sources.append(JobTechLinksSource())
+        sources.append(JobTechLinksSource(skip_platsbanken_only=config.sources.platsbanken))
     return sources
 
 

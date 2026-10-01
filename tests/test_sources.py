@@ -64,3 +64,33 @@ def test_links_search(load_fixture):
         return_value=httpx.Response(200, json=load_fixture("jobtech_links_search.json"))
     )
     assert len(list(JobTechLinksSource(client=httpx.Client()).search("python"))) == 1
+
+
+def _links_hit(*urls: str) -> dict:
+    return {
+        "id": "x",
+        "headline": "Projektledare",
+        "source_links": [{"label": "l", "url": u} for u in urls],
+    }
+
+
+def test_links_only_to_platsbanken():
+    af = "https://arbetsformedlingen.se/platsbanken/annonser/{}"
+    assert jobtech_links.links_only_to_platsbanken(_links_hit(af.format(1), af.format(2)))
+    assert not jobtech_links.links_only_to_platsbanken(
+        _links_hit(af.format(1), "https://ledigajobb.se/jobb/1")
+    )
+    assert not jobtech_links.links_only_to_platsbanken(_links_hit())
+
+
+@respx.mock
+def test_links_search_skips_platsbanken_only(load_fixture):
+    data = load_fixture("jobtech_links_search.json")
+    af_hit = _links_hit("https://arbetsformedlingen.se/platsbanken/annonser/31525072")
+    respx.get("https://links.api.jobtechdev.se/joblinks").mock(
+        return_value=httpx.Response(200, json={**data, "hits": [*data["hits"], af_hit]})
+    )
+    skipping = JobTechLinksSource(client=httpx.Client(), skip_platsbanken_only=True)
+    assert [j.url for j in skipping.search("python")] == ["https://exempel.se/jobb/123"]
+    keeping = JobTechLinksSource(client=httpx.Client())
+    assert len(list(keeping.search("python"))) == 2

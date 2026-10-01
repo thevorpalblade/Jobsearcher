@@ -10,7 +10,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | Milestone | State |
 |---|---|
 | M0 Skeleton (package, config, SQLite store, CLI, Docker, tests) | Done |
-| M1 Search: Platsbanken + JobTech Links, dedupe, contacts, expiry | Done, **never run against the live APIs** |
+| M1 Search: Platsbanken + JobTech Links, dedupe, contacts, expiry | Done; first live run 2026-10-01 (outside Docker) |
 | M2a LLM layer: Kimi, Claude API, Claude Code (subscription), budget | Done; only one real Claude Code call made, no real Kimi or Anthropic API call |
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done, **never run on real ads**; `calibrate` command missing |
 | M3 Local web UI | **Not started** (next) |
@@ -19,7 +19,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 38 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 40 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -31,11 +31,14 @@ could not be built there.
 - [ ] `docker compose build` on the Arch Linux server. The Dockerfile runs the
       Claude Code native installer (`curl -fsSL https://claude.ai/install.sh | bash`)
       as the `app` user. Confirm it succeeds and `claude --version` works in the image.
-- [ ] `jobsearcher search` against the real APIs. The adapters in
-      `jobsearcher/sources/` were written from the documented JobTech schemas and
-      parse defensively. Check the field mapping (`jobsearcher show <id>`),
-      especially for **JobTech Links**, whose response shape is the least
-      certain. Update `tests/fixtures/*.json` with real (anonymised) responses.
+- [x] `jobsearcher search` against the real APIs (2026-10-01, outside Docker):
+      16 keywords, ~1,400 ads fetched, 714 open jobs kept after the location filter.
+      Field mappings checked for both sources. JobTech Links carries no deadline,
+      org.nr or employment type, and ~95% of its hits only link back to Platsbanken
+      ads, so those are now skipped while Platsbanken is enabled.
+- [ ] Optional: replace `tests/fixtures/*.json` with real (anonymised) responses.
+- [x] `claude_code` provider: `llm-check` succeeded for Haiku 4.5 and Opus 5.5
+      (2026-10-01).
 - [ ] `jobsearcher llm-check` with real `MOONSHOT_API_KEY` and
       `CLAUDE_CODE_OAUTH_TOKEN`. Confirm Moonshot reports cached tokens where
       `_cached_tokens()` in `llm/moonshot_client.py` expects them, and that the

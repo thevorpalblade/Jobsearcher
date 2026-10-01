@@ -3,7 +3,8 @@
 Docs: https://links.api.jobtechdev.se/  (open API, no key required)
 
 Links ads only carry a short `brief`, not the full text, and usually no contacts.
-When the same job also exists in Platsbanken, the store merges the two records.
+Most hits only link back to Platsbanken ads; those are skipped when the Platsbanken
+source is enabled, since it returns the same ads with full text and contacts.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -20,14 +22,21 @@ from jobsearcher.sources.base import dig, get_json, make_client, parse_datetime
 BASE_URL = "https://links.api.jobtechdev.se"
 PAGE_SIZE = 100
 MAX_OFFSET = 2000
+PLATSBANKEN_HOST = "arbetsformedlingen.se"
 
 
 class JobTechLinksSource:
     name = "jobtech_links"
 
-    def __init__(self, client: httpx.Client | None = None, base_url: str = BASE_URL):
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        base_url: str = BASE_URL,
+        skip_platsbanken_only: bool = False,
+    ):
         self.client = client or make_client()
         self.base_url = base_url.rstrip("/")
+        self.skip_platsbanken_only = skip_platsbanken_only
 
     def search(self, keyword: str, published_after: datetime | None = None) -> Iterator[Job]:
         # The Links API has no reliable published-after filter; filter client-side.
@@ -40,6 +49,8 @@ class JobTechLinksSource:
             )
             hits = data.get("hits") or []
             for hit in hits:
+                if self.skip_platsbanken_only and links_only_to_platsbanken(hit):
+                    continue
                 job = parse_hit(hit)
                 if job is None:
                     continue
@@ -50,6 +61,23 @@ class JobTechLinksSource:
             offset += len(hits)
             if not hits or offset >= total:
                 return
+
+
+def _links(hit: dict[str, Any]) -> list[str]:
+    return [
+        link["url"]
+        for link in hit.get("source_links") or []
+        if isinstance(link, dict) and link.get("url")
+    ]
+
+
+def links_only_to_platsbanken(hit: dict[str, Any]) -> bool:
+    # Matching on these links instead would over-merge: one hit can link to several
+    # Platsbanken ads, e.g. the same role advertised in two cities.
+    links = _links(hit)
+    return bool(links) and all(
+        (urlsplit(url).hostname or "").removeprefix("www.") == PLATSBANKEN_HOST for url in links
+    )
 
 
 def parse_hit(hit: dict[str, Any]) -> Job | None:
@@ -63,11 +91,7 @@ def parse_hit(hit: dict[str, Any]) -> Job | None:
         addresses = [addresses]
     first = addresses[0] if addresses and isinstance(addresses[0], dict) else {}
 
-    links = [
-        link.get("url")
-        for link in hit.get("source_links") or []
-        if isinstance(link, dict) and link.get("url")
-    ]
+    links = _links(hit)
     url = links[0] if links else hit.get("url")
 
     published = parse_datetime(hit.get("publication_date")) or parse_datetime(

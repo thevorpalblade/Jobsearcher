@@ -145,8 +145,10 @@ def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
             continue
         u = result.usage
         cost = f"${tracker.cost(u):.5f}" if u.billed else "subscription"
+        # Claude Code usage is recorded as "claude-code/<model>"; don't repeat the provider.
+        model = u.model.removeprefix("claude-code/")
         print(
-            f"{role:9} {spec.provider}/{u.model}: ok "
+            f"{role:9} {spec.provider}/{model}: ok "
             f"({u.input_tokens} in / {u.output_tokens} out, {cost})"
         )
     return status
