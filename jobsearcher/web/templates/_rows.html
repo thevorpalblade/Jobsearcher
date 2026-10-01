@@ -1,4 +1,5 @@
 {# The job table; swapped into #rows by the filter form. #}
+{% set show_prefilter = filters.view in ("pending", "excluded") %}
 <p class="muted small">{{ rows|length }} job{{ "" if rows|length == 1 else "s" }}</p>
 {% if rows %}
 <table class="jobs">
@@ -7,6 +8,7 @@
       <th>Score</th><th>Fit / succ.</th><th>Title</th><th>Company</th><th>Location</th>
       <th>Remote</th><th>Deadline</th><th>Lang.</th><th title="Contact person known">✉</th>
       <th>Sources</th>
+      {% if show_prefilter %}<th>Prefilter</th>{% endif %}
     </tr>
   </thead>
   <tbody>
@@ -44,6 +46,12 @@
       </td>
       <td>{% if job.contacts %}✉{% endif %}</td>
       <td class="small muted">{{ job.sources|map(attribute="source")|unique|join(", ") }}</td>
+      {% if show_prefilter %}
+      <td class="small">
+        {% if row.exclusion_reason %}{{ row.exclusion_reason }}{% else %}{{ row.prefilter.roles|join(", ") }}{% endif %}
+        {% if row.match_place %}<span class="chip{{ ' warn' if row.match_place == 'text only' }}">{{ row.match_place }}</span>{% endif %}
+      </td>
+      {% endif %}
     </tr>
   {% endfor %}
   </tbody>

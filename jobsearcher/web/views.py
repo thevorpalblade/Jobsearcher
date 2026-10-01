@@ -27,6 +27,7 @@ from jobsearcher.store import JobRecord, Store
 T = TypeVar("T")
 
 Stage = Literal["ranked", "pending", "excluded"]
+STAGES: tuple[Stage, ...] = ("ranked", "pending", "excluded")
 View = Literal["ranked", "pending", "excluded", "all", "expired", "tracked"]
 # How many expired jobs view=expired shows (they accumulate forever).
 EXPIRED_LIMIT = 200
@@ -109,6 +110,24 @@ class JobRow:
     @property
     def job(self) -> Job:
         return self.record.job
+
+    @property
+    def match_place(self) -> str:
+        """Where the job mentions a target role: "title", "text only" or ""."""
+        p = self.prefilter
+        if not p.roles_unfiltered:
+            return ""
+        return "text only" if set(p.roles_unfiltered) <= set(p.body_only) else "title"
+
+    @property
+    def exclusion_reason(self) -> str:
+        """Why the prefilter keeps this job from ranking ("" if it passes)."""
+        p = self.prefilter
+        if p.passed:
+            return ""
+        if not p.excluded:
+            return "mentions no target role"
+        return "; ".join(f"{role}: {reason}" for role, reason in p.excluded.items())
 
 
 @dataclass
@@ -290,6 +309,57 @@ def sort_rows(rows: list[JobRow], sort: str = "score") -> list[JobRow]:
         return sorted(rows, key=lambda r: (r.days_left is None, r.days_left or 0))
     value = _SORT_VALUES.get(sort, _SORT_VALUES["score"])
     return sorted(rows, key=lambda r: (value(r) is None, -(value(r) or 0)))
+
+
+@dataclass
+class OccupationCount:
+    label: str | None  # occupation field or group; None when the ad has none
+    count: int
+    excluded: bool  # by this role's occupation filters
+    groups: list[OccupationCount] = field(default_factory=list)
+
+
+@dataclass
+class RoleSummary:
+    name: str
+    mentioned: int  # open jobs mentioning the role, before occupation filters
+    kept: int
+    excluded: int
+    fields: list[OccupationCount]
+
+
+def prefilter_summary(rows: list[JobRow], config: RankingConfig) -> list[RoleSummary]:
+    """Per target role, which occupations its mentions fall in and which the role's
+    filters exclude: the web version of `jobsearcher occupations --groups`."""
+    out: list[RoleSummary] = []
+    for role in config.target_roles:
+        counts: dict[str | None, dict[str | None, int]] = {}
+        for row in rows:
+            if role.name in row.prefilter.roles_unfiltered:
+                job = row.job
+                groups = counts.setdefault(job.occupation_field, {})
+                groups[job.occupation_group] = groups.get(job.occupation_group, 0) + 1
+        fields: list[OccupationCount] = []
+        kept = excluded = 0
+        for field_label, groups in counts.items():
+            group_counts = []
+            for group_label, n in groups.items():
+                allowed = role.allows_occupation(field_label, group_label)
+                kept += n if allowed else 0
+                excluded += 0 if allowed else n
+                group_counts.append(OccupationCount(group_label, n, not allowed))
+            group_counts.sort(key=lambda g: -g.count)
+            fields.append(
+                OccupationCount(
+                    field_label,
+                    sum(g.count for g in group_counts),
+                    all(g.excluded for g in group_counts),
+                    group_counts,
+                )
+            )
+        fields.sort(key=lambda f: -f.count)
+        out.append(RoleSummary(role.name, kept + excluded, kept, excluded, fields))
+    return out
 
 
 def safe_url(url: str | None) -> str | None:

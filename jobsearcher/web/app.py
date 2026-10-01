@@ -148,6 +148,22 @@ def job_list(
     return response
 
 
+@router.get("/prefilter", response_class=HTMLResponse)
+def prefilter_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    ctx = state.row_context()
+    rows = views.load_rows(store, ctx, "all")
+    stages = {stage: sum(r.stage == stage for r in rows) for stage in views.STAGES}
+    return render(
+        request,
+        state,
+        "prefilter.html",
+        summary=views.prefilter_summary(rows, ctx.config),
+        total=len(rows),
+        stages=stages,
+        ranking=ctx.config,
+    )
+
+
 # Declared before /jobs/{job_id}, which would otherwise match "<id>.json" too.
 @router.get("/jobs/{job_id}.json")
 def job_json(job_id: str, state: State, store: ReadStore) -> JSONResponse:

@@ -15,6 +15,7 @@ from jobsearcher.config import Config
 from jobsearcher.models import Contact, Job, SourceRef
 from jobsearcher.ranking import load_ranking_config
 from jobsearcher.ranking.config import RankingConfig, TargetRole
+from jobsearcher.ranking.prefilter import matched_roles
 from jobsearcher.ranking.ranker import JobAssessment, Ranking, input_hash
 from jobsearcher.store import JobRecord, Store
 from jobsearcher.web import create_app
@@ -369,3 +370,71 @@ def test_untrusted_ad_content_is_escaped(web):
     assert "<b>bold</b>" not in html
     assert 'href="javascript:' not in html
     assert "javascript:alert(2)" in html  # shown as text instead
+
+
+@pytest.fixture
+def prefilter_jobs(web):
+    web.add(make_job(1, "Projektledare IT", occupation_field="Data/IT", occupation_group="Dev"))
+    web.add(make_job(2, "Konsult", "Du blir projektledare.", occupation_field="Data/IT"))
+    web.add(
+        make_job(
+            3,
+            "Projektledare bygg",
+            occupation_field="Bygg och anläggning",
+            occupation_group="Ingenjörer bygg",
+        )
+    )
+    web.add(make_job(4, "Lagerarbetare"))
+    web.add(make_job(5, "HRBP"), make_assessment())
+    return web
+
+
+def test_pending_and_excluded_views_with_reasons(prefilter_jobs):
+    client = prefilter_jobs.client
+    pending = _row_html(client.get("/?view=pending").text)
+    assert set(pending) == {"Projektledare IT", "Konsult"}
+    assert "text only" in pending["Konsult"] and "title" in pending["Projektledare IT"]
+    excluded = _row_html(client.get("/?view=excluded").text)
+    assert set(excluded) == {"Projektledare bygg", "Lagerarbetare"}
+    assert "Project manager: occupation excluded (Bygg)" in excluded["Projektledare bygg"]
+    assert "mentions no target role" in excluded["Lagerarbetare"]
+    assert set(_titles(client.get("/?view=all").text)) == {
+        "Projektledare IT",
+        "Konsult",
+        "Projektledare bygg",
+        "Lagerarbetare",
+        "HRBP",
+    }
+    # The links on /prefilter narrow a view by role and occupation.
+    query = "/?view=excluded&role=Project+manager&occupation=Ingenj%C3%B6rer+bygg"
+    assert _titles(client.get(query).text) == ["Projektledare bygg"]
+
+
+def test_prefilter_page_counts_match_matched_roles(prefilter_jobs):
+    config = load_ranking_config(prefilter_jobs.config.ranking_config)
+    jobs = list(prefilter_jobs.store.iter_jobs())
+    mentioned = sum(
+        "Project manager" in matched_roles(j, config, apply_occupation_filters=False)[0]
+        for j in jobs
+    )
+    kept = sum("Project manager" in matched_roles(j, config)[0] for j in jobs)
+    html = prefilter_jobs.client.get("/prefilter").text
+    assert (mentioned, kept) == (3, 2)
+    assert f"Mentioned by {mentioned} open jobs: {kept} kept, 1 excluded" in html
+    assert "5 open jobs" in html and "1 ranked" in html and "2 waiting for ranking" in html
+    assert (
+        '<a href="/?view=excluded&amp;role=Project%20manager&amp;'
+        'occupation=Bygg%20och%20anl%C3%A4ggning">1</a>'
+    ) in html
+    assert 'Bygg och anläggning</strong> <span class="chip bad">excluded</span>' in html
+
+
+def test_expired_jobs_are_hidden_unless_asked_for(web):
+    old = web.add(make_job(1, "Projektledare gammal"), make_assessment())
+    web.add(make_job(2, "Projektledare ny"), make_assessment())
+    web.store.conn.execute("UPDATE jobs SET last_seen = '2000-01-01' WHERE id = ?", (old.id,))
+    web.store.conn.commit()
+    web.store.expire_jobs(expire_after_days=3)
+    assert _titles(web.client.get("/").text) == ["Projektledare ny"]
+    assert _titles(web.client.get("/?view=expired").text) == ["Projektledare gammal"]
+    assert "expired" in web.client.get(f"/jobs/{old.id}").text
