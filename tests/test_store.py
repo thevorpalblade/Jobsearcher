@@ -1,4 +1,7 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from jobsearcher.models import JobStatus
 from jobsearcher.sources import jobtech_links, platsbanken
@@ -50,3 +53,47 @@ def test_expire_unseen_jobs_and_drop_contacts(load_fixture):
     # Seen again -> reopened.
     store.upsert_job(pb, now=t0 + timedelta(days=6))
     assert store.get_job(pb.id).status == JobStatus.OPEN
+
+
+def test_file_store_uses_wal(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    assert store.conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
+def test_wal_switch_is_skipped_while_another_connection_writes(tmp_path):
+    path = tmp_path / "db.sqlite"
+    Store(path).conn.execute("PRAGMA journal_mode=DELETE")
+    busy = sqlite3.connect(path)
+    busy.execute("BEGIN EXCLUSIVE")
+    try:
+        conn = sqlite3.connect(path, timeout=0)
+        store = Store.__new__(Store)
+        store.conn = conn
+        store._enable_wal()  # must not raise
+    finally:
+        busy.rollback()
+    assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+
+
+def test_readonly_store_rejects_writes(tmp_path, load_fixture):
+    path = tmp_path / "db.sqlite"
+    pb, _ = _jobs(load_fixture)
+    Store(path).upsert_job(pb)
+    ro = Store(path, readonly=True)
+    assert ro.get_job(pb.id) is not None
+    with pytest.raises(sqlite3.OperationalError):
+        ro.set_last_run("platsbanken", datetime.now(UTC))
+
+
+def test_readonly_store_reads_during_a_write(tmp_path, load_fixture):
+    path = tmp_path / "db.sqlite"
+    pb, links = _jobs(load_fixture)
+    Store(path).upsert_job(pb)
+    writer = Store(path)
+    writer.conn.execute("BEGIN IMMEDIATE")
+    writer.conn.execute("DELETE FROM jobs")
+    try:
+        ro = Store(path, readonly=True)
+        assert ro.count_jobs() == 1  # sees the last committed state, no lock wait
+    finally:
+        writer.conn.rollback()

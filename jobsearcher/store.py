@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from jobsearcher.models import Contact, Job, JobStatus
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -69,14 +72,49 @@ def _now() -> datetime:
 
 
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        readonly: bool = False,
+        check_same_thread: bool = True,
+        init_schema: bool = True,
+    ):
+        """Open the database.
+
+        `readonly` opens the file with `mode=ro` and skips schema setup, so a reader
+        can never write. `check_same_thread=False` is for callers that hand one
+        connection between threads but use it serially (the web app). `init_schema`
+        is skipped by short-lived writers once the schema is known to exist.
+        """
         path = Path(path)
-        if str(path) != ":memory:":
-            path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        in_memory = str(path) == ":memory:"
+        if readonly:
+            self.conn = sqlite3.connect(
+                f"file:{path}?mode=ro", uri=True, check_same_thread=check_same_thread
+            )
+        else:
+            if not in_memory:
+                path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(path, check_same_thread=check_same_thread)
         self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
-        self._migrate()
+        if readonly:
+            return
+        if not in_memory:
+            self._enable_wal()
+        if init_schema:
+            self.conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _enable_wal(self) -> None:
+        # WAL lets the web UI read while the daemon writes. The mode is stored in the
+        # file, but switching needs exclusive access; if another connection is busy,
+        # leave it to the next opener.
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.OperationalError as exc:
+            log.debug("Could not switch to WAL yet: %s", exc)
 
     def _migrate(self) -> None:
         columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(llm_usage)")}
