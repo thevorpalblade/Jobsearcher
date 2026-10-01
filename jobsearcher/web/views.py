@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -289,3 +290,25 @@ def sort_rows(rows: list[JobRow], sort: str = "score") -> list[JobRow]:
         return sorted(rows, key=lambda r: (r.days_left is None, r.days_left or 0))
     value = _SORT_VALUES.get(sort, _SORT_VALUES["score"])
     return sorted(rows, key=lambda r: (value(r) is None, -(value(r) or 0)))
+
+
+def safe_url(url: str | None) -> str | None:
+    """The URL if it may become a link. Ad data is untrusted, so anything but http(s)
+    (javascript:, data:, ...) is shown as text instead."""
+    if not url:
+        return None
+    url = url.strip()
+    return url if urlsplit(url).scheme.lower() in ("http", "https") else None
+
+
+_PROVENANCE_LABELS = {
+    "platsbanken:application_contacts": "Platsbanken (structured)",
+    "platsbanken:ad_text": "Found in the ad text",
+    "ad_text": "Found in the ad text",
+    "llm:ad_text": "Named in the ad (extracted by the LLM, check before use)",
+}
+
+
+def provenance_label(provenance: str) -> str:
+    """A readable label for a contact's provenance (the raw value is shown too)."""
+    return _PROVENANCE_LABELS.get(provenance, provenance)

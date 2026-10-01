@@ -110,18 +110,10 @@ def cmd_show(config: Config, args: argparse.Namespace) -> int:
     if job is None:
         print(f"No job {args.job_id}", file=sys.stderr)
         return 1
-    from jobsearcher.ranking import Ranking, final_score, load_ranking_config
+    from jobsearcher.ranking import load_ranking_config
+    from jobsearcher.ranking.ranker import job_details
 
-    ranking = store.latest_rankings(status=None).get(job.id)
-    out = job.model_dump(mode="json")
-    if ranking:
-        out["ranking"] = json.loads(ranking)
-        try:
-            assessment = Ranking.model_validate_json(ranking).assessment
-            config_r = load_ranking_config(config.ranking_config)
-            out["ranking"]["score"] = final_score(assessment, config_r)
-        except ValueError:
-            pass
+    out = job_details(store, job, load_ranking_config(config.ranking_config))
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
 

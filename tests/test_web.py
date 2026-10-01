@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import zipfile
@@ -262,3 +263,109 @@ def test_new_badge(filter_jobs):
     rows = _row_html(filter_jobs.client.get("/").text)
     assert "chip new" in rows["HRBP Stockholm"]
     assert "chip new" not in rows["Projektledare Merit"]
+
+
+def _detail_job(**overrides):
+    fields = {
+        "company_org_nr": "556000-0000",
+        "apply_url": "https://example.com/apply?id=1",
+        "apply_email": "jobb@example.com",
+        "contacts": [
+            Contact(
+                name="Anna Chef",
+                role="HR-chef",
+                email="anna@example.com",
+                provenance="platsbanken:application_contacts",
+            ),
+            Contact(name="Per Persson", phone="070-123 45 67", provenance="llm:ad_text"),
+            Contact(email="info@example.com", provenance="platsbanken:ad_text"),
+        ],
+        "sources": [
+            SourceRef(source="platsbanken", source_id="1", url="https://arbetsformedlingen.se/1")
+        ],
+    } | overrides
+    text = fields.pop("description", "Vi söker en projektledare.")
+    return make_job(1, "Projektledare", text, **fields)
+
+
+def test_job_page_shows_assessment_score_and_contacts(web):
+    job = web.add(
+        _detail_job(),
+        make_assessment(
+            80,
+            60,
+            language="en",
+            swedish="merit",
+            rationale="Strong change management background.",
+            red_flags=["Travel 50%"],
+            missing_requirements=["PMP certification"],
+        ),
+    )
+    response = web.client.get(f"/jobs/{job.id}")
+    assert response.status_code == 200
+    html = response.text
+    assert "Strong change management background." in html
+    assert "Travel 50%" in html and "PMP certification" in html
+    assert "→ <strong>72</strong>" in html  # 80 × 0.6 + 60 × 0.4
+    assert "Ad written in English: +10" in html and "Swedish a merit: -5" in html
+    assert "Final score: <strong>77</strong>" in html
+    assert 'href="https://example.com/apply?id=1"' in html
+    assert 'href="mailto:jobb@example.com"' in html
+    assert 'href="https://arbetsformedlingen.se/1"' in html
+    assert 'rel="noopener noreferrer"' in html
+    assert "Platsbanken (structured)" in html
+    assert "Named in the ad (extracted by the LLM, check before use)" in html
+    assert "(llm:ad_text)" in html  # the raw provenance next to the label
+    assert 'href="tel:0701234567"' in html
+    assert "generic mailbox" in html.split("info@example.com")[2]
+    assert "556000-0000" in html
+    assert "passes" in html and "stale" not in html
+
+
+def test_unranked_and_excluded_job_pages(web):
+    pending = web.add(make_job(1, "Projektledare IT"))
+    excluded = web.add(make_job(2, "Projektledare bygg", occupation_field="Bygg och anläggning"))
+    assert "will be ranked on the next run" in web.client.get(f"/jobs/{pending.id}").text
+    html = web.client.get(f"/jobs/{excluded.id}").text
+    assert "the prefilter excludes it" in html
+    assert "Project manager: occupation excluded (Bygg)" in html
+
+
+def test_old_ranking_format_says_it_will_be_re_ranked(web):
+    job = web.add(make_job(1, "Projektledare"))
+    web.store.save_ranking(job.id, "old", '{"job_id": "x", "score": 7}')
+    assert "will be re-ranked" in web.client.get(f"/jobs/{job.id}").text
+    rows = _row_html(web.client.get("/?view=all").text)
+    assert "will be re-ranked" in rows["Projektledare"]
+
+
+def test_unknown_job_is_404(web):
+    response = web.client.get("/jobs/does-not-exist")
+    assert response.status_code == 404
+    assert "Not found" in response.text
+    assert web.client.get("/jobs/does-not-exist.json").status_code == 404
+
+
+def test_job_json_matches_cli_show(web, capsys):
+    job = web.add(_detail_job(), make_assessment())
+    data = web.client.get(f"/jobs/{job.id}.json").json()
+    cli.cmd_show(web.config, cli.argparse.Namespace(job_id=job.id))
+    assert data == json.loads(capsys.readouterr().out)
+    assert data["ranking"]["score"] == 72
+
+
+def test_untrusted_ad_content_is_escaped(web):
+    job = web.add(
+        _detail_job(
+            description='<script>alert("x")</script> <img src=x onerror=alert(1)>',
+            url="javascript:alert(1)",
+            apply_url="javascript:alert(2)",
+        ),
+        make_assessment(rationale="<b>bold</b>"),
+    )
+    html = web.client.get(f"/jobs/{job.id}").text
+    assert "<script>alert" not in html and "&lt;script&gt;" in html
+    assert "<img src=x" not in html
+    assert "<b>bold</b>" not in html
+    assert 'href="javascript:' not in html
+    assert "javascript:alert(2)" in html  # shown as text instead

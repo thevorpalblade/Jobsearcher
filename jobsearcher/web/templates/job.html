@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{# Ad fields are untrusted: everything is autoescaped, and only http(s) URLs become links. #}
+{% macro link(url, text=none, cls="") -%}
+  {%- set safe = url|safe_url -%}
+  {%- if safe -%}
+    <a href="{{ safe }}" class="{{ cls }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{{ text or url }}</a>
+  {%- else -%}
+    <span title="Not an http(s) link, so not clickable">{% if text %}{{ text }}: {% endif %}{{ url }}</span>
+  {%- endif -%}
+{%- endmacro %}
+{% block title %}{{ job.title }} · Jobsearcher{% endblock %}
+{% block content %}
+{% set a = row.ranking.assessment if row.ranking else none %}
+{% set b = row.breakdown %}
+<p class="small"><a href="/">← Jobs</a> · <a href="/jobs/{{ job.id }}.json">JSON</a></p>
+<h1>{{ job.title }}</h1>
+<p>
+  {% if row.score is not none %}<span class="score{{ ' top' if row.score >= ranking.drafting.min_score }}">{{ row.score }}</span>{% endif %}
+  <strong>{{ job.company or "Unknown employer" }}</strong>
+  {% if job.company_org_nr %}<span class="muted">(org.nr {{ job.company_org_nr }})</span>{% endif %}
+  {% if job.status == "expired" %}<span class="chip bad">expired</span>{% endif %}
+  {% if row.stale %}<span class="chip warn" title="Ranked before a CV, target-role or model change; it will be re-ranked on the next run">stale</span>{% endif %}
+</p>
+
+<dl class="facts">
+  <dt>Location</dt><dd>{{ [job.location, job.region]|select|join(", ") or "–" }}{% if job.remote %} <span class="chip">remote possible</span>{% endif %}</dd>
+  {% if job.employment_type %}<dt>Employment</dt><dd>{{ job.employment_type }}</dd>{% endif %}
+  {% if job.salary %}<dt>Salary</dt><dd>{{ job.salary }}</dd>{% endif %}
+  <dt>Published</dt><dd>{{ job.published_at|localdate }}</dd>
+  <dt>Seen</dt><dd>first {{ row.record.first_seen|localtime }}, last {{ row.record.last_seen|localtime }}</dd>
+  <dt>Deadline</dt><dd>
+    {% if job.deadline %}{{ job.deadline|localdate }}
+      <span class="muted">({% if row.days_left < 0 %}passed{% elif row.days_left == 0 %}today{% else %}{{ row.days_left }} days left{% endif %})</span>
+    {% else %}–{% endif %}</dd>
+</dl>
+
+<div class="actions">
+  {% if job.apply_url %}{{ link(job.apply_url, "Apply", "button") }}{% endif %}
+  {% if job.apply_email %}<a class="button" href="mailto:{{ job.apply_email }}">Apply by email: {{ job.apply_email }}</a>{% endif %}
+  {% if job.url and job.url != job.apply_url %}{{ link(job.url, "Original ad") }}{% endif %}
+  {% for ref in job.sources %}
+    {% if ref.url %}{{ link(ref.url, ref.source) }}{% else %}<span class="muted">{{ ref.source }} {{ ref.source_id }}</span>{% endif %}
+  {% endfor %}
+</div>
+
+{% block tracking %}{% endblock %}
+
+<div class="cols">
+<section>
+  <h2>Score</h2>
+  {% if b %}
+    <ul class="tight">
+      <li>Fit {{ b.fit }} × weight {{ b.fit_weight }}, success {{ b.success }} × weight {{ b.success_weight }} → <strong>{{ b.combined }}</strong></li>
+      {% for label, points in b.adjustments %}
+        <li>{{ label }}: {{ "%+d"|format(points) }}</li>
+      {% endfor %}
+      <li>Final score: <strong>{{ b.total }}</strong>{% if b.total >= ranking.drafting.min_score %} (at or above the drafting threshold {{ ranking.drafting.min_score }}){% endif %}</li>
+    </ul>
+  {% elif row.unparseable %}
+    <p>This job was ranked by an older prompt version and will be re-ranked on the next run.</p>
+  {% elif row.prefilter.passed %}
+    <p class="muted">Not ranked yet; it passes the prefilter and will be ranked on the next run.</p>
+  {% else %}
+    <p class="muted">Not ranked: the prefilter excludes it (see below).</p>
+  {% endif %}
+
+  {% if a %}
+  <h2>Assessment</h2>
+  <dl class="facts">
+    <dt>Matched role</dt><dd>{{ a.matched_role or "–" }}</dd>
+    <dt>Ad language</dt><dd>{{ {"en": "English", "sv": "Swedish"}.get(a.language, "Other") }}</dd>
+    <dt>Swedish</dt><dd>{{ {"required": "required", "merit": "a merit", "not_mentioned": "not mentioned"}[a.swedish] }}</dd>
+    <dt>Model</dt><dd>{{ row.ranking.model }}</dd>
+    <dt>Ranked</dt><dd>{{ ranked_at|localtime }}</dd>
+  </dl>
+  <p>{{ a.rationale }}</p>
+  {% if a.matched_requirements %}<h3 class="small">Matched requirements</h3>
+    <ul class="tight">{% for r in a.matched_requirements %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if a.missing_requirements %}<h3 class="small">Missing requirements</h3>
+    <ul class="tight">{% for r in a.missing_requirements %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if a.red_flags %}<h3 class="small">Red flags</h3>
+    <ul class="tight">{% for r in a.red_flags %}<li class="chip bad">{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% endif %}
+</section>
+
+<section>
+  <h2>Contacts</h2>
+  {% if job.contacts %}
+    <ul class="tight">
+    {% for c in job.contacts %}
+      <li>
+        {% if c.name %}<strong>{{ c.name }}</strong>{% endif %}
+        {% if c.role and c.role != "generic mailbox" %}<span class="muted">{{ c.role }}</span>{% endif %}
+        {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>
+          {% if c.email is generic_email or c.role == "generic mailbox" %}<span class="chip">generic mailbox</span>{% endif %}{% endif %}
+        {% if c.phone %}<a href="tel:{{ c.phone|replace(' ', '')|replace('-', '') }}">{{ c.phone }}</a>{% endif %}
+        <br><span class="small muted">{{ c.provenance|provenance }}{% if c.provenance|provenance != c.provenance %} ({{ c.provenance }}){% endif %}</span>
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">No contacts known.</p>
+  {% endif %}
+
+  <h2>Prefilter</h2>
+  {% set p = row.prefilter %}
+  <dl class="facts">
+    <dt>Result</dt><dd>
+      {% if p.passed %}<span class="chip good">passes</span>{% else %}<span class="chip bad">excluded</span>{% endif %}
+      {% if row.ranking and not p.passed %}<span class="chip warn">ranked, but the current filters exclude it</span>{% endif %}
+    </dd>
+    <dt>Roles in title</dt><dd>{{ p.roles_unfiltered|reject("in", p.body_only)|join(", ") or "–" }}</dd>
+    <dt>Roles in text only</dt><dd>{{ p.body_only|join(", ") or "–" }}</dd>
+    {% for role, reason in p.excluded.items() %}
+      <dt>Not counted</dt><dd>{{ role }}: {{ reason }}</dd>
+    {% endfor %}
+    {% if not p.passed and not p.roles_unfiltered %}<dt>Reason</dt><dd>mentions no target role</dd>{% endif %}
+    <dt>Occupation</dt><dd>{{ job.occupation_field or "(none)" }} / {{ job.occupation_group or "(none)" }}</dd>
+  </dl>
+</section>
+</div>
+
+{% block drafts %}{% endblock %}
+
+<h2>Ad text</h2>
+<div class="adtext">{{ job.description or "(no description)" }}</div>
+{% endblock %}

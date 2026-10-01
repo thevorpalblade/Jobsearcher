@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -272,6 +273,22 @@ def ranked_jobs(store: Store, config: RankingConfig) -> list[tuple[Job, Ranking,
             continue  # stored by an older prompt version; will be re-ranked
         out.append((job, ranking, final_score(ranking.assessment, config)))
     out.sort(key=lambda row: row[2], reverse=True)
+    return out
+
+
+def job_details(store: Store, job: Job, config: RankingConfig) -> dict[str, Any]:
+    """A job as JSON with its latest ranking and current final score (what
+    `jobsearcher show` prints and the web UI serves)."""
+    out = job.model_dump(mode="json")
+    latest = store.latest_ranking(job.id)
+    if latest:
+        data = latest[0]
+        out["ranking"] = json.loads(data)
+        try:
+            assessment = Ranking.model_validate_json(data).assessment
+            out["ranking"]["score"] = final_score(assessment, config)
+        except ValueError:
+            pass  # stored by an older prompt version; will be re-ranked
     return out
 
 

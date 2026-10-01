@@ -14,14 +14,16 @@ from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher.config import Config, load_config
+from jobsearcher.contacts import is_generic_email
 from jobsearcher.ranking.config import RankingConfig
+from jobsearcher.ranking.ranker import job_details
 from jobsearcher.store import Store
 from jobsearcher.web import views
 
@@ -92,6 +94,9 @@ def _make_templates(tz: ZoneInfo) -> Jinja2Templates:
     templates.env.filters["localdate"] = local
     templates.env.filters["localtime"] = lambda v: local(v, "%Y-%m-%d %H:%M")
     templates.env.filters["usd"] = lambda v: f"${v:,.2f}"
+    templates.env.filters["safe_url"] = views.safe_url
+    templates.env.filters["provenance"] = views.provenance_label
+    templates.env.tests["generic_email"] = is_generic_email
     return templates
 
 
@@ -141,6 +146,34 @@ def job_list(
     # The same URL returns a fragment or a full page; keep caches from mixing them up.
     response.headers["Vary"] = "HX-Request"
     return response
+
+
+# Declared before /jobs/{job_id}, which would otherwise match "<id>.json" too.
+@router.get("/jobs/{job_id}.json")
+def job_json(job_id: str, state: State, store: ReadStore) -> JSONResponse:
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404)
+    return JSONResponse(job_details(store, job, state.ranking.get()))
+
+
+@router.get("/jobs/{job_id}", response_class=HTMLResponse)
+def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> HTMLResponse:
+    record = store.job_record(job_id)
+    if record is None:
+        raise HTTPException(404)
+    latest = store.latest_ranking(job_id)
+    ctx = state.row_context()
+    row = views.make_row(record, latest[0] if latest else None, ctx)
+    return render(
+        request,
+        state,
+        "job.html",
+        row=row,
+        job=record.job,
+        ranked_at=latest[1] if latest else None,
+        ranking=ctx.config,
+    )
 
 
 def create_app(config: Config) -> FastAPI:
