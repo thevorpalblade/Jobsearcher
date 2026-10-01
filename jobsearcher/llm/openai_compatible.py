@@ -22,11 +22,15 @@ class OpenAICompatibleLLM:
         label: str = "Moonshot",
         max_tokens: int = 16000,
         extra_body: dict[str, Any] | None = None,
+        enforce_schema: bool = False,
         client: openai.OpenAI | None = None,
     ):
         self.model = model
         self.max_tokens = max_tokens
         self.extra_body = extra_body or {}
+        # Send the schema as `response_format: json_schema` so the server constrains
+        # the output to it, instead of plain JSON mode (which only guarantees JSON).
+        self.enforce_schema = enforce_schema
         self.label = label  # provider name for error messages
         if client is None:
             api_key = os.environ.get(api_key_env)
@@ -50,8 +54,9 @@ class OpenAICompatibleLLM:
             system_text += "\n\n" + context
         if schema is not None:
             system_text += (
-                "\n\nReply with a single JSON object matching this JSON schema, and nothing "
-                "else:\n" + json.dumps(schema.model_json_schema(), ensure_ascii=False)
+                "\n\nReply with a single JSON object that fills in this JSON schema with your "
+                "answer (don't repeat the schema itself), and nothing else:\n"
+                + json.dumps(schema.model_json_schema(), ensure_ascii=False)
             )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_text},
@@ -61,7 +66,7 @@ class OpenAICompatibleLLM:
         usage = LLMUsage(model=self.model, input_tokens=0, output_tokens=0)
         # JSON mode guarantees valid JSON but not the schema; retry once with the error.
         for attempt in range(2):
-            text = self._call(messages, json_mode=schema is not None, usage=usage)
+            text = self._call(messages, schema, usage=usage)
             if schema is None:
                 return LLMResult(text=text, usage=usage)
             try:
@@ -77,11 +82,22 @@ class OpenAICompatibleLLM:
                 ]
         raise AssertionError("unreachable")
 
-    def _call(self, messages: list[dict[str, Any]], json_mode: bool, usage: LLMUsage) -> str:
+    def _call(
+        self, messages: list[dict[str, Any]], schema: type[BaseModel] | None, usage: LLMUsage
+    ) -> str:
         kwargs: dict[str, Any] = {}
         if self.extra_body:
             kwargs["extra_body"] = self.extra_body
-        if json_mode:
+        if schema is not None and self.enforce_schema:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "schema": schema.model_json_schema(),
+                    "strict": True,
+                },
+            }
+        elif schema is not None:
             kwargs["response_format"] = {"type": "json_object"}
         try:
             response = self.client.chat.completions.create(

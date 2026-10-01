@@ -56,7 +56,13 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
     except LLMError as exc:
         print(f"Can't start ranking: {exc}", file=sys.stderr)
         return 2
-    report = run_ranking(store, llm, ranking_config, config.cv_path.read_text())
+    report = run_ranking(
+        store,
+        llm,
+        ranking_config,
+        config.cv_path.read_text(),
+        max_parallel=config.llm.ranking.max_parallel,
+    )
     print(
         f"rank: candidates={report.candidates} (prefilter dropped {report.skipped_prefilter}) "
         f"ranked={report.ranked} cached={report.cached} failed={report.failed} "

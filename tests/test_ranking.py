@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -248,3 +249,41 @@ def test_occupation_filters_dont_change_fingerprint():
         target_roles=[TargetRole(name="Project manager", exclude_occupations=["Bygg"])]
     )
     assert plain.fingerprint() == filtered.fingerprint()
+
+
+class ConcurrentFakeLLM(FakeLLM):
+    """Only answers once `parallel` calls are in flight at the same time."""
+
+    def __init__(self, parallel):
+        super().__init__()
+        self.barrier = threading.Barrier(parallel, timeout=5)
+        self.threads = set()
+
+    def complete(self, **kwargs):
+        self.threads.add(threading.get_ident())
+        self.barrier.wait()
+        return super().complete(**kwargs)
+
+
+def test_parallel_ranking_runs_calls_concurrently():
+    jobs = [_job(i, f"Projektledare {i}") for i in range(1, 7)]
+    llm = ConcurrentFakeLLM(parallel=3)
+    # Store(":memory:") is bound to this thread, so any store access from a worker
+    # thread would raise: budget checks and writes must stay on the calling thread.
+    store, budgeted, _, config = _setup(jobs, llm)
+    report = run_ranking(store, budgeted, config, CV, max_parallel=3)
+    assert (report.ranked, report.failed) == (6, 0)
+    assert len(llm.threads) == 3 and threading.get_ident() not in llm.threads
+    assert len(ranked_jobs(store, config)) == 6
+    assert store.llm_cost_since(datetime(2000, 1, 1, tzinfo=UTC)) > 0  # usage recorded
+
+
+def test_parallel_ranking_respects_cap_and_failures():
+    jobs = [_job(i, f"Projektledare {i}", published_day=i) for i in range(1, 8)]
+    config = load_ranking_config(EXAMPLE)
+    config.prefilter.max_llm_calls_per_run = 5
+    llm = FakeLLM(fail_titles={"Projektledare 7"})  # newest, so ranked first
+    store, budgeted, _, _ = _setup(jobs, llm, config=config)
+    report = run_ranking(store, budgeted, config, CV, max_parallel=4)
+    assert (report.ranked, report.failed, report.deferred) == (4, 1, 2)
+    assert len(llm.prompts) == 5

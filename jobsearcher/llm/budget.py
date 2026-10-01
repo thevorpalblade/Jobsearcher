@@ -100,15 +100,35 @@ class BudgetedLLM:
         context: str = "",
         schema: type[BaseModel] | None = None,
     ) -> LLMResult:
-        if getattr(self.client, "metered", True):
-            self.tracker.check(self.purpose)
+        self.check()
         try:
-            result = self.client.complete(
-                system=system, prompt=prompt, context=context, schema=schema
-            )
+            result = self.call(system=system, prompt=prompt, context=context, schema=schema)
         except LLMError as exc:
             if exc.usage is not None:
-                self.tracker.record(exc.usage, self.purpose)
+                self.record(exc.usage)
             raise
-        self.tracker.record(result.usage, self.purpose)
+        self.record(result.usage)
         return result
+
+    # The steps of complete(), for callers that run requests in worker threads:
+    # check() and record() use the store, so they must stay on the store's thread;
+    # call() doesn't touch the store.
+
+    def check(self) -> None:
+        """Raise BudgetExceeded if this purpose is over budget (pay-per-token only)."""
+        if getattr(self.client, "metered", True):
+            self.tracker.check(self.purpose)
+
+    def call(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        context: str = "",
+        schema: type[BaseModel] | None = None,
+    ) -> LLMResult:
+        """The unrecorded request. Pair it with check() before and record() after."""
+        return self.client.complete(system=system, prompt=prompt, context=context, schema=schema)
+
+    def record(self, usage: LLMUsage) -> float:
+        return self.tracker.record(usage, self.purpose)

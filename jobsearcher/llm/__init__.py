@@ -40,6 +40,7 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             label="NVIDIA",
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
+            enforce_schema=spec.enforce_schema,
         )
     else:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
@@ -49,6 +50,7 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             base_url=config.llm.moonshot_base_url,
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
+            enforce_schema=spec.enforce_schema,
         )
     return BudgetedLLM(client, tracker, purpose=role)
 

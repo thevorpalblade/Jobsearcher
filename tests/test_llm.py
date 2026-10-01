@@ -234,3 +234,14 @@ def test_extra_body_is_sent():
     )
     llm.complete(system="s", prompt="p", schema=Score)
     assert requests[0]["thinking"] == {"type": "disabled"}
+
+
+def test_enforce_schema_sends_json_schema_response_format():
+    client, requests = _moonshot(['{"fit": 70, "reason": "ok"}'])
+    llm = OpenAICompatibleLLM("z-ai/glm-5.3-flash", client=client, enforce_schema=True)
+    assert llm.complete(system="s", prompt="p", schema=Score).parsed.fit == 70
+    fmt = requests[0]["response_format"]
+    assert fmt["type"] == "json_schema"
+    assert fmt["json_schema"]["name"] == "Score"
+    assert fmt["json_schema"]["strict"] is True
+    assert fmt["json_schema"]["schema"]["properties"].keys() == {"fit", "reason"}

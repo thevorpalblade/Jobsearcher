@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from jobsearcher.llm import BudgetedLLM, BudgetExceeded, LLMError
+from jobsearcher.llm import BudgetedLLM, BudgetExceeded, LLMError, LLMResult
 from jobsearcher.models import Contact, Job
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.prefilter import select_for_ranking
@@ -155,7 +157,15 @@ class RankReport:
     stopped_reason: str | None = None
 
 
-def run_ranking(store: Store, llm: BudgetedLLM, config: RankingConfig, cv: str) -> RankReport:
+def run_ranking(
+    store: Store, llm: BudgetedLLM, config: RankingConfig, cv: str, max_parallel: int = 1
+) -> RankReport:
+    """Rank open jobs that pass the prefilter and have no cached ranking.
+
+    Up to `max_parallel` LLM requests run at once in worker threads. Budget checks,
+    usage records and rankings are written here on the calling thread, because the
+    store's SQLite connection must not be shared between threads.
+    """
     report = RankReport()
     open_jobs = list(store.iter_jobs())
     selected = select_for_ranking(open_jobs, config)
@@ -163,39 +173,60 @@ def run_ranking(store: Store, llm: BudgetedLLM, config: RankingConfig, cv: str) 
     report.candidates = len(selected)
     context = build_context(cv, config)
 
-    calls = 0
-    for i, job in enumerate(selected):
+    todo: list[tuple[Job, str]] = []
+    for job in selected:
         h = input_hash(job, cv, config, llm.model)
-        if store.get_ranking(job.id, h) is not None:
+        if store.get_ranking(job.id, h) is None:
+            todo.append((job, h))
+        else:
             report.cached += 1
-            continue
-        if calls >= config.prefilter.max_llm_calls_per_run:
-            report.deferred = _count_unranked(store, selected[i:], cv, config, llm.model)
-            report.stopped_reason = "per-run limit reached"
-            break
-        calls += 1
-        try:
-            result = llm.complete(
-                system=SYSTEM_PROMPT,
-                context=context,
-                prompt=job_prompt(job),
-                schema=JobAssessment,
-            )
-        except BudgetExceeded as exc:
-            report.deferred = _count_unranked(store, selected[i:], cv, config, llm.model)
-            report.stopped_reason = str(exc)
-            break
-        except LLMError as exc:
-            log.warning("Ranking %s (%s) failed: %s", job.id, job.title, exc)
-            report.failed += 1
-            continue
+    cap = config.prefilter.max_llm_calls_per_run
+    if len(todo) > cap:
+        report.deferred = len(todo) - cap
+        report.stopped_reason = "per-run limit reached"
+    queue = deque(todo[:cap])
 
-        ranking = Ranking(
-            job_id=job.id, input_hash=h, model=result.usage.model, assessment=result.parsed
-        )  # type: ignore[arg-type]
-        store.save_ranking(job.id, h, ranking.model_dump_json())
-        _add_contacts(store, job, ranking.assessment.contact_persons)
-        report.ranked += 1
+    with ThreadPoolExecutor(max_workers=max_parallel) as pool:
+        pending: dict[Future[LLMResult], tuple[Job, str]] = {}
+        while queue or pending:
+            while queue and len(pending) < max_parallel:
+                try:
+                    llm.check()
+                except BudgetExceeded as exc:
+                    report.deferred += len(queue)
+                    report.stopped_reason = str(exc)
+                    queue.clear()
+                    break
+                job, h = queue.popleft()
+                future = pool.submit(
+                    llm.call,
+                    system=SYSTEM_PROMPT,
+                    context=context,
+                    prompt=job_prompt(job),
+                    schema=JobAssessment,
+                )
+                pending[future] = (job, h)
+            if not pending:
+                break
+            done, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                job, h = pending.pop(future)
+                try:
+                    result = future.result()
+                except LLMError as exc:
+                    if exc.usage is not None:
+                        llm.record(exc.usage)
+                    log.warning("Ranking %s (%s) failed: %s", job.id, job.title, exc)
+                    report.failed += 1
+                    continue
+                llm.record(result.usage)
+                ranking = Ranking(
+                    job_id=job.id, input_hash=h, model=result.usage.model, assessment=result.parsed
+                )  # type: ignore[arg-type]
+                store.save_ranking(job.id, h, ranking.model_dump_json())
+                _add_contacts(store, job, ranking.assessment.contact_persons)
+                report.ranked += 1
+                log.info("Ranked %d/%d: %s", report.ranked, len(todo[:cap]), job.title)
     return report
 
 
@@ -213,12 +244,6 @@ def ranked_jobs(store: Store, config: RankingConfig) -> list[tuple[Job, Ranking,
         out.append((job, ranking, final_score(ranking.assessment, config)))
     out.sort(key=lambda row: row[2], reverse=True)
     return out
-
-
-def _count_unranked(
-    store: Store, jobs: list[Job], cv: str, config: RankingConfig, model: str
-) -> int:
-    return sum(1 for j in jobs if store.get_ranking(j.id, input_hash(j, cv, config, model)) is None)
 
 
 def _add_contacts(store: Store, job: Job, people: list[ContactPerson]) -> None:

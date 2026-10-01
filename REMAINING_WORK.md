@@ -19,7 +19,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 45 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 48 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -53,13 +53,12 @@ could not be built there.
       `job_id,score`). The command reports rank correlation (Spearman) against
       `final_score` and lists the biggest disagreements, to guide prompt and
       `ranking.yaml` tuning.
-- [ ] **Parallel ranking + retries.** The user's current ranking model is GLM 5.3
-      Flash on NVIDIA's free tier (`provider: nvidia`, reasoning off via
-      `extra_body: {thinking: {type: disabled}}`). Calls are queued: 85–330 s each
-      even with ~350 output tokens. 8 parallel calls gave ~43 s/job effective with
-      one 504 timeout, so: a `max_parallel` setting (~4) with LLM calls in threads
-      and store writes on the main thread (SQLite connection), plus retry with
-      backoff on 429/504. NVIDIA reported no cached tokens.
+- [x] **Parallel ranking** (`llm.ranking.max_parallel`) and server-enforced JSON
+      schemas (`enforce_schema`) for OpenAI-compatible providers. On NVIDIA's free
+      tier GLM 5.3 Flash calls are queued (85–330 s each); with plain JSON mode GLM
+      sometimes echoed the schema back instead of filling it in.
+- [ ] Optional: longer retries with backoff on 429/504. Today the OpenAI SDK
+      retries twice, and jobs that still fail are retried on the next run.
 - [ ] Optional: **Moonshot Batch API** for overnight ranking (~40% cheaper,
       per PLAN.md §7). Only worth it if ranking spend gets near the budget.
 - [ ] **Text-only role matches.** ~180 candidates mention a target role only in

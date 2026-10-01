@@ -52,6 +52,8 @@ llm:
   #   provider: nvidia
   #   model: z-ai/glm-5.3-flash
   #   extra_body: {thinking: {type: disabled}}   # skip reasoning; the JSON is enough
+  #   enforce_schema: true      # server enforces the JSON schema (response_format json_schema)
+  #   max_parallel: 4           # concurrent requests; the free tier queues each one
 
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%

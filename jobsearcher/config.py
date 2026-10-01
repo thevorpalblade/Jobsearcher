@@ -49,6 +49,13 @@ class ModelRole(BaseModel):
     # moonshot / nvidia: extra provider-specific request fields, e.g.
     # {"thinking": {"type": "disabled"}} to stop GLM reasoning before it answers.
     extra_body: dict[str, Any] = Field(default_factory=dict)
+    # moonshot / nvidia: have the server enforce the JSON schema (response_format
+    # json_schema). Without it the model only gets the schema as text, and GLM
+    # sometimes echoed the schema back instead of filling it in.
+    enforce_schema: bool = False
+    # How many requests may run at once (ranking). Raise it for slow, queued
+    # providers such as NVIDIA's free tier; keep 1 for claude_code.
+    max_parallel: int = Field(default=1, ge=1)
 
 
 class ModelPrice(BaseModel):
