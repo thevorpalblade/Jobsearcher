@@ -1,4 +1,4 @@
-"""LLM providers (Moonshot/Kimi, Anthropic/Claude) behind one interface, plus budget tracking."""
+"""LLM providers (Kimi, NVIDIA-hosted models, Claude) behind one interface, plus budgets."""
 
 from __future__ import annotations
 
@@ -30,11 +30,25 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
         from jobsearcher.llm.anthropic_client import AnthropicLLM
 
         client = AnthropicLLM(spec.model, effort=spec.effort, max_tokens=spec.max_tokens)
-    else:
-        from jobsearcher.llm.moonshot_client import MoonshotLLM
+    elif spec.provider == Provider.NVIDIA:
+        from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
 
-        client = MoonshotLLM(
-            spec.model, base_url=config.llm.moonshot_base_url, max_tokens=spec.max_tokens
+        client = OpenAICompatibleLLM(
+            spec.model,
+            base_url=config.llm.nvidia_base_url,
+            api_key_env="NVIDIA_API_KEY",
+            label="NVIDIA",
+            max_tokens=spec.max_tokens,
+            extra_body=spec.extra_body,
+        )
+    else:
+        from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(
+            spec.model,
+            base_url=config.llm.moonshot_base_url,
+            max_tokens=spec.max_tokens,
+            extra_body=spec.extra_body,
         )
     return BudgetedLLM(client, tracker, purpose=role)
 

@@ -11,7 +11,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 |---|---|
 | M0 Skeleton (package, config, SQLite store, CLI, Docker, tests) | Done |
 | M1 Search: Platsbanken + JobTech Links, dedupe, contacts, expiry | Done; first live run 2026-10-01 (outside Docker) |
-| M2a LLM layer: Kimi, Claude API, Claude Code (subscription), budget | Done; only one real Claude Code call made, no real Kimi or Anthropic API call |
+| M2a LLM layer: Kimi, NVIDIA (e.g. GLM), Claude API, Claude Code (subscription), budget | Done; Claude Code and NVIDIA GLM tested live, no real Kimi or Anthropic API call |
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done, **never run on real ads**; `calibrate` command missing |
 | M3 Local web UI | **Not started** (next) |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
@@ -19,7 +19,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 40 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 43 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -41,7 +41,7 @@ could not be built there.
       (2026-10-01).
 - [ ] `jobsearcher llm-check` with real `MOONSHOT_API_KEY` and
       `CLAUDE_CODE_OAUTH_TOKEN`. Confirm Moonshot reports cached tokens where
-      `_cached_tokens()` in `llm/moonshot_client.py` expects them, and that the
+      `_cached_tokens()` in `llm/openai_compatible.py` expects them, and that the
       model IDs `kimi-k2.6` / `kimi-k3` and their prices in `config.py`
       `DEFAULT_PRICES` are still current.
 - [ ] First `jobsearcher rank` on real ads. Sanity-check the scores and the
@@ -53,6 +53,13 @@ could not be built there.
       `job_id,score`). The command reports rank correlation (Spearman) against
       `final_score` and lists the biggest disagreements, to guide prompt and
       `ranking.yaml` tuning.
+- [ ] **Parallel ranking + retries.** The user's current ranking model is GLM 5.3
+      Flash on NVIDIA's free tier (`provider: nvidia`, reasoning off via
+      `extra_body: {thinking: {type: disabled}}`). Calls are queued: 85–330 s each
+      even with ~350 output tokens. 8 parallel calls gave ~43 s/job effective with
+      one 504 timeout, so: a `max_parallel` setting (~4) with LLM calls in threads
+      and store writes on the main thread (SQLite connection), plus retry with
+      backoff on 429/504. NVIDIA reported no cached tokens.
 - [ ] Optional: **Moonshot Batch API** for overnight ranking (~40% cheaper,
       per PLAN.md §7). Only worth it if ranking spend gets near the budget.
 - [ ] Optional: a CV-similarity prefilter (keyword or embedding overlap). Today

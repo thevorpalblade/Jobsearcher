@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import UTC, datetime
 
 import anthropic
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from jobsearcher.config import LLMConfig
 from jobsearcher.llm import BudgetedLLM, BudgetExceeded, BudgetTracker, LLMRefusal, LLMUsage
 from jobsearcher.llm.anthropic_client import AnthropicLLM
-from jobsearcher.llm.moonshot_client import MoonshotLLM
+from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
 from jobsearcher.store import Store
 
 
@@ -126,18 +127,21 @@ def _moonshot(contents, cached=0):
 
 def test_moonshot_json_mode_and_cached_tokens():
     client, requests = _moonshot(['{"fit": 70, "reason": "ok"}'], cached=800)
-    result = MoonshotLLM("kimi-k2.6", client=client).complete(
+    result = OpenAICompatibleLLM("kimi-k2.6", client=client).complete(
         system="rank", context="MASTER CV", prompt="job ad", schema=Score
     )
     assert result.parsed.fit == 70
     assert (result.usage.input_tokens, result.usage.cache_read_tokens) == (200, 800)
     assert requests[0]["response_format"] == {"type": "json_object"}
+    assert "thinking" not in requests[0]
     assert requests[0]["messages"][0]["content"].startswith("rank\n\nMASTER CV")
 
 
 def test_moonshot_retries_once_on_schema_mismatch():
     client, requests = _moonshot(['{"fit": "high"}', '{"fit": 60, "reason": "fixed"}'])
-    result = MoonshotLLM("kimi-k2.6", client=client).complete(system="s", prompt="p", schema=Score)
+    result = OpenAICompatibleLLM("kimi-k2.6", client=client).complete(
+        system="s", prompt="p", schema=Score
+    )
     assert result.parsed.reason == "fixed"
     assert len(requests) == 2
     assert result.usage.input_tokens == 2000  # both attempts billed
@@ -193,3 +197,40 @@ def test_month_to_date_ignores_last_month():
     store.record_llm_usage(datetime(2026, 9, 2, tzinfo=UTC), "m", "ranking", 1, 1, 0, 0, 1.5)
     tracker = BudgetTracker(store, LLMConfig())
     assert tracker.month_to_date(now=datetime(2026, 9, 29, tzinfo=UTC)) == pytest.approx(1.5)
+
+
+def test_load_env_file(tmp_path, monkeypatch):
+    from jobsearcher.config import load_env_file
+
+    (tmp_path / ".env").write_text("# comment\nNEW_KEY='abc'\nSET_KEY=from-file\nEMPTY=\n")
+    monkeypatch.delenv("NEW_KEY", raising=False)
+    monkeypatch.delenv("EMPTY", raising=False)
+    monkeypatch.setenv("SET_KEY", "from-env")
+    load_env_file(tmp_path / ".env")
+    assert os.environ["NEW_KEY"] == "abc"
+    assert os.environ["SET_KEY"] == "from-env"
+    assert "EMPTY" not in os.environ
+    monkeypatch.delenv("NEW_KEY")
+
+
+def test_make_llm_nvidia(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import make_llm
+
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.NVIDIA, model="z-ai/glm-5.3-flash")
+    config.llm.ranking.extra_body = {"thinking": {"type": "disabled"}}
+    llm = make_llm(config, "ranking", tracker=None)
+    assert llm.client.extra_body == {"thinking": {"type": "disabled"}}
+    assert str(llm.client.client.base_url).startswith("https://integrate.api.nvidia.com/v1")
+    assert llm.client.label == "NVIDIA"
+
+
+def test_extra_body_is_sent():
+    client, requests = _moonshot(['{"fit": 70, "reason": "ok"}'])
+    llm = OpenAICompatibleLLM(
+        "z-ai/glm-5.3-flash", client=client, extra_body={"thinking": {"type": "disabled"}}
+    )
+    llm.complete(system="s", prompt="p", schema=Score)
+    assert requests[0]["thinking"] == {"type": "disabled"}

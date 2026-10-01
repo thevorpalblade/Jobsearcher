@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -32,6 +33,7 @@ class SourcesConfig(BaseModel):
 class Provider(StrEnum):
     MOONSHOT = "moonshot"  # Kimi models, OpenAI-compatible API
     ANTHROPIC = "anthropic"  # Claude models, pay-per-token API key
+    NVIDIA = "nvidia"  # models on NVIDIA's serverless endpoints (e.g. GLM), OpenAI-compatible API
     CLAUDE_CODE = "claude_code"  # Claude via the Claude Code CLI on a Claude subscription
 
 
@@ -44,6 +46,9 @@ class ModelRole(BaseModel):
     max_tokens: int = 16000
     # claude_code: seconds before a CLI call is abandoned.
     timeout_s: float = 600
+    # moonshot / nvidia: extra provider-specific request fields, e.g.
+    # {"thinking": {"type": "disabled"}} to stop GLM reasoning before it answers.
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelPrice(BaseModel):
@@ -76,6 +81,7 @@ class LLMConfig(BaseModel):
         default_factory=lambda: ModelRole(provider=Provider.MOONSHOT, model="kimi-k3")
     )
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     monthly_budget_usd: float = 20.0
     # Drafting pauses once this share of the monthly budget is spent; ranking at 100%.
     drafting_budget_share: float = 0.8
@@ -106,8 +112,21 @@ class Config(BaseModel):
         return self.data_dir / "jobsearcher.db"
 
 
+def load_env_file(path: Path) -> None:
+    """Read KEY=value lines from a .env file into the environment, for runs outside
+    Docker (where compose's env_file does this). Variables already set win."""
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        key, sep, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if sep and key and not key.startswith("#") and value:
+            os.environ.setdefault(key, value)
+
+
 def load_config(path: str | Path | None = None) -> Config:
     path = Path(path or os.environ.get("JOBSEARCHER_CONFIG", "config.yaml"))
+    load_env_file(path.resolve().parent / ".env")
     raw = yaml.safe_load(path.read_text()) if path.exists() else {}
     config = Config.model_validate(raw or {})
     base = path.resolve().parent

@@ -29,6 +29,7 @@ llm:
   # Each role picks its own provider, so they can be mixed:
   #   moonshot    - Kimi, pay per token (MOONSHOT_API_KEY)
   #   anthropic   - Claude API, pay per token (ANTHROPIC_API_KEY)
+  #   nvidia      - models on NVIDIA's serverless endpoints, e.g. GLM (NVIDIA_API_KEY)
   #   claude_code - Claude via the Claude Code CLI on your Claude Pro/Max subscription
   #                 (CLAUDE_CODE_OAUTH_TOKEN); counts against the subscription's usage
   #                 limits instead of the $ budget. Best for low-volume drafting.
@@ -47,6 +48,10 @@ llm:
   # ranking:
   #   provider: anthropic
   #   model: claude-haiku-4-5
+  # ranking:                    # free but rate-limited and slow (NVIDIA_API_KEY)
+  #   provider: nvidia
+  #   model: z-ai/glm-5.3-flash
+  #   extra_body: {thinking: {type: disabled}}   # skip reasoning; the JSON is enough
 
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%
