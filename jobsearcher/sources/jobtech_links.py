@@ -106,6 +106,8 @@ def parse_hit(hit: dict[str, Any]) -> Job | None:
         location=first.get("municipality") or first.get("city"),
         region=first.get("region"),
         description=hit.get("brief") or dig(hit, "description", "text") or "",
+        occupation_field=dig(hit, "occupation_field", "label"),
+        occupation_group=dig(hit, "occupation_group", "label"),
         url=url,
         apply_url=url,
         published_at=published,

@@ -8,6 +8,8 @@
       "application_deadline": "2099-10-31T23:59:59",
       "publication_date": "2026-09-20T08:00:00",
       "removed": false,
+      "occupation_field": {"label": "Data/IT", "concept_id": "apaJ_2ja_LuF"},
+      "occupation_group": {"label": "Mjukvaru- och systemutvecklare m.fl.", "concept_id": "DJh5_yyF_hEM"},
       "description": {
         "text": "Vi söker en Python-utvecklare. Arbetet sker delvis på distans. Frågor om tjänsten besvaras av Anna Svensson, anna.svensson@exempel.se, 070-123 45 67."
       },

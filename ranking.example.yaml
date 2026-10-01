@@ -6,6 +6,9 @@
 # Roles I'm targeting. Names and aliases are also used as search keywords
 # (see search.use_target_roles in config.yaml), and a job must mention at least
 # one of them to be sent to the LLM (see prefilter.require_role_match).
+# Optional per role: exclude_occupations / except_occupations / include_occupations,
+# matched against Arbetsförmedlingen's occupation field or group (see
+# `jobsearcher occupations --groups`). Changing them costs no re-ranking.
 target_roles:
   - name: HR Business Partner
     aliases: [HRBP, HR-affärspartner, HR-partner, HR partner]
@@ -15,6 +18,15 @@ target_roles:
     aliases: [driftchef, verksamhetschef, operativ chef]
   - name: Project manager
     aliases: [projektledare, projektchef]
+    # Most "projektledare" ads are engineering or construction jobs. Exclude those
+    # occupation fields for this role only (`jobsearcher occupations --groups`
+    # lists the labels). IT project management stays in, and so do the logistics
+    # groups inside the engineering field.
+    exclude_occupations:
+      - Bygg och anläggning
+      - Yrken med teknisk inriktning
+    except_occupations:
+      - logistik
 
 # Free-text guidance for the ranking model. Write it the way you'd brief a recruiter.
 preferences:

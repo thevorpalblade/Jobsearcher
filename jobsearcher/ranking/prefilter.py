@@ -14,13 +14,20 @@ def _contains(text: str, term: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(term.casefold())}(?!\w)", text) is not None
 
 
-def matched_roles(job: Job, config: RankingConfig) -> tuple[list[str], bool]:
-    """Names of target roles the job mentions, and whether any matched in the title."""
+def matched_roles(
+    job: Job, config: RankingConfig, apply_occupation_filters: bool = True
+) -> tuple[list[str], bool]:
+    """Names of target roles the job mentions, and whether any matched in the title.
+    A role whose occupation filters reject the job doesn't count."""
     title = job.title.casefold()
     body = job.description.casefold()
     names: list[str] = []
     in_title = False
     for role in config.target_roles:
+        if apply_occupation_filters and not role.allows_occupation(
+            job.occupation_field, job.occupation_group
+        ):
+            continue
         hit_title = any(_contains(title, t) for t in role.terms)
         if hit_title or any(_contains(body, t) for t in role.terms):
             names.append(role.name)

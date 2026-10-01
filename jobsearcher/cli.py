@@ -119,6 +119,38 @@ def cmd_show(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_occupations(config: Config, args: argparse.Namespace) -> int:
+    """Occupation fields and groups of open jobs per target role, to help write
+    `exclude_occupations` / `include_occupations` in ranking.yaml."""
+    from collections import Counter
+
+    from jobsearcher.ranking import load_ranking_config
+    from jobsearcher.ranking.prefilter import matched_roles
+
+    ranking_config = load_ranking_config(config.ranking_config)
+    roles = {role.name: role for role in ranking_config.target_roles}
+    counts: dict[str, Counter[tuple[str | None, str | None]]] = {n: Counter() for n in roles}
+    for job in Store(config.db_path).iter_jobs():
+        for name in matched_roles(job, ranking_config, apply_occupation_filters=False)[0]:
+            counts[name][(job.occupation_field, job.occupation_group)] += 1
+
+    for name, counter in counts.items():
+        role = roles[name]
+        kept = sum(n for (f, g), n in counter.items() if role.allows_occupation(f, g))
+        print(f"\n{name}: {sum(counter.values())} open jobs, {kept} pass the occupation filters")
+        by_field: Counter[str | None] = Counter()
+        for (field, _), n in counter.items():
+            by_field[field] += n
+        for field, n in by_field.most_common():
+            print(f"  {n:4}  {field or '(none)'}")
+            if args.groups:
+                for (f, group), m in counter.most_common():
+                    if f == field:
+                        mark = "" if role.allows_occupation(f, group) else "  [excluded]"
+                        print(f"        {m:4}  {group or '(none)'}{mark}")
+    return 0
+
+
 def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
     """Send one tiny request to each configured model to verify keys and pricing."""
     from pydantic import BaseModel
@@ -211,6 +243,11 @@ def main(argv: list[str] | None = None) -> int:
     p_show = sub.add_parser("show", help="print one job as JSON")
     p_show.add_argument("job_id")
 
+    p_occ = sub.add_parser(
+        "occupations", help="occupation fields of open jobs per target role (for filters)"
+    )
+    p_occ.add_argument("--groups", action="store_true", help="also list occupation groups")
+
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
 
@@ -229,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": cmd_run,
         "list": cmd_list,
         "show": cmd_show,
+        "occupations": cmd_occupations,
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
         "daemon": cmd_daemon,

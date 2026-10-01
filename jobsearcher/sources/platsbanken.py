@@ -87,6 +87,8 @@ def parse_hit(hit: dict[str, Any]) -> Job | None:
         remote=_remote(hit, description),
         description=description,
         employment_type=dig(hit, "employment_type", "label"),
+        occupation_field=dig(hit, "occupation_field", "label"),
+        occupation_group=dig(hit, "occupation_group", "label"),
         salary=salary,
         url=url,
         apply_url=dig(hit, "application_details", "url") or url,

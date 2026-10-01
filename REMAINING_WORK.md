@@ -19,7 +19,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 43 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 45 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -62,9 +62,15 @@ could not be built there.
       backoff on 429/504. NVIDIA reported no cached tokens.
 - [ ] Optional: **Moonshot Batch API** for overnight ranking (~40% cheaper,
       per PLAN.md §7). Only worth it if ranking spend gets near the budget.
+- [ ] **Text-only role matches.** ~180 candidates mention a target role only in
+      the ad text, not the title (mostly "förändringsledning" for Change
+      management). Consider ranking title matches first and capping body-only ones.
 - [ ] Optional: a CV-similarity prefilter (keyword or embedding overlap). Today
-      the only prefilter is a whole-word match on target role names/aliases
-      (`ranking/prefilter.py`).
+      the prefilter is a whole-word match on target role names/aliases plus
+      per-role occupation filters (`exclude_occupations`, `except_occupations`,
+      `include_occupations` in `ranking.yaml`; `jobsearcher occupations --groups`
+      lists the labels). "Projektledare" is mostly construction/engineering in
+      Sweden, which is what the occupation filters are for.
 
 ## 2. Web UI (M3), next up
 

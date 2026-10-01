@@ -190,3 +190,61 @@ def test_weight_and_adjustment_edits_apply_without_reranking():
     assert score == 90
     assert run_ranking(store, budgeted, config, CV).cached == 1
     assert len(llm.prompts) == 1
+
+
+def _with_occupation(job, field, group):
+    return job.model_copy(update={"occupation_field": field, "occupation_group": group})
+
+
+def test_occupation_filters_per_role():
+    pm = TargetRole(
+        name="Project manager",
+        aliases=["projektledare"],
+        exclude_occupations=["bygg och anläggning", "Yrken med teknisk inriktning"],
+        except_occupations=["logistik"],
+    )
+    hr = TargetRole(name="HR Business Partner", include_occupations=["Administration"])
+    config = RankingConfig(target_roles=[pm, hr])
+
+    construction = _with_occupation(
+        _job(1, "Projektledare bygg"),
+        "Bygg och anläggning",
+        "Ingenjörer och tekniker inom bygg och anläggning",
+    )
+    it = _with_occupation(_job(2, "IT-projektledare"), "Data/IT", "Mjukvaru- och systemutvecklare")
+    logistics = _with_occupation(
+        _job(6, "Projektledare logistik"),
+        "Yrken med teknisk inriktning",
+        "Ingenjörer och tekniker inom industri, logistik och produktionsplanering",
+    )
+    electrical = _with_occupation(
+        _job(7, "Projektledare el"),
+        "Yrken med teknisk inriktning",
+        "Ingenjörer och tekniker inom elektroteknik",
+    )
+    unknown = _job(3, "Projektledare")  # no occupation data: always passes
+    hr_admin = _with_occupation(
+        _job(4, "HR Business Partner"), "Administration, ekonomi, juridik", "HR-specialister"
+    )
+    hr_other = _with_occupation(_job(5, "HR Business Partner"), "Data/IT", None)
+
+    assert matched_roles(construction, config) == ([], False)
+    assert matched_roles(construction, config, apply_occupation_filters=False)[0] == [
+        "Project manager"
+    ]
+    assert matched_roles(it, config)[0] == ["Project manager"]
+    assert matched_roles(logistics, config)[0] == ["Project manager"]  # excepted
+    assert matched_roles(electrical, config)[0] == []
+    assert matched_roles(unknown, config)[0] == ["Project manager"]
+    assert matched_roles(hr_admin, config)[0] == ["HR Business Partner"]
+    assert matched_roles(hr_other, config)[0] == []
+    jobs = [construction, it, unknown, hr_admin, hr_other]
+    assert construction not in select_for_ranking(jobs, config)
+
+
+def test_occupation_filters_dont_change_fingerprint():
+    plain = RankingConfig(target_roles=[TargetRole(name="Project manager")])
+    filtered = RankingConfig(
+        target_roles=[TargetRole(name="Project manager", exclude_occupations=["Bygg"])]
+    )
+    assert plain.fingerprint() == filtered.fingerprint()

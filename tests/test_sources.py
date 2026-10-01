@@ -15,6 +15,8 @@ def test_platsbanken_parse_hit(load_fixture):
     assert job.location == "Stockholm"
     assert job.apply_url == "https://exempel.teamtailor.com/jobs/123"
     assert job.remote is True
+    assert job.occupation_field == "Data/IT"
+    assert job.occupation_group == "Mjukvaru- och systemutvecklare m.fl."
     named = [c for c in job.contacts if c.name]
     assert named[0].name == "Anna Svensson"
     assert named[0].provenance == "platsbanken:application_contacts"
@@ -56,6 +58,7 @@ def test_links_parse_hit(load_fixture):
     assert job.url == "https://exempel.se/jobb/123"
     assert job.location == "Stockholm"
     assert job.sources[0].source == "jobtech_links"
+    assert job.occupation_field == "Data/IT"
 
 
 @respx.mock

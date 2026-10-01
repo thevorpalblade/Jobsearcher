@@ -22,10 +22,31 @@ def unique_casefold(items: list[str]) -> list[str]:
 class TargetRole(BaseModel):
     name: str
     aliases: list[str] = Field(default_factory=list)
+    # Occupation filters, matched case-insensitively as substrings of the job's
+    # occupation field or group (`jobsearcher occupations` lists them). A job only
+    # counts as this role if it matches none of `exclude_occupations` (unless it also
+    # matches `except_occupations`, e.g. to keep one group of an excluded field) and,
+    # when `include_occupations` is set, at least one of those. Jobs without
+    # occupation data always pass.
+    exclude_occupations: list[str] = Field(default_factory=list)
+    except_occupations: list[str] = Field(default_factory=list)
+    include_occupations: list[str] = Field(default_factory=list)
 
     @property
     def terms(self) -> list[str]:
         return unique_casefold([self.name, *self.aliases])
+
+    def allows_occupation(self, field: str | None, group: str | None) -> bool:
+        labels = [x.casefold() for x in (field, group) if x]
+        if not labels:
+            return True
+
+        def hit(patterns: list[str]) -> bool:
+            return any(p.casefold() in label for p in patterns for label in labels)
+
+        if hit(self.exclude_occupations) and not hit(self.except_occupations):
+            return False
+        return not self.include_occupations or hit(self.include_occupations)
 
 
 class Preferences(BaseModel):
@@ -79,8 +100,10 @@ class RankingConfig(BaseModel):
         return unique_casefold([t for role in self.target_roles for t in role.terms])
 
     def fingerprint(self) -> str:
-        """Hash of the parts that affect LLM scores (not limits or thresholds)."""
-        relevant = self.model_dump(include={"target_roles", "preferences"})
+        """Hash of the parts that affect LLM scores (not limits, thresholds or filters)."""
+        relevant = self.model_dump(
+            include={"target_roles": {"__all__": {"name", "aliases"}}, "preferences": True}
+        )
         return hashlib.sha256(repr(relevant).encode()).hexdigest()[:16]
 
 

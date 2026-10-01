@@ -5,6 +5,8 @@
       "id": "abc-123",
       "headline": "Python-utvecklare till vårt dataplattformsteam",
       "brief": "Kort beskrivning.",
+      "occupation_field": {"label": "Data/IT", "concept_id": "apaJ_2ja_LuF"},
+      "occupation_group": {"label": "Mjukvaru- och systemutvecklare m.fl.", "concept_id": "DJh5_yyF_hEM"},
       "employer": {"name": "Exempel AB (publ)"},
       "workplace_addresses": [{"municipality": "Stockholm", "region": "Stockholms län"}],
       "source_links": [{"label": "exempel.se", "url": "https://exempel.se/jobb/123"}],

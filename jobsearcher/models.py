@@ -51,6 +51,10 @@ class Job(BaseModel):
     description: str = ""
     language: str | None = None
     employment_type: str | None = None
+    # Arbetsförmedlingen's occupation taxonomy, e.g. field "Data/IT" and
+    # group "Mjukvaru- och systemutvecklare m.fl."; used by per-role prefilters.
+    occupation_field: str | None = None
+    occupation_group: str | None = None
     salary: str | None = None
     url: str | None = None
     apply_url: str | None = None
