@@ -1,0 +1,32 @@
+{
+  "total": {"value": 2},
+  "hits": [
+    {
+      "id": "29012345",
+      "headline": "Python-utvecklare till vårt dataplattformsteam",
+      "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/29012345",
+      "application_deadline": "2099-10-31T23:59:59",
+      "publication_date": "2026-09-20T08:00:00",
+      "removed": false,
+      "description": {
+        "text": "Vi söker en Python-utvecklare. Arbetet sker delvis på distans. Frågor om tjänsten besvaras av Anna Svensson, anna.svensson@exempel.se, 070-123 45 67."
+      },
+      "employment_type": {"label": "Vanlig anställning"},
+      "salary_description": "Fast månadslön",
+      "employer": {"name": "Exempel AB", "organization_number": "5561234567", "workplace": "Exempel"},
+      "workplace_address": {"municipality": "Stockholm", "region": "Stockholms län", "city": "Stockholm"},
+      "application_details": {"url": "https://exempel.teamtailor.com/jobs/123", "email": null},
+      "application_contacts": [
+        {"name": "Anna Svensson", "description": "Rekryterande chef", "email": "anna.svensson@exempel.se", "telephone": "070-123 45 67", "contact_type": null}
+      ]
+    },
+    {
+      "id": "29099999",
+      "headline": "Lagerarbetare",
+      "removed": false,
+      "description": {"text": "Lagerjobb i Göteborg."},
+      "employer": {"name": "Lager AB"},
+      "workplace_address": {"municipality": "Göteborg", "region": "Västra Götalands län"}
+    }
+  ]
+}

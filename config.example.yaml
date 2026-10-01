@@ -1,0 +1,64 @@
+# Copy to config.yaml and edit. API keys and tokens go in .env (see .env.example).
+
+search:
+  # The target roles (and their aliases) in ranking.yaml are searched automatically.
+  # Add any extra free-text queries here.
+  use_target_roles: true
+  keywords: []
+  # Ads whose title or text contain any of these are dropped.
+  exclude_keywords:
+    - "konsultuppdrag"
+  # Matched (case-insensitive substring) against the ad's municipality, city and
+  # region. "Stockholm" also matches "Stockholms län", so the whole county is
+  # included. Empty = all of Sweden.
+  locations:
+    - "Stockholm"
+    - "Göteborg"
+    - "Gothenburg"
+    - "Malmö"
+    - "Lund"
+    - "Uppsala"
+  include_remote: true
+  expire_after_days: 3
+
+sources:
+  platsbanken: true
+  jobtech_links: true
+
+llm:
+  # Each role picks its own provider, so they can be mixed:
+  #   moonshot    - Kimi, pay per token (MOONSHOT_API_KEY)
+  #   anthropic   - Claude API, pay per token (ANTHROPIC_API_KEY)
+  #   claude_code - Claude via the Claude Code CLI on your Claude Pro/Max subscription
+  #                 (CLAUDE_CODE_OAUTH_TOKEN); counts against the subscription's usage
+  #                 limits instead of the $ budget. Best for low-volume drafting.
+  ranking:
+    provider: moonshot
+    model: kimi-k2.6            # cheaper model: scores every new job
+  drafting:
+    provider: claude_code
+    model: opus                 # alias or full model ID, e.g. claude-opus-5-5
+    effort: medium              # low | medium | high | xhigh | max
+
+  # Alternatives:
+  # drafting:
+  #   provider: moonshot
+  #   model: kimi-k3
+  # ranking:
+  #   provider: anthropic
+  #   model: claude-haiku-4-5
+
+  monthly_budget_usd: 20
+  drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%
+  # Prices (USD per million tokens) for models not in the built-in table:
+  # prices:
+  #   some-model: {input: 1.0, output: 5.0, cache_read: 0.1}
+
+schedule:
+  daily_at: "06:00"
+  timezone: "Europe/Stockholm"
+
+# Relative paths are resolved against this file's directory.
+data_dir: "data"
+ranking_config: "ranking.yaml"   # target roles, preferences, score weights
+cv_path: "cvs/master.md"         # master CV in Markdown

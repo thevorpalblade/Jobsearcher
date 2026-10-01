@@ -1,0 +1,14 @@
+services:
+  jobsearcher:
+    build: .
+    container_name: jobsearcher
+    restart: unless-stopped
+    command: ["daemon"]
+    env_file: .env
+    environment:
+      TZ: Europe/Stockholm
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./ranking.yaml:/config/ranking.yaml:ro
+      - ./cvs:/cvs:ro
+      - ./data:/data

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# Personal data: never commit
+config.yaml
+ranking.yaml
+.env
+data/
+cvs/
+*.whl

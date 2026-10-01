@@ -1,0 +1,14 @@
+{
+  "total": {"value": 1},
+  "hits": [
+    {
+      "id": "abc-123",
+      "headline": "Python-utvecklare till vårt dataplattformsteam",
+      "brief": "Kort beskrivning.",
+      "employer": {"name": "Exempel AB (publ)"},
+      "workplace_addresses": [{"municipality": "Stockholm", "region": "Stockholms län"}],
+      "source_links": [{"label": "exempel.se", "url": "https://exempel.se/jobb/123"}],
+      "publication_date": "2026-09-21T08:00:00"
+    }
+  ]
+}

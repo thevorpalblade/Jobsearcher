@@ -1,0 +1,56 @@
+# Copy to ranking.yaml and edit. Controls which jobs get scored and how.
+# Changing target_roles or preferences makes every open job be re-ranked on the
+# next run (rankings are cached per ad, CV, roles/preferences and model).
+# weights, adjustments, prefilter and drafting take effect without re-ranking.
+
+# Roles I'm targeting. Names and aliases are also used as search keywords
+# (see search.use_target_roles in config.yaml), and a job must mention at least
+# one of them to be sent to the LLM (see prefilter.require_role_match).
+target_roles:
+  - name: HR Business Partner
+    aliases: [HRBP, HR-affärspartner, HR-partner, HR partner]
+  - name: Change management
+    aliases: [change manager, förändringsledare, förändringsledning]
+  - name: Operations manager
+    aliases: [driftchef, verksamhetschef, operativ chef]
+  - name: Project manager
+    aliases: [projektledare, projektchef]
+
+# Free-text guidance for the ranking model. Write it the way you'd brief a recruiter.
+preferences:
+  seniority: "Not a priority. Don't lower scores much for a seniority mismatch in either direction."
+  languages: >-
+    Works in English. Ads written in English are preferred. Roles that require
+    Swedish language skills are a poor fit; Swedish as a merit is a minor minus.
+  likes:
+    - "Roles with ownership of organisational change or transformation"
+    - "Hybrid or remote-friendly workplaces"
+  dislikes:
+    - "Pure administrative roles"
+    - "Short consulting assignments"
+  # Anything that should make a job score very low.
+  dealbreakers:
+    - "Requires a security clearance I don't have"
+
+# How the two scores combine into the ranking order (weights are normalised).
+weights:
+  fit: 0.6       # how well my experience matches the stated requirements
+  success: 0.4   # how likely I am to get an interview
+
+# Points added to the combined 0-100 score, based on what the model reads in the ad.
+# Applied after ranking, so you can tune these freely without re-ranking.
+adjustments:
+  english_ad: 10          # the ad is written in English
+  swedish_required: -20   # Swedish is a stated requirement
+  swedish_merit: -5       # Swedish is only mentioned as a plus
+
+prefilter:
+  # Only send jobs that mention a target role (in title or ad text) to the LLM.
+  require_role_match: true
+  # Cap on LLM ranking calls per run (protects the budget; the rest wait until the next run).
+  max_llm_calls_per_run: 100
+
+drafting:
+  # Jobs at or above this combined score get a tailored CV and cover letter.
+  min_score: 70
+  max_drafts_per_day: 5
