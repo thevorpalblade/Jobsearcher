@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -69,6 +70,23 @@ CREATE INDEX IF NOT EXISTS llm_usage_ts ON llm_usage(ts);
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+@dataclass
+class JobRecord:
+    """A job with the store's bookkeeping dates (not part of the Job document)."""
+
+    job: Job
+    first_seen: datetime
+    last_seen: datetime
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> JobRecord:
+        return cls(
+            job=Job.model_validate_json(row["data"]),
+            first_seen=datetime.fromisoformat(row["first_seen"]),
+            last_seen=datetime.fromisoformat(row["last_seen"]),
+        )
 
 
 class Store:
@@ -204,6 +222,25 @@ class Store:
         for row in rows:
             yield Job.model_validate_json(row["data"])
 
+    def job_records(
+        self, status: JobStatus = JobStatus.OPEN, limit: int | None = None
+    ) -> list[JobRecord]:
+        """Open jobs newest first; expired jobs most recently seen first (use a limit:
+        they accumulate)."""
+        order = "first_seen" if status == JobStatus.OPEN else "last_seen"
+        rows = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs WHERE status = ?"
+            f" ORDER BY {order} DESC LIMIT ?",
+            (status, -1 if limit is None else limit),
+        )
+        return [JobRecord.from_row(row) for row in rows]
+
+    def job_record(self, job_id: str) -> JobRecord | None:
+        row = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        return JobRecord.from_row(row) if row else None
+
     def count_jobs(self, status: JobStatus | None = None) -> int:
         if status is None:
             return self.conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
@@ -265,6 +302,15 @@ class Store:
             (status, status),
         )
         return {row["job_id"]: row["data"] for row in rows}
+
+    def latest_ranking(self, job_id: str) -> tuple[str, datetime] | None:
+        """(ranking JSON, created_at) of a job's most recent ranking."""
+        row = self.conn.execute(
+            "SELECT data, created_at FROM rankings WHERE job_id = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        return (row["data"], datetime.fromisoformat(row["created_at"])) if row else None
 
     # --- LLM usage -------------------------------------------------------
 

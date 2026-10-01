@@ -21,16 +21,30 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher.config import Config, load_config
+from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.store import Store
+from jobsearcher.web import views
 
 WEB_DIR = Path(__file__).parent
 
 
 @dataclass
 class WebState:
-    config: Config
+    config: Config  # config.yaml, read once at startup
     templates: Jinja2Templates
     tz: ZoneInfo
+    ranking: views.MtimeCache[RankingConfig]  # ranking.yaml, reloaded when edited
+    cv: views.MtimeCache[str | None]
+    memo: views.PrefilterMemo
+
+    def row_context(self) -> views.RowContext:
+        return views.RowContext(
+            config=self.ranking.get(),
+            memo=self.memo,
+            cv=self.cv.get(),
+            model=self.config.llm.ranking.model,
+            now=datetime.now(self.tz),
+        )
 
 
 def _state(request: Request) -> WebState:
@@ -105,7 +119,9 @@ def healthz(store: ReadStore) -> str:
 
 @router.get("/", response_class=HTMLResponse)
 def job_list(request: Request, state: State, store: ReadStore) -> HTMLResponse:
-    return render(request, state, "list.html", rows=[])
+    ctx = state.row_context()
+    rows = views.sort_rows([r for r in views.load_rows(store, ctx) if r.stage == "ranked"])
+    return render(request, state, "list.html", rows=rows, ranking=ctx.config)
 
 
 def create_app(config: Config) -> FastAPI:
@@ -120,7 +136,14 @@ def create_app(config: Config) -> FastAPI:
         title="Jobsearcher", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
     tz = ZoneInfo(config.schedule.timezone)
-    app.state.web = WebState(config=config, templates=_make_templates(tz), tz=tz)
+    app.state.web = WebState(
+        config=config,
+        templates=_make_templates(tz),
+        tz=tz,
+        ranking=views.ranking_config_cache(config.ranking_config),
+        cv=views.cv_cache(config.cv_path),
+        memo=views.PrefilterMemo(),
+    )
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
     @app.exception_handler(StarletteHTTPException)

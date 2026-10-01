@@ -1,17 +1,23 @@
+import os
+import re
 import zipfile
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import make_assessment, make_job
 from fastapi.testclient import TestClient
 
 from jobsearcher import cli
 from jobsearcher.config import Config
 from jobsearcher.models import Job
 from jobsearcher.ranking import load_ranking_config
+from jobsearcher.ranking.config import RankingConfig, TargetRole
 from jobsearcher.ranking.ranker import JobAssessment, Ranking, input_hash
-from jobsearcher.store import Store
+from jobsearcher.store import JobRecord, Store
 from jobsearcher.web import create_app
+from jobsearcher.web.views import PrefilterMemo
 
 ROOT = Path(__file__).parent.parent
 CV = "# Anna Andersson\nHR Business Partner at Exempel AB, 2019-2026."
@@ -112,3 +118,61 @@ def test_templates_and_static_files_are_packaged(tmp_path):
     assert "jobsearcher/web/static/htmx.min.js" in names
     assert "jobsearcher/web/static/style.css" in names
     assert "jobsearcher/web/templates/base.html" in names
+
+
+def _titles(html):
+    """Job titles in the order the table lists them."""
+    return re.findall(r'<a href="/jobs/\w+">([^<]+)</a>', html)
+
+
+def _row_html(html):
+    """{title: that table row's HTML}."""
+    rows = {}
+    for tr in html.split("<tr")[2:]:  # skip the header row
+        [title] = _titles(tr)
+        rows[title] = tr
+    return rows
+
+
+def _touch_newer(path):
+    st = path.stat()
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+
+
+def test_list_orders_ranked_jobs_by_final_score(web):
+    web.add(make_job(1, "Projektledare A"), make_assessment(60, 60))  # 60
+    web.add(make_job(2, "Projektledare B"), make_assessment(70, 50, language="en"))  # 62 + 10
+    web.add(make_job(3, "Projektledare C"), make_assessment(90, 90, swedish="required"))  # 80
+    web.add(make_job(4, "Projektledare D"))  # not ranked yet: not in the default view
+    html = web.client.get("/").text
+    assert _titles(html) == ["Projektledare C", "Projektledare B", "Projektledare A"]
+    assert '<span class="score top">80</span>' in html  # at or above drafting.min_score
+    assert '<span class="score">60</span>' in html
+
+
+def test_editing_ranking_yaml_reorders_without_reranking(web):
+    web.add(make_job(1, "Projektledare Fit"), make_assessment(90, 10))
+    web.add(make_job(2, "Projektledare Success"), make_assessment(10, 90))
+    assert _titles(web.client.get("/").text)[0] == "Projektledare Fit"
+    path = web.config.ranking_config
+    path.write_text(path.read_text().replace("{fit: 0.6, success: 0.4}", "{fit: 0, success: 1}"))
+    _touch_newer(path)
+    assert _titles(web.client.get("/").text)[0] == "Projektledare Success"
+
+
+def test_stale_ranking_is_flagged(web):
+    web.add(make_job(1, "Projektledare Current"), make_assessment())
+    web.add(make_job(2, "Projektledare Old"), make_assessment(), input_hash="from-an-old-cv")
+    rows = _row_html(web.client.get("/").text)
+    assert "stale" not in rows["Projektledare Current"]
+    assert "stale" in rows["Projektledare Old"]
+
+
+def test_prefilter_memo_reuses_results_until_the_filters_change():
+    config = RankingConfig(target_roles=[TargetRole(name="Project manager")])
+    record = JobRecord(make_job(1, "Project manager"), datetime.now(UTC), datetime.now(UTC))
+    memo = PrefilterMemo()
+    first = memo.get(record, config, config.filter_fingerprint())
+    assert memo.get(record, config, config.filter_fingerprint()) is first
+    config.target_roles[0].exclude_occupations = ["Bygg"]
+    assert memo.get(record, config, config.filter_fingerprint()) is not first
