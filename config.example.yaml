@@ -24,6 +24,14 @@ search:
 sources:
   platsbanken: true
   jobtech_links: true
+  companies: true          # careers-site feeds of the companies in companies.yaml
+
+# Target companies (companies.yaml): crawling and news signals.
+companies:
+  redetect_after_days: 7       # re-check which ATS each company uses
+  min_request_interval_s: 1.0  # pause between requests to the same host
+  signals_every_days: 7        # `jobsearcher run` fetches/classifies news this often
+  news_days: 30                # news window for signals and the digest
 
 llm:
   # Each role picks its own provider, so they can be mixed:
@@ -68,4 +76,5 @@ schedule:
 # Relative paths are resolved against this file's directory.
 data_dir: "data"
 ranking_config: "ranking.yaml"   # target roles, preferences, score weights
-cv_path: "cvs/master.md"         # master CV in Markdown
+cv_path: "cvs/master.md"
+companies_config: "companies.yaml"  # target companies (copy companies.example.yaml)         # master CV in Markdown

@@ -11,7 +11,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-from jobsearcher.sources.base import USER_AGENT, get_json, make_client
+from jobsearcher.sources.base import USER_AGENT, make_client
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +21,11 @@ _API_HOSTS = {
     "boards-api.greenhouse.io",
     "api.smartrecruiters.com",
     "apply.workable.com",
+    "api.gdeltproject.org",
 }
+# Hosts that ask for a slower pace than min_interval_s.
+# (GDELT asks for at most one request every 5 s, and counts strictly.)
+_HOST_INTERVALS = {"api.gdeltproject.org": 6.0}
 
 
 class RobotsDisallowed(httpx.HTTPError):
@@ -44,10 +48,13 @@ class PoliteClient:
         self._last: dict[str, float] = {}
         self._robots: dict[str, RobotFileParser | None] = {}
 
+    def _interval(self, host: str) -> float:
+        return max(self.min_interval_s, _HOST_INTERVALS.get(host, 0.0))
+
     def _wait(self, host: str) -> None:
         last = self._last.get(host)
         if last is not None:
-            delay = self.min_interval_s - (self._clock() - last)
+            delay = self._interval(host) - (self._clock() - last)
             if delay > 0:
                 self._sleep(delay)
         self._last[host] = self._clock()
@@ -72,20 +79,31 @@ class PoliteClient:
         parser = self._robots[origin]
         return parser is None or parser.can_fetch(USER_AGENT, url)
 
-    def get(self, url: str, params: dict | None = None) -> httpx.Response:
+    def get(self, url: str, params: dict | None = None, retries: int = 3) -> httpx.Response:
+        """GET politely, retrying transient failures (network errors, 429, 5xx) with
+        backoff that starts at the host's own pace."""
         if not self.allowed(url):
             raise RobotsDisallowed(f"robots.txt disallows {url}")
-        self._wait(urlsplit(url).netloc)
-        resp = self.client.get(url, params=params)
-        resp.raise_for_status()
-        return resp
+        host = urlsplit(url).netloc
+        delay = max(2.0, self._interval(host))
+        for attempt in range(retries + 1):
+            self._wait(host)
+            try:
+                resp = self.client.get(url, params=params)
+            except httpx.TransportError:
+                if attempt == retries:
+                    raise
+            else:
+                if resp.status_code != 429 and resp.status_code < 500 or attempt == retries:
+                    resp.raise_for_status()
+                    return resp
+            log.info("GET %s failed; retrying in %.0fs", url, delay)
+            self._sleep(delay)
+            delay *= 2
+        raise AssertionError("unreachable")
 
     def get_text(self, url: str, params: dict | None = None) -> str:
         return self.get(url, params).text
 
     def get_json(self, url: str, params: dict | None = None) -> Any:
-        if not self.allowed(url):
-            raise RobotsDisallowed(f"robots.txt disallows {url}")
-        self._wait(urlsplit(url).netloc)
-        # get_json retries transient failures (429, 5xx, network errors).
-        return get_json(self.client, url, params or {})
+        return self.get(url, params).json()

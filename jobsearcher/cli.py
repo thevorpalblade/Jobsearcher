@@ -74,11 +74,20 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_run(config: Config, args: argparse.Namespace) -> int:
-    """One full pipeline pass: search, then rank."""
+    """One full pipeline pass: search, then rank; news signals when they're due."""
+    from jobsearcher.signals.run import due
+
     search_status = cmd_search(config, args)
     if search_status == 2:
         return search_status
-    return max(search_status, cmd_rank(config, args))
+    status = max(search_status, cmd_rank(config, args))
+    if config.sources.companies and config.companies_config.exists():
+        if due(Store(config.db_path), config.companies.signals_every_days):
+            signals_args = argparse.Namespace(
+                digest_only=False, days=None, min_relevance=40, limit=10
+            )
+            status = max(status, cmd_signals(config, signals_args))
+    return status
 
 
 def cmd_list(config: Config, args: argparse.Namespace) -> int:
@@ -196,6 +205,65 @@ def cmd_companies(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_signals(config: Config, args: argparse.Namespace) -> int:
+    """Fetch and classify news about target companies, then print the digest."""
+    from datetime import UTC, datetime
+
+    from jobsearcher.companies import load_companies
+    from jobsearcher.companies.http import PoliteClient
+    from jobsearcher.llm import BudgetTracker, LLMError, make_llm
+    from jobsearcher.ranking import load_ranking_config
+    from jobsearcher.ranking.ranker import build_context
+    from jobsearcher.signals.classify import classify_news
+    from jobsearcher.signals.run import RUN_KEY, digest, fetch_all_news
+
+    if not config.companies_config.exists():
+        print(f"No company list at {config.companies_config}", file=sys.stderr)
+        return 2
+    companies = load_companies(config.companies_config)
+    store = Store(config.db_path)
+    days = args.days or config.companies.news_days
+
+    if not args.digest_only:
+        client = PoliteClient(min_interval_s=config.companies.min_request_interval_s)
+        fetched = fetch_all_news(store, client, companies, days)
+        print(
+            f"news: {fetched.companies} companies, {fetched.new_items} new items"
+            + (f", failed: {', '.join(fetched.failed)}" if fetched.failed else ""),
+            file=sys.stderr,
+        )
+        if not config.cv_path.exists():
+            print(f"Master CV not found at {config.cv_path}", file=sys.stderr)
+            return 2
+        try:
+            llm = make_llm(config, "ranking", BudgetTracker(store, config.llm))
+        except LLMError as exc:
+            print(f"Can't classify news: {exc}", file=sys.stderr)
+            return 2
+        context = build_context(
+            config.cv_path.read_text(), load_ranking_config(config.ranking_config)
+        )
+        report = classify_news(
+            store, llm, companies, context, max_parallel=config.llm.ranking.max_parallel
+        )
+        print(
+            f"signals: {report.classified} of {report.items} items classified"
+            + (f", {report.failed_batches} batches failed" if report.failed_batches else "")
+            + (f"; stopped: {report.stopped_reason}" if report.stopped_reason else ""),
+            file=sys.stderr,
+        )
+        store.set_last_run(RUN_KEY, datetime.now(UTC))
+
+    for entry in digest(store, companies, days, min_relevance=args.min_relevance)[: args.limit]:
+        jobs = f", {entry.open_jobs} open jobs" if entry.open_jobs else ""
+        print(f"\n{entry.score:3d}  {entry.company.name}{jobs}")
+        for row in entry.signals[:3]:
+            date = (row["published_at"] or "")[:10]
+            print(f"     {row['relevance']:3d} {row['kind']:18} {date}  {row['summary']}")
+            print(f"         {row['url']}")
+    return 0
+
+
 def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
     """Send one tiny request to each configured model to verify keys and pricing."""
     from pydantic import BaseModel
@@ -299,6 +367,14 @@ def main(argv: list[str] | None = None) -> int:
     p_comp.add_argument("--detect", action="store_true", help="detect ATS for unchecked/stale")
     p_comp.add_argument("--force", action="store_true", help="with --detect: re-check all")
 
+    p_sig = sub.add_parser(
+        "signals", help="news about target companies: fetch, classify, print the digest"
+    )
+    p_sig.add_argument("--digest-only", action="store_true", help="skip fetching/classifying")
+    p_sig.add_argument("--days", type=int, help="news window (default companies.news_days)")
+    p_sig.add_argument("--min-relevance", type=int, default=40)
+    p_sig.add_argument("--limit", type=int, default=25)
+
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
 
@@ -319,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
         "show": cmd_show,
         "occupations": cmd_occupations,
         "companies": cmd_companies,
+        "signals": cmd_signals,
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
         "daemon": cmd_daemon,

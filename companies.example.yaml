@@ -1,10 +1,11 @@
 # Copy to companies.yaml and edit. Target companies whose own careers sites are
-# crawled for jobs (and, later, watched in the news for spontaneous applications).
+# crawled for jobs, and whose news is watched for spontaneous-application signals.
 #
 # Per company: name, website (or careers_url when the careers page isn't linked from
 # the home page), optional location (used when the ATS feed has none, e.g. Varbi),
-# tags, source (where the entry came from), and an optional manual
-# `ats: {type, ref}` when detection gets it wrong. `enabled: false` skips one.
+# tags, source (where the entry came from), news_query (the GDELT query for news
+# signals; needed when the name is shorter than 4 characters or ambiguous), and an
+# optional manual `ats: {type, ref}` when detection gets it wrong. `enabled: false` skips one.
 # `jobsearcher companies --detect` shows what was found for each.
 #
 # Sources:
@@ -22,7 +23,7 @@ companies:
   - {name: Volvo Cars, website: https://www.volvocars.com, tags: [largest], source: syna-top100-2023}
   - {name: Ericsson, website: https://www.ericsson.com, tags: [largest, international], source: syna-top100-2023}
   - {name: Scania, website: https://www.scania.com, tags: [largest], source: syna-top100-2023}
-  - {name: SEB, website: https://sebgroup.com, tags: [largest], source: syna-top100-2023}
+  - {name: SEB, news_query: '"Skandinaviska Enskilda Banken" sourcecountry:sweden', website: https://sebgroup.com, tags: [largest], source: syna-top100-2023}
   - {name: Saab, website: https://www.saab.com, tags: [largest], source: syna-top100-2023}
   - {name: Samhall, website: https://samhall.se, tags: [largest], source: syna-top100-2023}
   - {name: Swedbank, website: https://www.swedbank.se, tags: [largest], source: syna-top100-2023}
@@ -31,14 +32,14 @@ companies:
   - {name: AstraZeneca, website: https://www.astrazeneca.se, tags: [largest, international, healthcare], source: syna-top100-2023}
   - {name: Nordea, website: https://www.nordea.com, tags: [largest, international], source: syna-top100-2023}
   # H&M's careers site loads its SmartRecruiters jobs with JavaScript, so detection can't see them.
-  - {name: H&M, website: https://career.hm.com, ats: {type: smartrecruiters, ref: HMGroup}, tags: [largest, international], source: syna-top100-2023}
+  - {name: H&M, news_query: '"Hennes & Mauritz" sourcecountry:sweden', website: https://career.hm.com, ats: {type: smartrecruiters, ref: HMGroup}, tags: [largest, international], source: syna-top100-2023}
   - {name: Sweco, website: https://www.sweco.se, tags: [largest], source: syna-top100-2023}
   - {name: Praktikertjänst, website: https://www.praktikertjanst.se, tags: [largest, healthcare], source: syna-top100-2023}
-  - {name: ICA, website: https://www.ica.se, tags: [largest], source: syna-top100-2023}
+  - {name: ICA, news_query: '"ICA Gruppen" sourcecountry:sweden', website: https://www.ica.se, tags: [largest], source: syna-top100-2023}
   - {name: Telia, website: https://www.telia.se, tags: [largest], source: syna-top100-2023}
   - {name: AFA Försäkring, website: https://www.afaforsakring.se, tags: [largest], source: syna-top100-2023}
   - {name: Skanska, website: https://www.skanska.se, tags: [largest], source: syna-top100-2023}
-  - {name: NCC, website: https://www.ncc.se, tags: [largest], source: syna-top100-2023}
+  - {name: NCC, news_query: '"byggbolaget NCC" sourcecountry:sweden', website: https://www.ncc.se, tags: [largest], source: syna-top100-2023}
   - {name: Bravida, website: https://www.bravida.se, tags: [largest], source: syna-top100-2023}
   - {name: Securitas, website: https://www.securitas.se, tags: [largest], source: syna-top100-2023}
   # Volvo Group covers Volvo Lastvagnar, Volvo Powertrain, Volvo CE and Volvo Technology.
@@ -99,7 +100,7 @@ companies:
   # --- curated:healthcare -------------------------------------------------------
   - {name: Capio, website: https://capio.se, tags: [healthcare], source: "curated:healthcare"}
   - {name: Aleris, website: https://www.aleris.se, tags: [healthcare], source: "curated:healthcare"}
-  - {name: Kry, website: https://www.kry.se, tags: [healthcare, international], source: "curated:healthcare"}
+  - {name: Kry, news_query: '("Kry International" OR "vårdbolaget Kry") sourcecountry:sweden', website: https://www.kry.se, tags: [healthcare, international], source: "curated:healthcare"}
   - {name: Doktor.se, website: https://doktor.se, tags: [healthcare], source: "curated:healthcare"}
   - {name: Min Doktor, website: https://mindoktor.se, tags: [healthcare], source: "curated:healthcare"}
   - {name: Ambea, website: https://www.ambea.se, tags: [healthcare], source: "curated:healthcare"}
@@ -116,23 +117,23 @@ companies:
 
   # --- curated:international ----------------------------------------------------
   - {name: Klarna, website: https://www.klarna.com, tags: [international], source: "curated:international"}
-  - {name: King, website: https://careers.king.com, tags: [international], source: "curated:international"}
+  - {name: King, news_query: '"King Digital Entertainment"', website: https://careers.king.com, tags: [international], source: "curated:international"}
   - {name: Epidemic Sound, website: https://www.epidemicsound.com, tags: [international], source: "curated:international"}
   - {name: Truecaller, website: https://www.truecaller.com, tags: [international], source: "curated:international"}
   - {name: Paradox Interactive, website: https://www.paradoxinteractive.com, tags: [international], source: "curated:international"}
-  - {name: Voi, website: https://www.voi.com, tags: [international], source: "curated:international"}
+  - {name: Voi, news_query: '"Voi Technology" sourcecountry:sweden', website: https://www.voi.com, tags: [international], source: "curated:international"}
   - {name: Einride, website: https://www.einride.tech, tags: [international], source: "curated:international"}
   - {name: Oatly, website: https://www.oatly.com, tags: [international], source: "curated:international"}
   - {name: Polestar, website: https://www.polestar.com, tags: [international], source: "curated:international"}
   - {name: Storytel, website: https://www.storytel.com, tags: [international], source: "curated:international"}
   - {name: Embracer Group, website: https://embracer.com, tags: [international], source: "curated:international"}
-  - {name: EQT, website: https://eqtgroup.com, tags: [international], source: "curated:international"}
+  - {name: EQT, news_query: '("EQT Partners" OR "riskkapitalbolaget EQT") sourcecountry:sweden', website: https://eqtgroup.com, tags: [international], source: "curated:international"}
   - {name: Investor AB, website: https://www.investorab.com, tags: [international], source: "curated:international"}
   - {name: Kinnevik, website: https://www.kinnevik.com, tags: [international], source: "curated:international"}
   - {name: Tele2, website: https://www.tele2.com, tags: [international], source: "curated:international"}
   - {name: Husqvarna Group, website: https://www.husqvarnagroup.com, tags: [international], source: "curated:international"}
   - {name: Sandvik, website: https://www.home.sandvik, tags: [international], source: "curated:international"}
-  - {name: SKF, website: https://www.skf.com, tags: [international], source: "curated:international"}
+  - {name: SKF, news_query: '("SKF-koncernen" OR "kullagertillverkaren SKF") sourcecountry:sweden', website: https://www.skf.com, tags: [international], source: "curated:international"}
   - {name: Alfa Laval, website: https://www.alfalaval.com, tags: [international], source: "curated:international"}
   - {name: Epiroc, website: https://www.epiroc.com, tags: [international], source: "curated:international"}
   - {name: Coor, website: https://www.coor.se, tags: [international], source: "curated:international"}  # facility management: operations roles

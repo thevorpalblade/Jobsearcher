@@ -71,6 +71,27 @@ CREATE TABLE IF NOT EXISTS company_ats (
     checked_at   TEXT NOT NULL,
     error        TEXT
 );
+
+-- News about target companies, and what each item signals for a spontaneous application.
+CREATE TABLE IF NOT EXISTS news_items (
+    id            TEXT PRIMARY KEY,   -- hash of the URL
+    company       TEXT NOT NULL,      -- company slug
+    title         TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    domain        TEXT,
+    published_at  TEXT,
+    fetched_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS news_items_company ON news_items(company);
+CREATE TABLE IF NOT EXISTS signals (
+    item_id         TEXT PRIMARY KEY REFERENCES news_items(id),
+    kind            TEXT NOT NULL,
+    relevance       INTEGER NOT NULL,
+    summary         TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    prompt_version  TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
 """
 
 
@@ -319,6 +340,56 @@ class Store:
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (company, ats_type, ats_ref, careers_url, (when or _now()).isoformat(), error),
             )
+
+    # --- news and signals -------------------------------------------------
+
+    def save_news_items(self, items: list[dict[str, str | None]]) -> int:
+        """Insert news items not seen before; returns how many were new."""
+        before = self.conn.total_changes
+        with self.conn:
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO news_items"
+                " (id, company, title, url, domain, published_at, fetched_at)"
+                " VALUES (:id, :company, :title, :url, :domain, :published_at, :fetched_at)",
+                items,
+            )
+        return self.conn.total_changes - before
+
+    def unclassified_news(self, prompt_version: str) -> list[sqlite3.Row]:
+        """News items with no signal for the current prompt version, oldest first."""
+        return self.conn.execute(
+            "SELECT n.* FROM news_items n LEFT JOIN signals s ON s.item_id = n.id"
+            " WHERE s.item_id IS NULL OR s.prompt_version != ?"
+            " ORDER BY n.company, n.published_at",
+            (prompt_version,),
+        ).fetchall()
+
+    def save_signal(
+        self,
+        item_id: str,
+        kind: str,
+        relevance: int,
+        summary: str,
+        model: str,
+        prompt_version: str,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO signals"
+                " (item_id, kind, relevance, summary, model, prompt_version, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (item_id, kind, relevance, summary, model, prompt_version, _now().isoformat()),
+            )
+
+    def signals_since(self, since: datetime) -> list[sqlite3.Row]:
+        """Classified news published since `since`, most relevant first."""
+        return self.conn.execute(
+            "SELECT n.company, n.title, n.url, n.domain, n.published_at,"
+            " s.kind, s.relevance, s.summary"
+            " FROM signals s JOIN news_items n ON n.id = s.item_id"
+            " WHERE n.published_at >= ? ORDER BY s.relevance DESC, n.published_at DESC",
+            (since.isoformat(),),
+        ).fetchall()
 
     # --- run bookkeeping --------------------------------------------------
 

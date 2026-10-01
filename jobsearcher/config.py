@@ -37,6 +37,9 @@ class CompaniesSettings(BaseModel):
     redetect_after_days: int = 7
     # Pause between requests to the same domain, to crawl politely.
     min_request_interval_s: float = 1.0
+    # News signals: how often to fetch and classify news (days), and how far back.
+    signals_every_days: int = 7
+    news_days: int = 30
 
 
 class Provider(StrEnum):
