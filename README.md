@@ -24,6 +24,7 @@ image already contains the CLI.
 ```sh
 cp config.example.yaml config.yaml   # locations, sources, LLM providers
 cp ranking.example.yaml ranking.yaml # target roles, preferences, score weights
+cp companies.example.yaml companies.yaml  # target companies: careers sites + news signals
 cp .env.example .env                 # add API keys / CLAUDE_CODE_OAUTH_TOKEN
 mkdir -p cvs data                    # put your master CV in cvs/master.md
 docker compose up -d --build         # runs the search now, then daily at 06:00
@@ -71,7 +72,7 @@ write its database.
 ```sh
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
-cp config.example.yaml config.yaml && cp ranking.example.yaml ranking.yaml
+cp config.example.yaml config.yaml && cp ranking.example.yaml ranking.yaml && cp companies.example.yaml companies.yaml
 jobsearcher search          # fetch jobs into data/jobsearcher.db
 jobsearcher rank            # score new jobs against cvs/master.md
 jobsearcher run             # search + rank (what the daemon does daily)
@@ -80,5 +81,7 @@ jobsearcher show <job-id>   # full record + ranking rationale as JSON
 jobsearcher llm-check       # test the configured Kimi/Claude models
 jobsearcher budget          # LLM spend this month
 jobsearcher web             # web UI on http://127.0.0.1:8080
+jobsearcher companies --detect  # target companies (companies.yaml): ATS found, open jobs
+jobsearcher signals         # company news → companies worth a spontaneous application
 pytest && ruff check .
 ```

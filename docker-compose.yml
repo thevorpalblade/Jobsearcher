@@ -11,6 +11,9 @@ services:
     volumes:
       - ./config.yaml:/config/config.yaml:ro
       - ./ranking.yaml:/config/ranking.yaml:ro
+      # Target companies; copy companies.example.yaml first (Docker would otherwise
+      # create an empty directory here, which is treated as "no companies").
+      - ./companies.yaml:/config/companies.yaml:ro
       - ./cvs:/cvs:ro
       - ./data:/data
 

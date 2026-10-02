@@ -12,14 +12,14 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M0 Skeleton (package, config, SQLite store, CLI, Docker, tests) | Done |
 | M1 Search: Platsbanken + JobTech Links, dedupe, contacts, expiry | Done; first live run 2026-10-01 (outside Docker) |
 | M2a LLM layer: Kimi, NVIDIA (e.g. GLM), Claude API, Claude Code (subscription), budget | Done; Claude Code and NVIDIA GLM tested live, no real Kimi or Anthropic API call |
-| M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done, **never run on real ads**; `calibrate` command missing |
+| M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done; all ~350 candidates ranked live with GLM on 2026-10-01; `calibrate` command missing |
 | M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
-| M6 Company crawler (Bolagsverket → websites → career pages) | **Not started** |
+| M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 103 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 126 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -131,13 +131,38 @@ PLAN.md §5. Not started apart from the empty `drafts` table in
       shows every tracked job, expired ones included.
 - [ ] Optional: reminders or a follow-up date per tracked application.
 
-## 5. Company crawler (M6)
+## 5. Target companies (M6)
 
-PLAN.md §8. Company list from Bolagsverket open data or SCB (not scraping
-allabolag) → website discovery verified by org.nr → career-page detection →
-one adapter per applicant-tracking system (Teamtailor, Varbi, ReachMee,
-Jobylon, Workable, Greenhouse, Lever …) → LLM extraction as a fallback.
-Respect `robots.txt`, rate-limit per domain, and re-crawl weekly.
+Built per [docs/m6-companies.md](docs/m6-companies.md): `companies.yaml` (seed:
+`companies.example.yaml`, 107 employers with sources), ATS detection cached in
+`company_ats`, adapters for Teamtailor, Varbi, Lever, Greenhouse and
+SmartRecruiters, per-source expiry, and weekly news signals from GDELT
+classified by the ranking LLM (`jobsearcher signals`).
+
+Live results (2026-10-01): a supported ATS for 31 of 107 companies; the company
+feeds added ~1,900 open jobs (mostly Region Stockholm/VGR healthcare) and ~175
+new ranking candidates.
+
+- [ ] **Workday adapter** (Saab, Essity, Sandvik, Husqvarna, Elekta, King,
+      Apotek Hjärtat, and likely Volvo/Ericsson). The career sites' `/wday/cxs/…/jobs`
+      POST returned 422 for every guessed tenant/site; needs investigation.
+- [ ] **ReachMee** (Sweco, Regeringskansliet, Göteborgs universitet, Bravida),
+      **Jobylon** (LKAB, Coor, Unilabs, Kronans Apotek) and **SuccessFactors**
+      (Scania, Axfood, Atlas Copco, Tele2) adapters.
+- [ ] 57 companies with no ATS found. About 9 block our User-Agent (403/401:
+      Volvo Cars, Ericsson, PostNord, AstraZeneca, Hexagon, Epiroc, Getinge,
+      Kriminalvården) or errored; set `careers_url` or a manual `ats:` in
+      `companies.yaml`, or add LLM extraction from careers pages (plan, phase 2).
+- [ ] **News coverage is thin.** GDELT rate-limits hard (~1 request / 5–7 s with
+      frequent 429s, so ~107 companies take 30–45 minutes) and covers Swedish
+      news sparsely: several companies had no articles in 30 days. Google News
+      RSS and MFN are disallowed by robots.txt. Candidates: companies' own
+      press-room RSS feeds (Cision/MyNewsdesk), Bing News RSS (allowed, but
+      stale results in a test).
+- [ ] ATS jobs have no occupation labels, so the per-role occupation filters
+      don't apply to them; the role prefilter and the LLM decide.
+- [ ] Web UI: a Companies page with the signals digest (after M3 is merged), and
+      in M4 a spontaneous-application draft for a chosen company.
 
 ## 6. LinkedIn / Indeed (M7, optional)
 

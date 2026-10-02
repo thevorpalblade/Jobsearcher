@@ -1,6 +1,7 @@
 # M6: target companies, ATS crawling and news signals
 
-Approved by the user on 2026-10-01. Goal: find jobs that never reach
+Approved by the user on 2026-10-01. **Built 2026-10-01** (phases 1–3); open
+items are in REMAINING_WORK.md §5. Goal: find jobs that never reach
 Platsbanken or JobTech Links (many employers only post on their own careers
 site), and spot companies worth a spontaneous application (spontanansökan)
 from what's happening there.
@@ -25,7 +26,8 @@ from what's happening there.
 | Greenhouse | `https://boards-api.greenhouse.io/v1/boards/<board>/jobs?content=true` | open; board names must be detected, not guessed |
 | Workable | `https://apply.workable.com/api/v1/widget/accounts/<account>` | to confirm with a real account |
 | Workday | career site's `/wday/cxs/<tenant>/<site>/jobs` (POST) | **422 on every guess**; used by many large employers, needs investigation |
-| Google News | `https://news.google.com/rss/search?q="<company>"&hl=sv&gl=SE&ceid=SE:sv` | open, ~100 items per company |
+| Google News | `https://news.google.com/rss/search?q=...` | **disallowed by robots.txt** (`Disallow: /`); not used |
+| GDELT DOC 2.0 | `https://api.gdeltproject.org/api/v2/doc/doc?query=...&mode=artlist&format=json&timespan=30d` | open API; ≤1 request / 5 s, strictly enforced; used for news |
 
 ## Data model
 
@@ -102,3 +104,15 @@ from what's happening there.
 Recorded/minimal fixtures per ATS feed and for Google News RSS; detection
 against small HTML fixtures; per-source expiry; Sweden filter; classification
 with a fake LLM.
+
+## Changes made while building
+
+- **News comes from GDELT, not Google News.** Google News' robots.txt disallows
+  `/rss`; GDELT is an open API built for this. It rejects quoted phrases under 4
+  characters, so short or ambiguous names get a `news_query` in `companies.yaml`.
+- **Company jobs are sourced per feed** (`varbi:sll`), not per company, so a
+  region and its hospitals sharing one Varbi feed don't duplicate jobs.
+- **Detection validates Teamtailor refs** by fetching `jobs.json`, and ignores
+  shared ATS hosts (Teamtailor's `tt.`, Varbi's `feeds.`).
+- **H&M** needs a manual `ats:` override: its careers site loads SmartRecruiters
+  jobs with JavaScript.

@@ -16,7 +16,7 @@ in a local web UI. It runs in Docker on the user's Arch Linux home server.
 pip install -e '.[dev]'
 pytest                 # all tests run offline; keep it that way
 ruff check . && ruff format --check .
-jobsearcher --help     # search | rank | run | list | show | occupations | llm-check | budget | daemon | web
+jobsearcher --help     # search | rank | run | list | show | occupations | companies | signals | llm-check | budget | daemon | web
 jobsearcher web        # local web UI on http://127.0.0.1:8080
 ```
 
@@ -28,15 +28,18 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
 - `jobsearcher/llm/`: provider-neutral `complete(system, context, prompt, schema)`.
   Every call goes through `BudgetedLLM`, which records cost and enforces the budget.
 - `jobsearcher/ranking/`: `ranking.yaml` config, prefilter, scoring, `final_score`
-- `jobsearcher/pipeline.py`: the search stage. `cli.py` wires the stages together.
+- `jobsearcher/pipeline.py`: the search stage (job boards, then company feeds). `cli.py` wires the stages together.
 - `jobsearcher/web/`: FastAPI + Jinja + HTMX UI (`docs/m3-web-ui.md`). `views.py`
   shapes data with no FastAPI; `app.py` has the routes. Routes are sync `def`s with a
   read-only `Store` per request (`get_store`); the web process needs no secrets and
   never calls an LLM. HTMX is vendored in `web/static/` (no CDN).
+- `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
+  `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse, SmartRecruiters)
+- `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules
 
-- **Personal data never goes into git:** `config.yaml`, `ranking.yaml`,
+- **Personal data never goes into git:** `config.yaml`, `ranking.yaml`, `companies.yaml`,
   `.env`, `cvs/`, `data/` are gitignored. Only `*.example.*` files are committed.
 - **The LLM must never invent experience or contacts.** Drafts are grounded in
   `cvs/master.md`, and contacts always carry a `provenance`.
@@ -47,6 +50,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
   subscription token. Never hand that token to an SDK. Don't use `--bare`.
 - The JobTech APIs may be unreachable from cloud sandboxes, so test against
   fixtures in `tests/fixtures/`.
+- **Crawl politely:** company sites and feeds go through `companies/http.py:PoliteClient`
+  (robots.txt, per-host pacing). Don't work around a robots.txt disallow.
 - Match the surrounding style: type hints, pydantic models, short comments
   that explain why.
 - **Web UI:** ad text, titles and URLs are untrusted. Keep Jinja autoescaping on,

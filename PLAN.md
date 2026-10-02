@@ -227,7 +227,7 @@ past the budget.
 | M3 | Local web UI (list, detail, apply link, contacts) | ✅ (`jobsearcher web`, incl. application tracking; see docs/m3-web-ui.md) |
 | M4 | Drafting: tailored CV + cover letter, grounding check, PDF/DOCX | next |
 | M5 | Contacts from company sites (application tracking: done in M3) | |
-| M6 | Company crawler | |
+| M6 | Target companies: ATS crawling, news signals ([plan](docs/m6-companies.md)) | ✅ (Workday/ReachMee/Jobylon adapters still to do) |
 | M7 | Optional: LinkedIn/Indeed adapters | |
 
 ## Open questions
