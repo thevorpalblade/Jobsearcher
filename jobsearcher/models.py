@@ -76,6 +76,25 @@ class Job(BaseModel):
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+class ApplicationState(StrEnum):
+    """Where the user is with a job. NEW means untracked (no stored row) unless the
+    job has notes."""
+
+    NEW = "new"
+    SHORTLISTED = "shortlisted"
+    APPLIED = "applied"
+    INTERVIEW = "interview"
+    REJECTED = "rejected"
+    IGNORED = "ignored"
+
+
+class Application(BaseModel):
+    job_id: str
+    state: ApplicationState
+    notes: str = ""
+    updated_at: datetime
+
+
 def make_job_id(source: str, source_id: str) -> str:
     return hashlib.sha256(f"{source}:{source_id}".encode()).hexdigest()[:16]
 

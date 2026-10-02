@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% macro select(name, label, choices, current) %}
+  <label>{{ label }}
+    <select name="{{ name }}">
+      {% for value, text in choices %}
+        <option value="{{ value }}"{% if (current if current is not none else "")|string == value|string %} selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+    </select>
+  </label>
+{% endmacro %}
+{% block content %}
+{# Works as a plain GET form without JavaScript; with HTMX only the table is replaced. #}
+<form class="filters" method="get" action="/"
+      hx-get="/" hx-target="#rows" hx-push-url="true"
+      hx-trigger="submit, change, keyup changed delay:300ms from:[name=q]">
+  {{ select("view", "View", [("ranked", "Ranked"), ("pending", "Waiting for ranking"),
+      ("excluded", "Excluded by prefilter"), ("all", "All open"), ("expired", "Expired (latest 200)"),
+      ("tracked", "Tracked")], filters.view) }}
+  <label>Search<input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Title or company"></label>
+  <label>Min. score<input type="number" name="min_score" min="0" max="100" value="{{ filters.min_score if filters.min_score is not none else '' }}"></label>
+  <label>Role
+    <select name="role">
+      <option value="">Any</option>
+      {% for role in options.roles %}<option{% if filters.role == role %} selected{% endif %}>{{ role }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Source
+    <select name="source">
+      <option value="">Any</option>
+      {% for source in options.sources %}<option{% if filters.source == source %} selected{% endif %}>{{ source }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Location
+    <select name="location">
+      <option value="">Any</option>
+      {% for place in options.locations %}<option{% if filters.location == place %} selected{% endif %}>{{ place }}</option>{% endfor %}
+    </select>
+  </label>
+  {{ select("remote", "Remote", [("", "Any"), ("true", "Remote"), ("false", "On site")], filters.remote|lower if filters.remote is not none else none) }}
+  <label>Deadline within<input type="number" name="deadline_within" min="0" placeholder="days" value="{{ filters.deadline_within if filters.deadline_within is not none else '' }}"></label>
+  {{ select("language", "Ad language", [("", "Any"), ("en", "English"), ("sv", "Swedish"), ("other", "Other")], filters.language) }}
+  {{ select("swedish", "Swedish", [("any", "Any"), ("exclude_required", "Not required"), ("not_mentioned", "Not mentioned")], filters.swedish) }}
+  <label>First seen within<input type="number" name="new" min="0" placeholder="days" value="{{ filters.new if filters.new is not none else '' }}"></label>
+  <label class="check"><input type="checkbox" name="has_contact" value="true"{% if filters.has_contact %} checked{% endif %}> Contact known</label>
+  {{ select("sort", "Sort by", [("score", "Score"), ("fit", "Fit"), ("success", "Success"), ("deadline", "Deadline"), ("published", "Published")], filters.sort) }}
+  {% if filters.occupation %}<input type="hidden" name="occupation" value="{{ filters.occupation }}">
+    <span class="chip">occupation: {{ filters.occupation }}</span>{% endif %}
+  <button type="submit">Filter</button>
+  <a href="/" class="small">Reset</a>
+</form>
+<div id="rows">
+  {% include "_rows.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{# LLM spend this month; refreshes itself every minute. #}
+<div class="budget" hx-get="/partials/budget" hx-trigger="every 60s" hx-swap="outerHTML">
+  <span title="Pay-per-token LLM spend this calendar month (UTC)">LLM {{ budget.spent|usd }} of {{ budget.budget|usd }}</span>
+  <div class="bar" title="Drafting pauses at {{ budget.drafting_limit|usd }}, ranking at {{ budget.budget|usd }}">
+    <div class="fill {{ budget.level }}" style="width: {{ '%.1f'|format(budget.percent) }}%"></div>
+    <div class="marker" style="left: {{ '%.1f'|format(budget.drafting_percent) }}%"></div>
+  </div>
+  {% if budget.subscription_calls %}
+    <span title="Claude Code on the subscription: not billed per token">Claude Code: {{ budget.subscription_calls }} calls, {{ "{:,}".format(budget.subscription_tokens) }} tokens</span>
+  {% endif %}
+</div>

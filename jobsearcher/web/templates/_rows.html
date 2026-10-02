@@ -1,0 +1,65 @@
+{# The job table; swapped into #rows by the filter form. #}
+{% set show_prefilter = filters.view in ("pending", "excluded") %}
+<p class="muted small">{{ rows|length }} job{{ "" if rows|length == 1 else "s" }}</p>
+{% if rows %}
+<table class="jobs">
+  <thead>
+    <tr>
+      <th>Score</th><th>Fit / succ.</th><th>Title</th><th>Company</th><th>Location</th>
+      <th>Remote</th><th>Deadline</th><th>Lang.</th><th title="Contact person known">✉</th>
+      <th>Sources</th><th>Tracking</th>
+      {% if show_prefilter %}<th>Prefilter</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    {% set job = row.job %}
+    {% set a = row.ranking.assessment if row.ranking else none %}
+    <tr>
+      <td class="num">
+        {% if row.score is not none %}
+          <span class="score{{ ' top' if row.score >= ranking.drafting.min_score }}">{{ row.score }}</span>
+        {% else %}<span class="muted">–</span>{% endif %}
+      </td>
+      <td class="num muted">{% if a %}{{ a.fit_score }} / {{ a.success_score }}{% endif %}</td>
+      <td>
+        <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
+        {% if row.age_days <= new_days %}<span class="chip new">new</span>{% endif %}
+        {% if row.stale %}<span class="chip warn" title="Ranked before a CV, role or model change">stale</span>{% endif %}
+        {% if row.unparseable %}<span class="chip warn">will be re-ranked</span>{% endif %}
+      </td>
+      <td>{{ job.company or "" }}</td>
+      <td>{{ job.location or job.region or "" }}</td>
+      <td>{% if job.remote %}<span class="chip">remote</span>{% endif %}</td>
+      <td class="num">
+        {% if row.days_left is not none %}
+          <span title="{{ job.deadline|localdate }}"{% if row.days_left < 0 %} class="muted"{% endif %}>
+            {%- if row.days_left < 0 %}passed{% elif row.days_left == 0 %}today{% else %}{{ row.days_left }} d{% endif -%}
+          </span>
+        {% endif %}
+      </td>
+      <td>
+        {% if a %}{{ a.language }}
+          {% if a.swedish == "required" %}<span class="chip bad">SV req.</span>
+          {% elif a.swedish == "merit" %}<span class="chip warn">SV merit</span>{% endif %}
+        {% endif %}
+      </td>
+      <td>{% if job.contacts %}✉{% endif %}</td>
+      <td class="small muted">{{ job.sources|map(attribute="source")|unique|join(", ") }}</td>
+      <td>
+        {% if row.application %}<span class="chip" title="{{ row.application.notes }}">{{ row.state.value }}</span>{% endif %}
+        {% if job.status == "expired" %}<span class="chip bad">expired</span>{% endif %}
+      </td>
+      {% if show_prefilter %}
+      <td class="small">
+        {% if row.exclusion_reason %}{{ row.exclusion_reason }}{% else %}{{ row.prefilter.roles|join(", ") }}{% endif %}
+        {% if row.match_place %}<span class="chip{{ ' warn' if row.match_place == 'text only' }}">{{ row.match_place }}</span>{% endif %}
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No jobs match. Run <code>jobsearcher run</code> to search and rank, or loosen the filters.</p>
+{% endif %}

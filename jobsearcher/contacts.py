@@ -33,11 +33,14 @@ _GENERIC_LOCALPARTS = {
 }
 
 
+def is_generic_email(email: str | None) -> bool:
+    return bool(email) and email.split("@", 1)[0].lower() in _GENERIC_LOCALPARTS
+
+
 def extract_contacts_from_text(text: str, provenance: str = "ad_text") -> list[Contact]:
     contacts: list[Contact] = []
     for email in dict.fromkeys(m.rstrip(".") for m in EMAIL_RE.findall(text or "")):
-        local = email.split("@", 1)[0].lower()
-        role = "generic mailbox" if local in _GENERIC_LOCALPARTS else None
+        role = "generic mailbox" if is_generic_email(email) else None
         contacts.append(Contact(email=email, role=role, provenance=provenance))
     for phone in dict.fromkeys(p.strip() for p in PHONE_RE.findall(text or "")):
         if 8 <= len(re.sub(r"\D", "", phone)) <= 12:

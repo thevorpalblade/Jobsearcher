@@ -1,0 +1,15 @@
+{# Application tracking on the job page; each change swaps in a fresh copy. #}
+{% set current = application.state if application else "new" %}
+<section class="tracking" id="tracking">
+  <h2>Tracking</h2>
+  <form class="states" hx-post="/jobs/{{ job.id }}/state" hx-target="#tracking" hx-swap="outerHTML">
+    {% for s in states %}
+      <button type="submit" name="state" value="{{ s.value }}"{% if s.value == current %} class="on" aria-pressed="true"{% endif %}>{{ s.value|capitalize }}</button>
+    {% endfor %}
+  </form>
+  <form hx-post="/jobs/{{ job.id }}/notes" hx-target="#tracking" hx-swap="outerHTML">
+    <textarea name="notes" placeholder="Notes: who you spoke to, follow-ups, ...">{{ application.notes if application else "" }}</textarea>
+    <button type="submit">Save notes</button>
+    {% if application %}<span class="muted small">Updated {{ application.updated_at|localtime }}</span>{% endif %}
+  </form>
+</section>

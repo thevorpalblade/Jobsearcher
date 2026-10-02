@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta
@@ -109,18 +110,10 @@ def cmd_show(config: Config, args: argparse.Namespace) -> int:
     if job is None:
         print(f"No job {args.job_id}", file=sys.stderr)
         return 1
-    from jobsearcher.ranking import Ranking, final_score, load_ranking_config
+    from jobsearcher.ranking import load_ranking_config
+    from jobsearcher.ranking.ranker import job_details
 
-    ranking = store.latest_rankings(status=None).get(job.id)
-    out = job.model_dump(mode="json")
-    if ranking:
-        out["ranking"] = json.loads(ranking)
-        try:
-            assessment = Ranking.model_validate_json(ranking).assessment
-            config_r = load_ranking_config(config.ranking_config)
-            out["ranking"]["score"] = final_score(assessment, config_r)
-        except ValueError:
-            pass
+    out = job_details(store, job, load_ranking_config(config.ranking_config))
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
 
@@ -207,6 +200,31 @@ def cmd_budget(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_web(config: Config, args: argparse.Namespace) -> int:
+    """Serve the local web UI."""
+    import uvicorn
+
+    from jobsearcher.web import create_app
+
+    host = args.host or config.web.host
+    port = args.port or config.web.port
+    if args.reload:
+        # Reload needs an import string, so the factory re-reads config.yaml itself.
+        if args.config:
+            os.environ["JOBSEARCHER_CONFIG"] = args.config
+        uvicorn.run(
+            "jobsearcher.web:create_app_from_env",
+            factory=True,
+            host=host,
+            port=port,
+            reload=True,
+            workers=1,
+        )
+    else:
+        uvicorn.run(create_app(config), host=host, port=port, workers=1)
+    return 0
+
+
 def seconds_until(daily_at: str, tz: ZoneInfo, now: datetime | None = None) -> float:
     now = now or datetime.now(tz)
     hour, minute = (int(x) for x in daily_at.split(":"))
@@ -257,6 +275,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
 
+    p_web = sub.add_parser("web", help="serve the local web UI")
+    p_web.add_argument("--host", help="interface to bind (default: web.host in config.yaml)")
+    p_web.add_argument("--port", type=int, help="port (default: web.port in config.yaml)")
+    p_web.add_argument("--reload", action="store_true", help="restart on code changes (dev)")
+
     p_daemon = sub.add_parser("daemon", help="run the pipeline on the configured daily schedule")
     p_daemon.add_argument("--no-initial-run", action="store_true")
 
@@ -276,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
         "daemon": cmd_daemon,
+        "web": cmd_web,
     }
     return handler[args.command](config, args)
 

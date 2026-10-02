@@ -36,17 +36,27 @@ class TargetRole(BaseModel):
     def terms(self) -> list[str]:
         return unique_casefold([self.name, *self.aliases])
 
-    def allows_occupation(self, field: str | None, group: str | None) -> bool:
+    def occupation_verdict(self, field: str | None, group: str | None) -> tuple[bool, str | None]:
+        """Whether the occupation filters let a job with this field/group count as this
+        role, and if not, why (shown in the web UI)."""
         labels = [x.casefold() for x in (field, group) if x]
         if not labels:
-            return True
+            return True, None
 
-        def hit(patterns: list[str]) -> bool:
-            return any(p.casefold() in label for p in patterns for label in labels)
+        def first_hit(patterns: list[str]) -> str | None:
+            return next(
+                (p for p in patterns if any(p.casefold() in label for label in labels)), None
+            )
 
-        if hit(self.exclude_occupations) and not hit(self.except_occupations):
-            return False
-        return not self.include_occupations or hit(self.include_occupations)
+        excluded = first_hit(self.exclude_occupations)
+        if excluded is not None and first_hit(self.except_occupations) is None:
+            return False, f"occupation excluded ({excluded})"
+        if self.include_occupations and first_hit(self.include_occupations) is None:
+            return False, "occupation not in include_occupations"
+        return True, None
+
+    def allows_occupation(self, field: str | None, group: str | None) -> bool:
+        return self.occupation_verdict(field, group)[0]
 
 
 class Preferences(BaseModel):
@@ -104,6 +114,12 @@ class RankingConfig(BaseModel):
         relevant = self.model_dump(
             include={"target_roles": {"__all__": {"name", "aliases"}}, "preferences": True}
         )
+        return hashlib.sha256(repr(relevant).encode()).hexdigest()[:16]
+
+    def filter_fingerprint(self) -> str:
+        """Hash of everything the prefilter depends on: unlike fingerprint(), this
+        includes the occupation filters (used to memoise prefilter results)."""
+        relevant = self.model_dump(include={"target_roles": True, "prefilter": True})
         return hashlib.sha256(repr(relevant).encode()).hexdigest()[:16]
 
 

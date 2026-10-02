@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Status · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Status</h1>
+
+<div class="cols">
+<section>
+  <h2>Jobs</h2>
+  <dl class="facts">
+    <dt>Open</dt><dd><a href="/?view=all">{{ open_jobs }}</a></dd>
+    <dt>Ranked</dt><dd><a href="/?view=ranked">{{ counts.ranked }}</a>
+      {% if counts.stale %}<span class="muted">({{ counts.stale }} stale: ranked before a CV, role or model change)</span>{% endif %}</dd>
+    <dt>Waiting for ranking</dt><dd><a href="/?view=pending">{{ counts.pending }}</a>
+      {% if counts.unparseable %}<span class="muted">(incl. {{ counts.unparseable }} with an outdated ranking)</span>{% endif %}</dd>
+    <dt>Excluded by prefilter</dt><dd><a href="/?view=excluded">{{ counts.excluded }}</a></dd>
+    <dt>Expired</dt><dd><a href="/?view=expired">{{ expired_jobs }}</a></dd>
+  </dl>
+
+  <h2>Last search per source</h2>
+  {% if last_runs %}
+  <dl class="facts">
+    {% for source, when in last_runs.items() %}<dt>{{ source }}</dt><dd>{{ when|localtime }}</dd>{% endfor %}
+  </dl>
+  {% else %}<p class="muted">No searches yet.</p>{% endif %}
+</section>
+
+<section>
+  <h2>LLM usage since {{ month_start|localdate }}</h2>
+  {% if usage %}
+  <table class="jobs">
+    <thead><tr><th>Model</th><th>Purpose</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cached</th><th class="num">Cost</th></tr></thead>
+    <tbody>
+    {% for u in usage %}
+      <tr>
+        <td>{{ u.model }}</td><td>{{ u.purpose }}</td><td class="num">{{ u.calls }}</td>
+        <td class="num">{{ "{:,}".format(u.input_tokens) }}</td>
+        <td class="num">{{ "{:,}".format(u.output_tokens) }}</td>
+        <td class="num">{{ "{:,}".format(u.cache_read_tokens) }}</td>
+        <td class="num">{{ u.cost_usd|usd }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No LLM calls this month.</p>{% endif %}
+  <p class="small muted">
+    Budget {{ budget.budget|usd }} a month; drafting pauses at {{ budget.drafting_limit|usd }}.
+    Claude Code calls on the subscription cost nothing here.
+  </p>
+</section>
+</div>
+{% endblock %}

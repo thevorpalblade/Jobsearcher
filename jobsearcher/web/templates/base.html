@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>{% block title %}Jobsearcher{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <nav>
+      <a href="/" class="brand">Jobsearcher</a>
+      <a href="/?view=tracked">Tracked</a>
+      <a href="/prefilter">Prefilter</a>
+      <a href="/status">Status</a>
+    </nav>
+    {% if budget %}{% include "_budget.html" %}{% endif %}
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

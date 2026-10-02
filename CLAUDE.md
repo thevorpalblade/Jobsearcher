@@ -16,17 +16,23 @@ in a local web UI. It runs in Docker on the user's Arch Linux home server.
 pip install -e '.[dev]'
 pytest                 # all tests run offline; keep it that way
 ruff check . && ruff format --check .
-jobsearcher --help     # search | rank | run | list | show | llm-check | budget | daemon
+jobsearcher --help     # search | rank | run | list | show | occupations | llm-check | budget | daemon | web
+jobsearcher web        # local web UI on http://127.0.0.1:8080
 ```
 
 ## Layout
 
 - `jobsearcher/sources/`: one adapter per job board, returning normalised `models.Job`
-- `jobsearcher/store.py`: SQLite store (jobs, job_sources, rankings, drafts, llm_usage)
+- `jobsearcher/store.py`: SQLite store (jobs, job_sources, rankings, drafts, llm_usage,
+  applications); WAL mode, so the web UI can read while the daemon writes
 - `jobsearcher/llm/`: provider-neutral `complete(system, context, prompt, schema)`.
   Every call goes through `BudgetedLLM`, which records cost and enforces the budget.
 - `jobsearcher/ranking/`: `ranking.yaml` config, prefilter, scoring, `final_score`
 - `jobsearcher/pipeline.py`: the search stage. `cli.py` wires the stages together.
+- `jobsearcher/web/`: FastAPI + Jinja + HTMX UI (`docs/m3-web-ui.md`). `views.py`
+  shapes data with no FastAPI; `app.py` has the routes. Routes are sync `def`s with a
+  read-only `Store` per request (`get_store`); the web process needs no secrets and
+  never calls an LLM. HTMX is vendored in `web/static/` (no CDN).
 
 ## Rules
 
@@ -43,3 +49,6 @@ jobsearcher --help     # search | rank | run | list | show | llm-check | budget 
   fixtures in `tests/fixtures/`.
 - Match the surrounding style: type hints, pydantic models, short comments
   that explain why.
+- **Web UI:** ad text, titles and URLs are untrusted. Keep Jinja autoescaping on,
+  only turn `http(s)` URLs into links (`views.safe_url`), and require the
+  `HX-Request` header on every POST (a cheap CSRF guard, since there's no login).

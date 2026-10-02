@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Prefilter · Jobsearcher{% endblock %}
+{% macro count_link(role, item) -%}
+  {%- if item.label is none -%}{{ item.count }}
+  {%- else -%}
+    <a href="/?view={{ 'excluded' if item.excluded else 'all' }}&amp;role={{ role|urlencode }}&amp;occupation={{ item.label|urlencode }}">{{ item.count }}</a>
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+<h1>Prefilter</h1>
+<p>
+  {{ total }} open jobs:
+  <a href="/?view=ranked">{{ stages.ranked }} ranked</a>,
+  <a href="/?view=pending">{{ stages.pending }} waiting for ranking</a>,
+  <a href="/?view=excluded">{{ stages.excluded }} excluded by the prefilter</a>.
+</p>
+<p class="muted small">
+  Occupation fields and groups of the open jobs that mention each target role, as
+  <code>jobsearcher occupations --groups</code> prints them. Use the labels for
+  <code>exclude_occupations</code>, <code>except_occupations</code> and
+  <code>include_occupations</code> in ranking.yaml; changing them costs no re-ranking.
+</p>
+{% for role in summary %}
+  <h2>{{ role.name }}</h2>
+  <p>Mentioned by {{ role.mentioned }} open jobs: {{ role.kept }} kept, {{ role.excluded }} excluded by its occupation filters.</p>
+  {% if role.fields %}
+  <table class="jobs">
+    <thead><tr><th class="num">Jobs</th><th>Occupation field / group</th></tr></thead>
+    <tbody>
+    {% for f in role.fields %}
+      <tr>
+        <td class="num"><strong>{{ count_link(role.name, f) }}</strong></td>
+        <td><strong>{{ f.label or "(none)" }}</strong>{% if f.excluded %} <span class="chip bad">excluded</span>{% endif %}</td>
+      </tr>
+      {% for g in f.groups %}
+      <tr>
+        <td class="num">{{ count_link(role.name, g) }}</td>
+        <td>&nbsp;&nbsp;&nbsp;{{ g.label or "(none)" }}{% if g.excluded and not f.excluded %} <span class="chip bad">excluded</span>{% elif g.excluded %} <span class="muted small">[excluded]</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% else %}
+  <p>No target roles in ranking.yaml.</p>
+{% endfor %}
+{% endblock %}

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from jobsearcher.models import Contact, Job, JobStatus
+from jobsearcher.models import Application, ApplicationState, Contact, Job, JobStatus
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -61,6 +65,14 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     cache_write_tokens  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS llm_usage_ts ON llm_usage(ts);
+
+-- Application tracking from the web UI. A job without a row is "new".
+CREATE TABLE IF NOT EXISTS applications (
+    job_id      TEXT PRIMARY KEY REFERENCES jobs(id),
+    state       TEXT NOT NULL,  -- shortlisted|applied|interview|rejected|ignored (or new + notes)
+    notes       TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -68,15 +80,79 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+@dataclass
+class JobRecord:
+    """A job with the store's bookkeeping dates (not part of the Job document)."""
+
+    job: Job
+    first_seen: datetime
+    last_seen: datetime
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> JobRecord:
+        return cls(
+            job=Job.model_validate_json(row["data"]),
+            first_seen=datetime.fromisoformat(row["first_seen"]),
+            last_seen=datetime.fromisoformat(row["last_seen"]),
+        )
+
+
+@dataclass
+class UsageSummary:
+    model: str
+    purpose: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_usd: float
+
+
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        readonly: bool = False,
+        check_same_thread: bool = True,
+        init_schema: bool = True,
+    ):
+        """Open the database.
+
+        `readonly` opens the file with `mode=ro` and skips schema setup, so a reader
+        can never write. `check_same_thread=False` is for callers that hand one
+        connection between threads but use it serially (the web app). `init_schema`
+        is skipped by short-lived writers once the schema is known to exist.
+        """
         path = Path(path)
-        if str(path) != ":memory:":
-            path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        in_memory = str(path) == ":memory:"
+        if readonly:
+            self.conn = sqlite3.connect(
+                f"file:{path}?mode=ro", uri=True, check_same_thread=check_same_thread
+            )
+        else:
+            if not in_memory:
+                path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(path, check_same_thread=check_same_thread)
         self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
-        self._migrate()
+        if readonly:
+            return
+        if not in_memory:
+            self._enable_wal()
+        if init_schema:
+            self.conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _enable_wal(self) -> None:
+        # WAL lets the web UI read while the daemon writes. The mode is stored in the
+        # file, but switching needs exclusive access; if another connection is busy,
+        # leave it to the next opener.
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.OperationalError as exc:
+            log.debug("Could not switch to WAL yet: %s", exc)
 
     def _migrate(self) -> None:
         columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(llm_usage)")}
@@ -166,6 +242,25 @@ class Store:
         for row in rows:
             yield Job.model_validate_json(row["data"])
 
+    def job_records(
+        self, status: JobStatus = JobStatus.OPEN, limit: int | None = None
+    ) -> list[JobRecord]:
+        """Open jobs newest first; expired jobs most recently seen first (use a limit:
+        they accumulate)."""
+        order = "first_seen" if status == JobStatus.OPEN else "last_seen"
+        rows = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs WHERE status = ?"
+            f" ORDER BY {order} DESC LIMIT ?",
+            (status, -1 if limit is None else limit),
+        )
+        return [JobRecord.from_row(row) for row in rows]
+
+    def job_record(self, job_id: str) -> JobRecord | None:
+        row = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        return JobRecord.from_row(row) if row else None
+
     def count_jobs(self, status: JobStatus | None = None) -> int:
         if status is None:
             return self.conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
@@ -228,6 +323,53 @@ class Store:
         )
         return {row["job_id"]: row["data"] for row in rows}
 
+    def latest_ranking(self, job_id: str) -> tuple[str, datetime] | None:
+        """(ranking JSON, created_at) of a job's most recent ranking."""
+        row = self.conn.execute(
+            "SELECT data, created_at FROM rankings WHERE job_id = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        return (row["data"], datetime.fromisoformat(row["created_at"])) if row else None
+
+    # --- application tracking --------------------------------------------
+
+    def applications(self) -> dict[str, Application]:
+        rows = self.conn.execute("SELECT job_id, state, notes, updated_at FROM applications")
+        return {row["job_id"]: Application(**dict(row)) for row in rows}
+
+    def get_application(self, job_id: str) -> Application | None:
+        row = self.conn.execute(
+            "SELECT job_id, state, notes, updated_at FROM applications WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        return Application(**dict(row)) if row else None
+
+    def set_application(
+        self, job_id: str, state: ApplicationState, notes: str, now: datetime | None = None
+    ) -> Application | None:
+        """Save a job's tracking state and notes. Back to "new" without notes removes
+        the row, so the job counts as untracked again."""
+        with self.conn:
+            if state == ApplicationState.NEW and not notes.strip():
+                self.conn.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))
+                return None
+            app = Application(job_id=job_id, state=state, notes=notes, updated_at=now or _now())
+            self.conn.execute(
+                "INSERT OR REPLACE INTO applications (job_id, state, notes, updated_at)"
+                " VALUES (?, ?, ?, ?)",
+                (job_id, app.state, app.notes, app.updated_at.isoformat()),
+            )
+        return app
+
+    def tracked_job_records(self) -> list[JobRecord]:
+        """Every job with a tracking row, open or expired, most recently seen first."""
+        rows = self.conn.execute(
+            "SELECT data, first_seen, last_seen FROM jobs"
+            " WHERE id IN (SELECT job_id FROM applications) ORDER BY last_seen DESC"
+        )
+        return [JobRecord.from_row(row) for row in rows]
+
     # --- LLM usage -------------------------------------------------------
 
     def record_llm_usage(
@@ -273,7 +415,23 @@ class Store:
         ).fetchone()
         return float(row[0])
 
+    def llm_usage_summary(self, since: datetime) -> list[UsageSummary]:
+        """Calls, tokens and cost since `since`, per model and purpose, costliest first."""
+        rows = self.conn.execute(
+            "SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,"
+            " SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,"
+            " SUM(cache_write_tokens) AS cache_write_tokens, SUM(cost_usd) AS cost_usd"
+            " FROM llm_usage WHERE ts >= ? GROUP BY model, purpose"
+            " ORDER BY cost_usd DESC, calls DESC",
+            (since.isoformat(),),
+        )
+        return [UsageSummary(**dict(row)) for row in rows]
+
     # --- run bookkeeping --------------------------------------------------
+
+    def last_runs(self) -> dict[str, datetime]:
+        rows = self.conn.execute("SELECT source, last_run FROM runs ORDER BY source")
+        return {row["source"]: datetime.fromisoformat(row["last_run"]) for row in rows}
 
     def last_run(self, source: str) -> datetime | None:
         row = self.conn.execute("SELECT last_run FROM runs WHERE source = ?", (source,)).fetchone()

@@ -34,6 +34,25 @@ docker compose logs -f
 
 `config.yaml`, `.env`, `cvs/` and `data/` hold personal data and are gitignored.
 
+## Web UI
+
+`docker compose up -d` also starts `jobsearcher-web` on port 8080
+(`http://<server>:8080`): the ranked job list with filters, a page per job
+(score breakdown, rationale, contacts with their source, apply links), the
+prefilter's view of each target role's occupations, LLM spend and pipeline
+status. On a job's page you can mark it shortlisted, applied, interview,
+rejected or ignored and keep notes; `Tracked` lists those jobs, expired ones
+included, and ignored jobs drop out of the main list. Edits to `ranking.yaml` weights and adjustments show up on the next page
+load, with no re-ranking.
+
+There is no login: keep it on your LAN and use Tailscale or WireGuard from
+outside. **Docker's published ports bypass ufw and firewalld**, so on a server
+with a public IP, set `WEB_BIND` in `.env` to a LAN or Tailscale address
+(e.g. `WEB_BIND=192.168.1.10`) instead of the default `0.0.0.0`.
+
+Outside Docker: `jobsearcher web` serves it on `127.0.0.1:8080` (`--host`,
+`--port`, or `web:` in `config.yaml`).
+
 ## Arch Linux server setup
 
 ```sh
@@ -60,5 +79,6 @@ jobsearcher list            # score, ✉ = has contact info
 jobsearcher show <job-id>   # full record + ranking rationale as JSON
 jobsearcher llm-check       # test the configured Kimi/Claude models
 jobsearcher budget          # LLM spend this month
+jobsearcher web             # web UI on http://127.0.0.1:8080
 pytest && ruff check .
 ```

@@ -3,45 +3,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import make_assessment, make_job
 
 from jobsearcher.config import LLMConfig
 from jobsearcher.llm import BudgetedLLM, BudgetTracker, LLMError, LLMResult, LLMUsage
-from jobsearcher.models import Contact, Job, SourceRef, make_job_id
+from jobsearcher.models import Contact
 from jobsearcher.ranking import final_score, load_ranking_config, ranked_jobs, run_ranking
 from jobsearcher.ranking.config import RankingConfig, TargetRole, Weights
-from jobsearcher.ranking.prefilter import matched_roles, select_for_ranking
-from jobsearcher.ranking.ranker import JobAssessment, build_context
+from jobsearcher.ranking.prefilter import matched_roles, prefilter_status, select_for_ranking
+from jobsearcher.ranking.ranker import build_context, score_breakdown
 from jobsearcher.store import Store
 
 EXAMPLE = Path(__file__).parent.parent / "ranking.example.yaml"
 CV = "# Anna Andersson\nHR Business Partner at Exempel AB, 2019-2026. Led a reorganisation."
 
 
-def _job(n, title, text="", published_day=1):
-    return Job(
-        id=make_job_id("platsbanken", str(n)),
-        title=title,
-        company=f"Company {n}",
-        location="Stockholm",
-        description=text,
-        published_at=datetime(2026, 9, published_day, tzinfo=UTC),
-        sources=[SourceRef(source="platsbanken", source_id=str(n))],
-    )
-
-
-def _assessment(fit=80, success=60, contacts=(), language="sv", swedish="not_mentioned"):
-    return JobAssessment(
-        fit_score=fit,
-        success_score=success,
-        matched_role="HR Business Partner",
-        matched_requirements=["HR partnering"],
-        missing_requirements=[],
-        red_flags=[],
-        rationale="Good match.",
-        language=language,
-        swedish=swedish,
-        contact_persons=list(contacts),
-    )
+_job = make_job
+_assessment = make_assessment
 
 
 class FakeLLM:
@@ -287,3 +265,58 @@ def test_parallel_ranking_respects_cap_and_failures():
     report = run_ranking(store, budgeted, config, CV, max_parallel=4)
     assert (report.ranked, report.failed, report.deferred) == (4, 1, 2)
     assert len(llm.prompts) == 5
+
+
+def test_score_breakdown_matches_final_score():
+    config = load_ranking_config(EXAMPLE)
+    for a in [
+        _assessment(),
+        _assessment(language="en", swedish="merit"),
+        _assessment(fit=10, success=0, swedish="required"),
+        _assessment(fit=100, success=100, language="en"),
+    ]:
+        breakdown = score_breakdown(a, config)
+        assert breakdown.total == final_score(a, config)
+    breakdown = score_breakdown(_assessment(language="en", swedish="merit"), config)
+    assert breakdown.combined == 72
+    assert breakdown.adjustments == [("Ad written in English", 10), ("Swedish a merit", -5)]
+
+
+def test_occupation_verdict_reasons():
+    role = TargetRole(name="PM", exclude_occupations=["Bygg"], except_occupations=["logistik"])
+    assert role.occupation_verdict(None, None) == (True, None)
+    assert role.occupation_verdict("Bygg och anläggning", "Snickare") == (
+        False,
+        "occupation excluded (Bygg)",
+    )
+    assert role.occupation_verdict("Bygg", "logistik") == (True, None)
+    hr = TargetRole(name="HR", include_occupations=["Administration"])
+    assert hr.occupation_verdict("Data/IT", None) == (
+        False,
+        "occupation not in include_occupations",
+    )
+
+
+def test_prefilter_status_reports_roles_and_exclusions():
+    pm = TargetRole(name="Project manager", aliases=["projektledare"], exclude_occupations=["Bygg"])
+    hr = TargetRole(name="HR Business Partner", aliases=["HRBP"])
+    config = RankingConfig(target_roles=[pm, hr])
+    job = _with_occupation(
+        _job(1, "Projektledare", "Du jobbar nära vår HRBP."), "Bygg och anläggning", None
+    )
+    status = prefilter_status(job, config)
+    assert status.passed
+    assert status.roles == ["HR Business Partner"] and not status.in_title
+    assert status.roles_unfiltered == ["Project manager", "HR Business Partner"]
+    assert status.body_only == ["HR Business Partner"]
+    assert status.excluded == {"Project manager": "occupation excluded (Bygg)"}
+    none = prefilter_status(_job(2, "Lagerarbetare"), config)
+    assert not none.passed and none.roles_unfiltered == []
+
+
+def test_filter_fingerprint_includes_occupation_filters():
+    plain = RankingConfig(target_roles=[TargetRole(name="Project manager")])
+    filtered = RankingConfig(
+        target_roles=[TargetRole(name="Project manager", exclude_occupations=["Bygg"])]
+    )
+    assert plain.filter_fingerprint() != filtered.filter_fingerprint()
