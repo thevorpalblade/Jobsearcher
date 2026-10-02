@@ -10,6 +10,14 @@ from jobsearcher.ranking.ranker import JobAssessment
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path, monkeypatch):
+    """Run every test from an empty directory, so default relative paths
+    (config.yaml, ranking.yaml, companies.yaml, data/) never pick up the
+    developer's personal files or trigger live crawling."""
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def load_fixture():
     return lambda name: json.loads((FIXTURES / name).read_text())

@@ -30,6 +30,10 @@ target_roles:
 
 # Free-text guidance for the ranking model. Write it the way you'd brief a recruiter.
 preferences:
+  # Facts the CV doesn't show, and how to weigh them.
+  situation: >-
+    Lives in Stockholm. Don't lower scores for location or relocation within the
+    search locations.
   seniority: "Not a priority. Don't lower scores much for a seniority mismatch in either direction."
   languages: >-
     Works in English. Ads written in English are preferred. Roles that require

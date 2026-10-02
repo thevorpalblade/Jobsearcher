@@ -60,6 +60,9 @@ class TargetRole(BaseModel):
 
 
 class Preferences(BaseModel):
+    # Facts about the candidate that the CV doesn't show (where they live, work permit
+    # status, ...), and how the model should weigh them.
+    situation: str = ""
     seniority: str = ""
     languages: str = ""
     likes: list[str] = Field(default_factory=list)

@@ -101,6 +101,9 @@ def test_context_contains_roles_preferences_and_cv():
     context = build_context(CV, load_ranking_config(EXAMPLE))
     assert "HR Business Partner" in context and "HRBP" in context
     assert "Dealbreakers:" in context
+    config = load_ranking_config(EXAMPLE)
+    assert config.preferences.situation.startswith("Lives in Stockholm")
+    assert "Situation: Lives in Stockholm" in build_context(CV, config)
     assert context.endswith(CV)
 
 

@@ -130,6 +130,8 @@ def build_context(cv: str, config: RankingConfig) -> str:
         for r in config.target_roles
     ]
     lines += ["", "# Preferences"]
+    if p.situation:
+        lines.append(f"Situation: {p.situation}")
     if p.seniority:
         lines.append(f"Seniority: {p.seniority}")
     if p.languages:
