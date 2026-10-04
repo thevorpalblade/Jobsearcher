@@ -19,7 +19,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
 
-Tests: 126 passing (`pytest`), lint clean (`ruff check .`). All tests run
+Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
 
 ## 0. Verify what exists (do this first, on the real server)
@@ -95,6 +95,19 @@ PLAN.md §6; implementation notes and decisions in
 - [ ] Later (after M4): draft downloads and a Regenerate button. Regenerate
       should queue a request for the daemon, so the web container never needs
       API keys or the Claude token.
+
+## 2b. Settings page (done 2026-10-04)
+
+`/settings` in the web UI: upload reference CVs (PDF/DOCX/Markdown → Markdown,
+reviewed and edited in the browser), pick the master CV (its text is copied
+into `cv_path`, old master backed up), and edit `config.yaml`, `ranking.yaml`
+and `companies.yaml` as YAML with validation, change effects ("re-ranks
+everything") and backups in `data/backups/`.
+
+- [ ] Drafting (M4) should read the reference CVs (`cvs/*.md` other than the master)
+      as extra facts, still grounded: nothing outside the CVs may be claimed.
+- [ ] No login: the page writes personal files, so keep the UI on the LAN/Tailscale.
+- [ ] PDF conversion is plain text (no headings); scanned PDFs need OCR first.
 
 ## 3. Drafting (M4)
 

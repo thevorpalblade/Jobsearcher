@@ -14,13 +14,24 @@ from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from jobsearcher.config import Config, load_config
+from jobsearcher import cvs, settings
+from jobsearcher.config import Config, config_file_path, load_config
 from jobsearcher.contacts import is_generic_email
 from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
@@ -33,12 +44,23 @@ WEB_DIR = Path(__file__).parent
 
 @dataclass
 class WebState:
-    config: Config  # config.yaml, read once at startup
+    config: Config  # config.yaml: read at startup and after it's saved on /settings
+    config_path: Path
     templates: Jinja2Templates
     tz: ZoneInfo
     ranking: views.MtimeCache[RankingConfig]  # ranking.yaml, reloaded when edited
     cv: views.MtimeCache[str | None]
     memo: views.PrefilterMemo
+
+    def reload_config(self) -> None:
+        """Pick up a saved config.yaml (paths to ranking.yaml and the CV may change)."""
+        self.config = load_config(self.config_path)
+        self.ranking = views.ranking_config_cache(self.config.ranking_config)
+        self.cv = views.cv_cache(self.config.cv_path)
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.config.data_dir / "backups"
 
     def row_context(self) -> views.RowContext:
         return views.RowContext(
@@ -291,7 +313,169 @@ def set_notes(
     return _tracking_response(request, state, store, job_id, app)
 
 
-def create_app(config: Config) -> FastAPI:
+# --- settings: CVs and config files ------------------------------------------------
+
+
+def htmx_redirect(url: str) -> Response:
+    return Response(status_code=204, headers={"HX-Redirect": url})
+
+
+def _result(
+    request: Request, state: WebState, ok: bool, message: str, details: list[str] | None = None
+) -> HTMLResponse:
+    return render(request, state, "_result.html", ok=ok, message=message, details=details or [])
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    master = state.config.cv_path
+    files = [(f, f.path(state.config, state.config_path)) for f in settings.FILES.values()]
+    return render(
+        request,
+        state,
+        "settings.html",
+        store,
+        cvs=cvs.list_cvs(master),
+        master=master,
+        files=files,
+        upload_types=", ".join(cvs.UPLOAD_TYPES),
+        max_mb=cvs.MAX_UPLOAD_BYTES // 1024 // 1024,
+    )
+
+
+@router.post("/settings/cvs", dependencies=[Depends(require_htmx)])
+def upload_cv(request: Request, state: State, file: Annotated[UploadFile, File()]) -> Response:
+    data = file.file.read(cvs.MAX_UPLOAD_BYTES + 1)
+    try:
+        text = cvs.convert_upload(file.filename or "cv", data)
+    except cvs.CvError as exc:
+        return _result(request, state, False, str(exc))
+    master = state.config.cv_path
+    name = cvs.free_name(master, file.filename or "cv")
+    cvs.save_cv(master, name, text)
+    return htmx_redirect(f"/settings/cvs/{name}?uploaded=1")
+
+
+def _cv_file(state: WebState, name: str) -> Path:
+    try:
+        path = cvs.cv_path(state.config.cv_path, name)
+    except cvs.CvError:
+        raise HTTPException(404) from None
+    if not path.is_file():
+        raise HTTPException(404)
+    return path
+
+
+@router.get("/settings/cvs/{name}", response_class=HTMLResponse)
+def cv_page(
+    request: Request, name: str, state: State, store: ReadStore, uploaded: bool = False
+) -> HTMLResponse:
+    path = _cv_file(state, name)
+    return render(
+        request,
+        state,
+        "cv.html",
+        store,
+        cv_name=name,
+        text=path.read_text(),
+        is_master=path.resolve() == state.config.cv_path.resolve(),
+        uploaded=uploaded,
+    )
+
+
+@router.post("/settings/cvs/{name}", dependencies=[Depends(require_htmx)])
+def save_cv(
+    request: Request, name: str, state: State, text: Annotated[str, Form()] = ""
+) -> HTMLResponse:
+    path = _cv_file(state, name)
+    if not text.strip():
+        return _result(request, state, False, "The CV is empty; nothing was saved.")
+    cvs.save_cv(state.config.cv_path, name, text)
+    details = []
+    if path.resolve() == state.config.cv_path.resolve():
+        details.append("This is the master CV: every open job is re-ranked on the next run.")
+    return _result(request, state, True, "Saved.", details)
+
+
+@router.post("/settings/cvs/{name}/master", dependencies=[Depends(require_htmx)])
+def make_master(name: str, state: State) -> Response:
+    _cv_file(state, name)
+    cvs.make_master(state.config.cv_path, name, state.backup_dir / "cvs")
+    return htmx_redirect("/settings?master=1")
+
+
+@router.post("/settings/cvs/{name}/delete", dependencies=[Depends(require_htmx)])
+def delete_cv(request: Request, name: str, state: State) -> Response:
+    _cv_file(state, name)
+    try:
+        cvs.delete_cv(state.config.cv_path, name)
+    except cvs.CvError as exc:
+        return _result(request, state, False, str(exc))
+    return htmx_redirect("/settings")
+
+
+def _config_file(key: str) -> settings.ConfigFile:
+    file = settings.FILES.get(key)
+    if file is None:
+        raise HTTPException(404)
+    return file
+
+
+@router.get("/settings/files/{key}", response_class=HTMLResponse)
+def config_file_page(request: Request, key: str, state: State, store: ReadStore) -> HTMLResponse:
+    file = _config_file(key)
+    path = file.path(state.config, state.config_path)
+    exists = path.is_file()
+    return render(
+        request,
+        state,
+        "config_file.html",
+        store,
+        file=file,
+        path=path,
+        exists=exists,
+        text=path.read_text() if exists else settings.example_text(file),
+        example=settings.example_text(file),
+    )
+
+
+def _check(request: Request, state: WebState, key: str, text: str, write: bool) -> HTMLResponse:
+    file = _config_file(key)
+    path = file.path(state.config, state.config_path)
+    model, errors = settings.parse(file, text)
+    if model is None:
+        return _result(
+            request, state, False, "Not saved: fix these first." if write else "Invalid:", errors
+        )
+    old = path.read_text() if path.is_file() else ""
+    notes = settings.effects(file, old, model)
+    if not write:
+        return _result(
+            request, state, True, "Valid. Saving it would:" if notes else "Valid.", notes
+        )
+    backup = settings.save(path, text, state.backup_dir)
+    if key == "config":
+        state.reload_config()
+    if backup is not None:
+        notes.append(f"The previous version is in {backup}.")
+    return _result(request, state, True, f"Saved {path.name}.", notes)
+
+
+@router.post("/settings/files/{key}/check", dependencies=[Depends(require_htmx)])
+def check_config_file(
+    request: Request, key: str, state: State, text: Annotated[str, Form()] = ""
+) -> HTMLResponse:
+    return _check(request, state, key, text, write=False)
+
+
+@router.post("/settings/files/{key}", dependencies=[Depends(require_htmx)])
+def save_config_file(
+    request: Request, key: str, state: State, text: Annotated[str, Form()] = ""
+) -> HTMLResponse:
+    return _check(request, state, key, text, write=True)
+
+
+def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # One normal open at startup creates the DB and schema on a fresh install,
@@ -305,6 +489,7 @@ def create_app(config: Config) -> FastAPI:
     tz = ZoneInfo(config.schedule.timezone)
     app.state.web = WebState(
         config=config,
+        config_path=config_path or config_file_path(),
         templates=_make_templates(tz),
         tz=tz,
         ranking=views.ranking_config_cache(config.ranking_config),
@@ -325,4 +510,4 @@ def create_app(config: Config) -> FastAPI:
 
 def create_app_from_env() -> FastAPI:
     """Factory for `uvicorn --reload`, which needs an import string."""
-    return create_app(load_config())
+    return create_app(load_config(), config_file_path())

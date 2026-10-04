@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Settings · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if request.query_params.get("master") %}
+  <div class="result ok"><strong>Master CV replaced.</strong> The previous master was backed up; every open job is re-ranked on the next ranking run.</div>
+{% endif %}
+
+<section>
+  <h2>CVs</h2>
+  <p class="muted small">The <b>master</b> CV is what ranking scores jobs against. The others are reference CVs
+    (older or role-specific versions) kept for drafting. Files live in <code>{{ master.parent }}</code>.</p>
+  {% if cvs %}
+  <table class="jobs">
+    <thead><tr><th>CV</th><th></th><th>Size</th><th>Changed</th></tr></thead>
+    <tbody>
+    {% for cv in cvs %}
+      <tr>
+        <td><a href="/settings/cvs/{{ cv.name }}">{{ cv.name }}.md</a></td>
+        <td>{% if cv.is_master %}<span class="chip good">master</span>{% endif %}</td>
+        <td class="num">{{ (cv.size / 1024)|round(1) }} KB</td>
+        <td>{{ cv.modified|localtime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No CVs yet. Upload one below; the first should become the master.</p>
+  {% endif %}
+
+  <form class="upload" hx-post="/settings/cvs" hx-encoding="multipart/form-data" hx-target="#upload-result">
+    <label>Upload a CV ({{ upload_types }}, up to {{ max_mb }} MB)
+      <input type="file" name="file" accept="{{ upload_types }}" required>
+    </label>
+    <button type="submit">Upload and convert</button>
+    <span class="muted small">PDF and Word files are converted to Markdown; you can review the text next.</span>
+  </form>
+  <div id="upload-result"></div>
+</section>
+
+<section>
+  <h2>Configuration</h2>
+  <p class="muted small">Edited as YAML, so comments are kept. Each save is validated first and the previous version is backed up to <code>{{ config.data_dir }}/backups</code>.</p>
+  <dl class="facts">
+  {% for f, path in files %}
+    <dt><a href="/settings/files/{{ f.key }}">{{ f.title }}</a></dt>
+    <dd>{{ f.description }} <span class="muted small"><code>{{ path }}</code>{% if not path.is_file() %} (doesn't exist yet){% endif %}</span></dd>
+  {% endfor %}
+  </dl>
+</section>
+{% endblock %}

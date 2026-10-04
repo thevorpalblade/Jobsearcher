@@ -80,7 +80,7 @@ jobsearcher list            # score, ✉ = has contact info
 jobsearcher show <job-id>   # full record + ranking rationale as JSON
 jobsearcher llm-check       # test the configured Kimi/Claude models
 jobsearcher budget          # LLM spend this month
-jobsearcher web             # web UI on http://127.0.0.1:8080
+jobsearcher web             # web UI on http://127.0.0.1:8080 (Settings: CVs + config files)
 jobsearcher companies --detect  # target companies (companies.yaml): ATS found, open jobs
 jobsearcher signals         # company news → companies worth a spontaneous application
 pytest && ruff check .

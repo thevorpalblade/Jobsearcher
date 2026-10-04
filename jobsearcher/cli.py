@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from jobsearcher.config import Config, load_config
+from jobsearcher.config import Config, config_file_path, load_config
 from jobsearcher.models import JobStatus
 from jobsearcher.pipeline import run_search, search_keywords
 from jobsearcher.store import Store
@@ -328,7 +328,9 @@ def cmd_web(config: Config, args: argparse.Namespace) -> int:
             workers=1,
         )
     else:
-        uvicorn.run(create_app(config), host=host, port=port, workers=1)
+        uvicorn.run(
+            create_app(config, config_file_path(args.config)), host=host, port=port, workers=1
+        )
     return 0
 
 

@@ -17,10 +17,11 @@ services:
       - ./cvs:/cvs:ro
       - ./data:/data
 
-  # Local web UI on port 8080. It needs no secrets, so there is no env_file. data/ is
-  # read-write for SQLite's WAL files and application tracking; cvs/ is only read to
-  # flag rankings made before a CV change. Docker's published ports bypass ufw and
-  # firewalld: on a server with a public IP, set WEB_BIND to a LAN or Tailscale address.
+  # Local web UI on port 8080. It needs no secrets, so there is no env_file. The config
+  # files and cvs/ are read-write so the Settings page can edit them (each save is
+  # backed up to data/backups/); data/ is read-write for SQLite's WAL files and
+  # application tracking. There is no login: Docker's published ports bypass ufw and
+  # firewalld, so on a server with a public IP set WEB_BIND to a LAN or Tailscale address.
   web:
     image: jobsearcher:local
     container_name: jobsearcher-web
@@ -31,9 +32,10 @@ services:
     ports:
       - "${WEB_BIND:-0.0.0.0}:8080:8080"
     volumes:
-      - ./config.yaml:/config/config.yaml:ro
-      - ./ranking.yaml:/config/ranking.yaml:ro
-      - ./cvs:/cvs:ro
+      - ./config.yaml:/config/config.yaml
+      - ./ranking.yaml:/config/ranking.yaml
+      - ./companies.yaml:/config/companies.yaml
+      - ./cvs:/cvs
       - ./data:/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]

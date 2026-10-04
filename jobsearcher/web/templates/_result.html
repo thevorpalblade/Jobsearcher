@@ -1,0 +1,5 @@
+{# Outcome of a settings action, swapped into the page's result box. #}
+<div class="result {{ 'ok' if ok else 'error' }}" role="status">
+  <strong>{{ message }}</strong>
+  {% if details %}<ul class="tight">{% for d in details %}<li>{{ d }}</li>{% endfor %}</ul>{% endif %}
+</div>

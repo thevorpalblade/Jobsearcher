@@ -32,7 +32,10 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
 - `jobsearcher/web/`: FastAPI + Jinja + HTMX UI (`docs/m3-web-ui.md`). `views.py`
   shapes data with no FastAPI; `app.py` has the routes. Routes are sync `def`s with a
   read-only `Store` per request (`get_store`); the web process needs no secrets and
-  never calls an LLM. HTMX is vendored in `web/static/` (no CDN).
+  never calls an LLM. HTMX is vendored in `web/static/` (no CDN). `/settings` edits
+  CVs (`cvs.py`: uploads converted to Markdown, master + reference CVs) and the
+  YAML configs as text (`settings.py`: validated, backed up to `data/backups/`,
+  written in place for Docker bind mounts). `.env` is never shown or edited.
 - `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
   `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse, SmartRecruiters)
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals

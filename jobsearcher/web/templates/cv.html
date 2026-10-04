@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ cv_name }} · CVs · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/settings">← Settings</a></p>
+<h1>{{ cv_name }}.md {% if is_master %}<span class="chip good">master</span>{% endif %}</h1>
+{% if uploaded %}
+  <div class="result ok"><strong>Converted.</strong> Check the text below: PDFs carry no headings,
+    so fix the structure and anything that came out garbled, then save.</div>
+{% endif %}
+{% if is_master %}
+  <p class="muted small">Ranking scores every job against this CV. Saving a change re-ranks every open job on the next run.</p>
+{% endif %}
+
+<form class="editor" hx-post="/settings/cvs/{{ cv_name }}" hx-target="#cv-result">
+  <textarea name="text" spellcheck="false">{{ text }}</textarea>
+  <div class="actions">
+    <button type="submit">Save</button>
+  </div>
+</form>
+<div id="cv-result"></div>
+
+{% if not is_master %}
+<div class="actions">
+  <form hx-post="/settings/cvs/{{ cv_name }}/master" hx-target="#cv-result"
+        hx-confirm="Replace the master CV with this one? The current master is backed up, and every job is re-ranked.">
+    <button type="submit">Make this the master CV</button>
+  </form>
+  <form hx-post="/settings/cvs/{{ cv_name }}/delete" hx-target="#cv-result"
+        hx-confirm="Delete {{ cv_name }}.md?">
+    <button type="submit" class="danger">Delete</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

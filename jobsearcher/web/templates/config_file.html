@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ file.title }} · Settings · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/settings">← Settings</a></p>
+<h1>{{ file.title }}</h1>
+<p class="muted">{{ file.description }}<br><code>{{ path }}</code>
+  {% if not exists %}<b>doesn't exist yet</b>: the editor starts from the example; saving creates it.{% endif %}</p>
+
+<div class="cols editor-cols">
+  <form class="editor" hx-target="#file-result">
+    <textarea name="text" spellcheck="false">{{ text }}</textarea>
+    <div class="actions">
+      <button type="submit" hx-post="/settings/files/{{ file.key }}/check">Check</button>
+      <button type="submit" hx-post="/settings/files/{{ file.key }}">Save</button>
+    </div>
+    <div id="file-result"></div>
+  </form>
+  {% if example %}
+  <details class="example" open>
+    <summary>Example with every option explained (<code>{{ file.example }}</code>)</summary>
+    <pre>{{ example }}</pre>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

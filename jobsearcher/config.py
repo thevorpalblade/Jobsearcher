@@ -152,8 +152,13 @@ def load_env_file(path: Path) -> None:
             os.environ.setdefault(key, value)
 
 
+def config_file_path(path: str | Path | None = None) -> Path:
+    """The config.yaml in use: `path`, else $JOBSEARCHER_CONFIG, else ./config.yaml."""
+    return Path(path or os.environ.get("JOBSEARCHER_CONFIG", "config.yaml"))
+
+
 def load_config(path: str | Path | None = None) -> Config:
-    path = Path(path or os.environ.get("JOBSEARCHER_CONFIG", "config.yaml"))
+    path = config_file_path(path)
     load_env_file(path.resolve().parent / ".env")
     raw = yaml.safe_load(path.read_text()) if path.exists() else {}
     config = Config.model_validate(raw or {})

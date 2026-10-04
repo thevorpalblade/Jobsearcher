@@ -14,6 +14,8 @@ dependencies = [
     "jinja2>=3.1",
     "openai>=1.40",
     "pydantic>=2.6",
+    "pypdf>=4",
+    "python-docx>=1.1",
     "python-multipart>=0.0.9",
     "pyyaml>=6",
     "tzdata",
@@ -25,6 +27,12 @@ dev = ["hatchling", "pytest>=8", "respx>=0.21", "ruff>=0.5"]
 
 [project.scripts]
 jobsearcher = "jobsearcher.cli:main"
+
+# The example configs ship inside the package, so the web UI can show them in Docker.
+[tool.hatch.build.targets.wheel.force-include]
+"config.example.yaml" = "jobsearcher/examples/config.example.yaml"
+"ranking.example.yaml" = "jobsearcher/examples/ranking.example.yaml"
+"companies.example.yaml" = "jobsearcher/examples/companies.example.yaml"
 
 [tool.ruff]
 line-length = 100
