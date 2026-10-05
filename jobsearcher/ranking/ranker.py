@@ -210,11 +210,12 @@ def run_ranking(
             todo.append((job, h))
         else:
             report.cached += 1
-    cap = config.prefilter.max_llm_calls_per_run
+    cap = config.prefilter.max_llm_calls_per_run or len(todo)  # 0 = no limit
     if len(todo) > cap:
         report.deferred = len(todo) - cap
         report.stopped_reason = "per-run limit reached"
     queue = deque(todo[:cap])
+    streak, stop_after = 0, config.prefilter.stop_after_failures  # failures in a row
 
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         pending: dict[Future[LLMResult], tuple[Job, str]] = {}
@@ -248,7 +249,16 @@ def run_ranking(
                         llm.record(exc.usage)
                     log.warning("Ranking %s (%s) failed: %s", job.id, job.title, exc)
                     report.failed += 1
+                    streak += 1
+                    if stop_after and streak >= stop_after and queue:
+                        report.deferred += len(queue)
+                        report.stopped_reason = (
+                            f"{streak} failures in a row (rate limit or outage?); "
+                            "the rest wait for the next run"
+                        )
+                        queue.clear()
                     continue
+                streak = 0
                 llm.record(result.usage)
                 ranking = Ranking(
                     job_id=job.id, input_hash=h, model=result.usage.model, assessment=result.parsed
@@ -256,7 +266,7 @@ def run_ranking(
                 store.save_ranking(job.id, h, ranking.model_dump_json())
                 _add_contacts(store, job, ranking.assessment.contact_persons)
                 report.ranked += 1
-                log.info("Ranked %d/%d: %s", report.ranked, len(todo[:cap]), job.title)
+                log.info("Ranked %d/%d: %s", report.ranked, min(len(todo), cap), job.title)
     return report
 
 

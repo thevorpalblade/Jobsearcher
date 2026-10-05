@@ -63,8 +63,14 @@ adjustments:
 prefilter:
   # Only send jobs that mention a target role (in title or ad text) to the LLM.
   require_role_match: true
-  # Cap on LLM ranking calls per run (protects the budget; the rest wait until the next run).
+  # Cap on LLM ranking calls per run; the rest wait until the next run. 0 = no limit,
+  # fine for a free model. Keep a cap for a provider on a Claude subscription
+  # (claude_code), which the dollar budget doesn't gate; paid providers are stopped
+  # by the budget anyway.
   max_llm_calls_per_run: 100
+  # Stop the run after this many failures in a row (rate limit or outage); the rest
+  # wait for the next run. 0 = never stop early.
+  stop_after_failures: 10
 
 drafting:
   # Jobs at or above this combined score get a tailored CV and cover letter.

@@ -323,3 +323,37 @@ def test_filter_fingerprint_includes_occupation_filters():
         target_roles=[TargetRole(name="Project manager", exclude_occupations=["Bygg"])]
     )
     assert plain.filter_fingerprint() != filtered.filter_fingerprint()
+
+
+def test_zero_cap_means_no_limit():
+    jobs = [_job(i, f"Projektledare {i}", published_day=i) for i in range(1, 9)]
+    config = load_ranking_config(EXAMPLE)
+    config.prefilter.max_llm_calls_per_run = 0
+    store, budgeted, llm, _ = _setup(jobs, config=config)
+    report = run_ranking(store, budgeted, config, CV, max_parallel=3)
+    assert (report.ranked, report.deferred, report.stopped_reason) == (8, 0, None)
+
+
+def test_a_streak_of_failures_stops_the_run():
+    """A provider that is rate-limiting shouldn't be asked for every remaining job."""
+    jobs = [_job(i, f"Projektledare {i}", published_day=i) for i in range(1, 11)]
+    config = load_ranking_config(EXAMPLE)
+    config.prefilter.max_llm_calls_per_run = 0
+    config.prefilter.stop_after_failures = 3
+    llm = FakeLLM(fail_titles={f"Projektledare {i}" for i in range(3, 11)})  # all but the 2 oldest
+    store, budgeted, _, _ = _setup(jobs, llm, config=config)
+    report = run_ranking(store, budgeted, config, CV)  # one at a time: a clean order
+    assert (report.ranked, report.failed, report.deferred) == (0, 3, 7)
+    assert "3 failures in a row" in report.stopped_reason
+    assert len(llm.prompts) == 3  # nothing more was sent
+
+    # A success resets the streak, so scattered failures don't stop the run.
+    llm = FakeLLM(fail_titles={"Projektledare 2", "Projektledare 4", "Projektledare 6"})
+    store, budgeted, _, _ = _setup(jobs, llm, config=config)
+    report = run_ranking(store, budgeted, config, CV)
+    assert (report.ranked, report.failed, report.stopped_reason) == (7, 3, None)
+
+    config.prefilter.stop_after_failures = 0  # never stop early
+    llm = FakeLLM(fail_titles={f"Projektledare {i}" for i in range(1, 11)})
+    store, budgeted, _, _ = _setup(jobs, llm, config=config)
+    assert run_ranking(store, budgeted, config, CV).failed == 10

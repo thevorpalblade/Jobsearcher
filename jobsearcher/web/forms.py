@@ -127,6 +127,9 @@ def ranking_data(form: FormData, old: dict[str, Any]) -> dict[str, Any]:
             "max_llm_calls_per_run": _number(
                 form, "prefilter-max_llm_calls_per_run", "Jobs ranked per run", errors, int
             ),
+            "stop_after_failures": _number(
+                form, "prefilter-stop_after_failures", "Stop after failures", errors, int
+            ),
         },
         "drafting": {
             "min_score": _number(form, "drafting-min_score", "Drafting minimum score", errors, int),

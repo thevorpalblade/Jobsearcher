@@ -92,7 +92,13 @@ class Adjustments(BaseModel):
 
 class Prefilter(BaseModel):
     require_role_match: bool = True
-    max_llm_calls_per_run: int = 100
+    # 0 = no limit: rank everything waiting. Sensible for a free model; keep a limit for
+    # a provider that draws on a subscription (claude_code), which the dollar budget
+    # doesn't gate. (Paid providers are already stopped by the budget.)
+    max_llm_calls_per_run: int = Field(100, ge=0)
+    # Stop the run after this many failures in a row (a provider that is rate-limiting
+    # or down); the rest wait for the next run. 0 = never stop early.
+    stop_after_failures: int = Field(10, ge=0)
 
 
 class DraftingThresholds(BaseModel):

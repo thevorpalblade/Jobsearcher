@@ -76,6 +76,9 @@
         <label class="check"><input type="checkbox" name="prefilter-require_role_match" value="1"{% if rc.prefilter.require_role_match %} checked{% endif %}>
           Only rank jobs that mention a target role</label>
         <label class="inline">Jobs ranked per run <input type="number" name="prefilter-max_llm_calls_per_run" value="{{ rc.prefilter.max_llm_calls_per_run }}" min="0" step="1"></label>
+        <p class="help">0 = no limit: rank everything waiting. Fine for a free model; keep a limit if ranking uses your Claude subscription.</p>
+        <label class="inline">Stop after failures in a row <input type="number" name="prefilter-stop_after_failures" value="{{ rc.prefilter.stop_after_failures }}" min="0" step="1"></label>
+        <p class="help">If the provider is rate-limiting or down, stop instead of failing every job; the rest wait for the next run. 0 = never stop early.</p>
       </fieldset>
       <fieldset class="plain">
         <legend>Drafting (applications)</legend>
