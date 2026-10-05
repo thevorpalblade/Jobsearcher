@@ -90,7 +90,9 @@ PLAN.md §6; implementation notes and decisions in
       Apply link, all source links, prefilter diagnostics; `/jobs/<id>.json`.
 - [x] Pending/excluded views and `/prefilter` (the web `occupations --groups`).
 - [x] Budget widget in the header and `/status` (last runs, counts, spend by model).
-- [ ] **Run it in Docker** on the server (`docker compose up -d --build`), check
+- [x] Running outside Docker as systemd user services (`deploy/install-systemd.sh`, 2026-10-05):
+      start at boot, restart on crash, journald logs.
+- [ ] **Run it in Docker** on the server (optional now) (`docker compose up -d --build`), check
       that compose builds `jobsearcher:local` once for both services and that
       the healthcheck passes.
 - [ ] Later (after M4): draft downloads and a Regenerate button. Regenerate

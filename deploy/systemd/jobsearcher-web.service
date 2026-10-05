@@ -1,0 +1,16 @@
+[Unit]
+Description=Jobsearcher web UI (dashboard, jobs, settings, chat)
+Documentation=file://@REPO@/README.md
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+Environment=PYTHONUNBUFFERED=1
+# --host 0.0.0.0 makes it reachable from the local network; the UI has no login, so
+# keep it on a trusted network. Use 127.0.0.1 to keep it on this machine only.
+ExecStart=@REPO@/.venv/bin/jobsearcher web --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

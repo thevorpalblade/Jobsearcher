@@ -1,0 +1,17 @@
+[Unit]
+Description=Jobsearcher daily pipeline (search, rank, news signals)
+Documentation=file://@REPO@/README.md
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+Environment=PYTHONUNBUFFERED=1
+# After a reboot the network may not be up yet; a search with no network would fail
+# every source, so wait (at most two minutes) until DNS answers.
+ExecStartPre=/usr/bin/timeout 120 /bin/sh -c 'until getent hosts jobsearch.api.jobtechdev.se >/dev/null; do sleep 3; done'
+ExecStart=@REPO@/.venv/bin/jobsearcher daemon
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

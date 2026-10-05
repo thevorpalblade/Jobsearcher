@@ -54,6 +54,22 @@ with a public IP, set `WEB_BIND` in `.env` to a LAN or Tailscale address
 Outside Docker: `jobsearcher web` serves it on `127.0.0.1:8080` (`--host`,
 `--port`, or `web:` in `config.yaml`).
 
+### Running from the checkout as systemd user services (no root, no Docker)
+
+```sh
+deploy/install-systemd.sh        # installs, enables and starts both services
+systemctl --user status jobsearcher-daemon jobsearcher-web
+journalctl --user -u jobsearcher-daemon -f      # logs (or -u jobsearcher-web)
+systemctl --user restart jobsearcher-daemon jobsearcher-web   # after changing code
+```
+
+`jobsearcher-daemon` runs the daily pipeline (search, rank, news signals; once at
+start-up, then at `schedule.daily_at`) and `jobsearcher-web` serves the UI on
+`0.0.0.0:8080` (edit the unit to use `127.0.0.1`). Both start at boot (the script turns
+on lingering), restart after a crash, and log to the journal. The chat in the web UI
+needs this mode (or `jobsearcher web` directly), since it uses the checkout and the
+`claude` CLI. Remove with `systemctl --user disable --now jobsearcher-daemon jobsearcher-web`.
+
 ## Arch Linux server setup
 
 ```sh
