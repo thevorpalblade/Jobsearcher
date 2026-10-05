@@ -1,7 +1,16 @@
 # M4: application drafting, on demand
 
-Replaces the original "draft the top N jobs every day" design (PLAN.md §5). Defaults
-below are proposals; the open questions at the end need the user's answers.
+Replaces the original "draft the top N jobs every day" design (PLAN.md §5). The user
+answered the open questions on 2026-10-05; see "Decisions".
+
+## Decisions
+
+1. **Always English**: she doesn't speak Swedish, so there is no language option; a
+   Swedish ad still gets an English letter.
+2. **Auto-draft when she shortlists a job**: yes, within `drafting.max_drafts_per_day`.
+3. **No in-browser editing**: she edits the downloaded Word file. The browser shows a
+   **Markdown preview** (rendered letter and CV) next to the downloads.
+4. **Grounding check by GLM** (the ranking model, free).
 
 ## Why on demand, not a daily batch
 
@@ -25,7 +34,7 @@ No daily batch. `drafting.max_drafts_per_day` stays only as a safety cap on auto
 
 One generation call returns structured JSON (`claude -p --json-schema`):
 
-- `cover_letter` (Markdown), in the chosen language, addressed to the named contact when
+- `cover_letter` (Markdown), in English, addressed to the named contact when
   the job has one with a person's name (never a generic mailbox, never invented),
   otherwise a neutral salutation.
 - `cv` (Markdown): the master CV (or the chosen reference CV) re-ordered and trimmed for
@@ -51,20 +60,13 @@ Swedish requirement), and her optional instructions. Chat context isn't used.
    claims are shown in red on the draft page, and the PDF/Word files carry no hidden
    changes. Nothing is ever silently shipped.
 
-## Language
-
-Letter and CV language: English by default, because her CV is English and she can read
-and check what she sends. A per-draft choice (English / Swedish) is on the form; for
-Swedish ads the form says the ad is Swedish and suggests asking her before choosing
-Swedish. (Open question 1.)
-
 ## Data model and caching
 
 - Table `drafts` already exists: `(job_id, input_hash, data, created_at)`. `data` is the
-  JSON above plus `language`, `model`, `prompt_version`, `instructions`, `grounding`
+  JSON above plus `model`, `prompt_version`, `instructions`, `grounding`
   (claims, flagged, repaired) and file names. Add `drafts.kind` ("job" | "company") and a
   nullable `company` for spontaneous drafts (new columns, migrated).
-- `input_hash` = hash(ad content, all CV texts, the ranking's requirement lists, language,
+- `input_hash` = hash(ad content, all CV texts, the ranking's requirement lists,
   instructions, model, prompt version): identical requests are free; changed
   instructions or CVs make a new version, and older versions stay listed.
 - Job status in the UI: none / queued / running / ready / needs review / failed.
@@ -82,7 +84,7 @@ Swedish. (Open question 1.)
 
 ## Where it's used
 
-- **Job page** (`{% block drafts %}`): a "Draft application" panel: language, optional
+- **Job page** (`{% block drafts %}`): a "Draft application" panel: optional
   instructions, base CV (master or a reference CV), a button. While running it polls
   (HTMX); when ready it shows the letter and CV rendered, the notes, any red flagged
   claims, and download buttons. "Regenerate with instructions" makes a new version.
@@ -124,12 +126,3 @@ drafts, the chat prompt mentioning `jobsearcher draft`.
 5. Dashboard button, shortlist trigger, daily cap.
 6. Spontaneous drafts from signals.
 7. Chat integration (system prompt) and docs.
-
-## Open questions (proposed defaults)
-
-1. **Swedish ads: English or Swedish letter?** Default: English unless she picks Swedish.
-2. **Auto-draft on shortlist?** Default: yes, capped by `max_drafts_per_day`.
-3. **Edit drafts in the browser** (then re-render the files)? Default: later, not in v1;
-   she can edit the downloaded Word file.
-4. **Grounding model:** the free GLM, or Claude Haiku on the subscription for a stricter
-   check? Default: GLM, switchable later.
