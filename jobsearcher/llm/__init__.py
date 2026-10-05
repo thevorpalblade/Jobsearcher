@@ -14,6 +14,7 @@ from jobsearcher.llm.base import (
     LLMUsage,
 )
 from jobsearcher.llm.budget import BudgetedLLM, BudgetTracker
+from jobsearcher.llm.ratelimit import limiter_for
 
 Role = Literal["ranking", "drafting", "grounding", "grounding_fallback"]
 
@@ -58,6 +59,7 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             enforce_schema=spec.enforce_schema,
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
+            limiter=limiter_for("nvidia", config.llm.nvidia_requests_per_minute),
         )
     else:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM

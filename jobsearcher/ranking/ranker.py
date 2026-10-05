@@ -185,6 +185,7 @@ class RankReport:
     failed: int = 0
     deferred: int = 0  # over the per-run cap or budget; picked up next run
     stopped_reason: str | None = None
+    stopped_on_failures: bool = False  # a failure streak ended the run: worth retrying soon
 
 
 def run_ranking(
@@ -252,6 +253,7 @@ def run_ranking(
                     streak += 1
                     if stop_after and streak >= stop_after and queue:
                         report.deferred += len(queue)
+                        report.stopped_on_failures = True
                         report.stopped_reason = (
                             f"{streak} failures in a row (rate limit or outage?); "
                             "the rest wait for the next run"

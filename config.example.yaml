@@ -89,6 +89,11 @@ llm:
   # grounding_fallback: {provider: claude_code, model: haiku}   # quick, on the subscription
   # grounding: {provider: nvidia, model: z-ai/glm-5.3-flash, timeout_s: 150, max_retries: 0}
 
+  # NVIDIA's free hosted API allows about 40 requests a minute per key (shared by all models)
+  # and answers 429 beyond it. Every NVIDIA request, retries included, is spaced to stay
+  # under this; 0 turns the limiter off (e.g. on a paid plan or a raised limit).
+  nvidia_requests_per_minute: 30
+
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%
   # Prices (USD per million tokens) for models not in the built-in table:
@@ -97,6 +102,11 @@ llm:
 
 schedule:
   daily_at: "06:00"
+  # If ranking or news classification stops because the provider keeps failing (a rate
+  # limit, an outage), try again after this many minutes, up to `retries` times and never
+  # into the next daily run. 0 retries = wait for the next daily run.
+  retry_minutes: 30
+  retries: 16
   timezone: "Europe/Stockholm"
 
 # Relative paths are resolved against this file's directory.

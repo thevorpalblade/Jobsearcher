@@ -77,12 +77,18 @@ def company_prompt(company: Company, rows: list) -> str:
     return "\n".join(lines)
 
 
+# Stop after this many failed batches in a row (a provider that is rate-limiting or down),
+# instead of sending every remaining batch to a provider that is refusing them.
+STOP_AFTER_FAILURES = 5
+
+
 @dataclass
 class ClassifyReport:
     items: int = 0
     classified: int = 0
     failed_batches: int = 0
     stopped_reason: str | None = None
+    stopped_on_failures: bool = False  # worth retrying soon
 
 
 def classify_news(
@@ -109,6 +115,7 @@ def classify_news(
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures: dict[Future[LLMResult], tuple[Company, list]] = {}
         queue = list(batches)
+        streak = 0  # failed batches in a row
         while queue or futures:
             while queue and len(futures) < max_parallel:
                 try:
@@ -138,7 +145,16 @@ def classify_news(
                         llm.record(exc.usage)
                     log.warning("Classifying news for %s failed: %s", company.name, exc)
                     report.failed_batches += 1
+                    streak += 1
+                    if streak >= STOP_AFTER_FAILURES and queue:
+                        report.stopped_on_failures = True
+                        report.stopped_reason = (
+                            f"{streak} failed batches in a row (rate limit or outage?); "
+                            "the rest wait for a retry"
+                        )
+                        queue.clear()
                     continue
+                streak = 0
                 llm.record(result.usage)
                 assessment: NewsAssessment = result.parsed  # type: ignore[assignment]
                 for signal in assessment.signals:

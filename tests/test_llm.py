@@ -259,10 +259,14 @@ def test_grounding_models_default_to_a_quick_ranking_model(monkeypatch):
 
     check = make_llm(config, "grounding", tracker)
     assert check.model == "z-ai/glm-5.3-flash" and check.purpose == "grounding"
-    sdk = check.client.client  # the OpenAI SDK client: short timeout, no automatic retries
-    assert (sdk.timeout, sdk.max_retries) == (150, 0)
-    ranking = make_llm(config, "ranking", tracker).client.client
-    assert (ranking.timeout, ranking.max_retries) == (600, 2)  # ranking is unchanged
+    # The SDK itself never retries (we do, rate limited); the grounding check is quick.
+    assert (check.client.client.timeout, check.client.client.max_retries) == (150, 0)
+    assert check.client.max_retries == 0 and check.client.limiter is not None
+    ranking = make_llm(config, "ranking", tracker).client
+    assert (ranking.client.timeout, ranking.client.max_retries, ranking.max_retries) == (600, 0, 2)
+    assert ranking.limiter is check.client.limiter  # one limiter for all NVIDIA calls
+    config.llm.nvidia_requests_per_minute = 0
+    assert make_llm(config, "ranking", tracker).client.limiter is None
 
     with pytest.raises(LLMError, match="No grounding fallback"):
         make_llm(config, "grounding_fallback", tracker)

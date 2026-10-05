@@ -199,6 +199,40 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
 - [ ] Dedupe can't merge the same ad under different titles across sources
       (e.g. "HR Business Partner" vs "Human Resources Business Partner").
 
+## NVIDIA free-tier limits (researched 2026-10-05)
+
+Ranking, news classification and draft checks run on GLM through NVIDIA's free hosted API
+(build.nvidia.com). What's known:
+
+- **About 40 requests per minute per API key**, shared by every model on the key; beyond
+  that, `429 Too Many Requests`. NVIDIA staff say they "don't currently publish the
+  limits for each model" and won't, since the limits "only apply to the APIs which are
+  for trial experiences". There is no `Retry-After` header and no quota counter.
+  Increases (40 to 200 requests per minute) are requested on the developer forum case by
+  case, with no official process. Older "1,000 credits" accounts were moved to the rate
+  limit. For unlimited use NVIDIA points to AI Enterprise, hosted-NIM providers (Together,
+  Baseten, Fireworks) or DGX Cloud.
+  Sources: forums.developer.nvidia.com/t/model-limits/331075,
+  forums.developer.nvidia.com/t/request-additional-api-credits-rate-limit-increase-for-build-nvidia-com-free-tier/379568,
+  decodethefuture.org/en/nvidia-nim-api-pricing-limits-guide/.
+- **Popular models also answer `504` when overloaded** (GLM 5.3 Flash did for most of
+  2026-10-05: ~40 timeouts an hour).
+- **What went wrong for us:** on 2026-10-05 the logs show 1,105 requests of which 185
+  succeeded, 400 were 504s and 520 were 429s, all of those in one 4-minute burst at
+  120-140 requests a minute. Failed calls were retried twice by the OpenAI library, and
+  news classification (130 batches) had no failure-streak stop, so fast failures
+  multiplied into a flood that kept the 429s going (still refused 25 minutes later).
+- **What we do now:** one limiter per process (`llm.nvidia_requests_per_minute: 30`) that
+  spaces every request, retries included; the SDK no longer retries on its own; a 429
+  pauses all NVIDIA calls for a doubling cooldown (30 s up to 10 min); ranking and news
+  classification stop after a streak of failures; and the daemon retries them every
+  `schedule.retry_minutes` (30), up to `schedule.retries` (16) times.
+
+- [ ] Ask on the NVIDIA developer forum for a higher limit, or move ranking to a paid
+      endpoint, if 40 requests a minute with a busy GLM endpoint stays too slow.
+- [ ] A per-minute limit isn't the only cap we might hit (unpublished per-model or daily
+      limits): if 429s persist at a low request rate, check build.nvidia.com's account page.
+
 ## Known caveats / tech debt
 
 - **Dedupe can over-merge:** two genuinely different ads with the same normalised

@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -38,6 +39,11 @@ def cmd_search(config: Config, args: argparse.Namespace) -> int:
         print(f"failed sources: {', '.join(report.failed_sources)}", file=sys.stderr)
         return 1
     return 0
+
+
+# Exit status of `rank` / `signals` when a provider failure streak stopped them early:
+# the daemon retries these after a pause.
+RETRY = 3
 
 
 def cmd_rank(config: Config, args: argparse.Namespace) -> int:
@@ -71,24 +77,37 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
     )
     if report.stopped_reason:
         print(f"stopped early: {report.stopped_reason}", file=sys.stderr)
+    if report.stopped_on_failures:
+        return RETRY
     return 1 if report.failed and not report.ranked else 0
 
 
-def cmd_run(config: Config, args: argparse.Namespace) -> int:
-    """One full pipeline pass: search, then rank; news signals when they're due."""
+def run_pipeline(config: Config, args: argparse.Namespace) -> tuple[int, bool]:
+    """One full pass: search, rank, then news signals (fetched weekly; leftovers are
+    classified every pass). Returns (exit status, retry): retry is True when ranking or
+    news classification stopped because the provider kept failing."""
     from jobsearcher.signals.run import due
 
     search_status = cmd_search(config, args)
     if search_status == 2:
-        return search_status
-    status = max(search_status, cmd_rank(config, args))
+        return search_status, False
+    rank_status = cmd_rank(config, args)
+    retry = rank_status == RETRY
+    status = max(search_status, 0 if retry else rank_status)
     if config.sources.companies and config.companies_config.is_file():
-        if due(Store(config.db_path), config.companies.signals_every_days):
-            signals_args = argparse.Namespace(
-                digest_only=False, days=None, min_relevance=40, limit=10
-            )
-            status = max(status, cmd_signals(config, signals_args))
-    return status
+        fetch = due(Store(config.db_path), config.companies.signals_every_days)
+        signals_args = argparse.Namespace(
+            digest_only=False, days=None, min_relevance=40, limit=10 if fetch else 0, fetch=fetch
+        )
+        signals_status = cmd_signals(config, signals_args)
+        retry = retry or signals_status == RETRY
+        status = max(status, 0 if signals_status == RETRY else signals_status)
+    return status, retry
+
+
+def cmd_run(config: Config, args: argparse.Namespace) -> int:
+    """One full pipeline pass: search, then rank; news signals when they're due."""
+    return run_pipeline(config, args)[0]
 
 
 def cmd_list(config: Config, args: argparse.Namespace) -> int:
@@ -222,16 +241,24 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
     companies = load_companies(config.companies_config)
     store = Store(config.db_path)
     days = args.days or config.companies.news_days
+    status = 0
+    if not args.digest_only and not getattr(args, "fetch", True):
+        from jobsearcher.signals.classify import PROMPT_VERSION as SIGNALS_VERSION
+
+        if not store.unclassified_news(SIGNALS_VERSION):
+            return 0  # nothing left over: no need to build a model client
 
     if not args.digest_only:
-        client = PoliteClient.from_config(config)
-        fetched = fetch_all_news(store, client, companies, days, config.news_source)
-        print(
-            f"news ({config.news_source}): {fetched.companies} companies, "
-            f"{fetched.new_items} new items"
-            + (f", failed: {', '.join(fetched.failed)}" if fetched.failed else ""),
-            file=sys.stderr,
-        )
+        if getattr(args, "fetch", True):  # fetching is weekly; classifying leftovers isn't
+            client = PoliteClient.from_config(config)
+            fetched = fetch_all_news(store, client, companies, days, config.news_source)
+            print(
+                f"news ({config.news_source}): {fetched.companies} companies, "
+                f"{fetched.new_items} new items"
+                + (f", failed: {', '.join(fetched.failed)}" if fetched.failed else ""),
+                file=sys.stderr,
+            )
+            store.set_last_run(RUN_KEY, datetime.now(UTC))
         if not config.cv_path.exists():
             print(f"Master CV not found at {config.cv_path}", file=sys.stderr)
             return 2
@@ -252,7 +279,8 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
             + (f"; stopped: {report.stopped_reason}" if report.stopped_reason else ""),
             file=sys.stderr,
         )
-        store.set_last_run(RUN_KEY, datetime.now(UTC))
+        if report.stopped_on_failures:
+            status = RETRY
 
     for entry in digest(store, companies, days, min_relevance=args.min_relevance)[: args.limit]:
         jobs = f", {entry.open_jobs} open jobs" if entry.open_jobs else ""
@@ -261,7 +289,7 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
             date = (row["published_at"] or "")[:10]
             print(f"     {row['relevance']:3d} {row['kind']:18} {date}  {row['summary']}")
             print(f"         {row['url']}")
-    return 0
+    return status
 
 
 def cmd_draft(config: Config, args: argparse.Namespace) -> int:
@@ -412,18 +440,60 @@ def seconds_until(daily_at: str, tz: ZoneInfo, now: datetime | None = None) -> f
     return (target - now).total_seconds()
 
 
+def retry_stalled(config: Config, args: argparse.Namespace) -> bool:
+    """Ranking and news classification again, after a provider failure streak stopped
+    them. Never searches or fetches news again. True if they are still stalled."""
+    stalled = cmd_rank(config, args) == RETRY
+    if config.sources.companies and config.companies_config.is_file():
+        signals_args = argparse.Namespace(
+            digest_only=False, days=None, min_relevance=40, limit=0, fetch=False
+        )
+        stalled = cmd_signals(config, signals_args) == RETRY or stalled
+    return stalled
+
+
+def daemon_cycle(
+    config: Config,
+    args: argparse.Namespace,
+    tz: ZoneInfo,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """One daily run, then, while a failing provider keeps ranking stalled, a retry every
+    `schedule.retry_minutes` (up to `schedule.retries`, and not into the next daily run)."""
+    _, stalled = run_pipeline(config, args)
+    attempt = 0
+    while stalled and attempt < config.schedule.retries:
+        pause = config.schedule.retry_minutes * 60
+        if pause <= 0 or seconds_until(config.schedule.daily_at, tz) <= pause:
+            break  # retries are off, or the next daily run is about to start
+        attempt += 1
+        log.info(
+            "The provider is failing: ranking retries in %d minutes (attempt %d of %d)",
+            config.schedule.retry_minutes,
+            attempt,
+            config.schedule.retries,
+        )
+        sleep(pause)
+        config = load_config(args.config)  # a config fix (e.g. another model) applies at once
+        try:
+            stalled = retry_stalled(config, args)
+        except Exception:
+            log.exception("Retry failed")
+            break
+
+
 def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
     """Run the pipeline once at startup (unless --no-initial-run), then daily."""
     tz = ZoneInfo(config.schedule.timezone)
     if not args.no_initial_run:
-        cmd_run(config, args)
+        daemon_cycle(config, args, tz)
     while True:
         wait = seconds_until(config.schedule.daily_at, tz)
         log.info("Next run in %.1f h", wait / 3600)
         time.sleep(wait)
         config = load_config(args.config)  # pick up config edits without a restart
         try:
-            cmd_run(config, args)
+            daemon_cycle(config, args, tz)
         except Exception:
             log.exception("Scheduled run failed")
 
