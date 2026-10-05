@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
+import yaml
 from fastapi import (
     APIRouter,
     Depends,
@@ -37,7 +38,7 @@ from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.ranker import job_details
 from jobsearcher.store import Store
-from jobsearcher.web import views
+from jobsearcher.web import forms, views
 
 WEB_DIR = Path(__file__).parent
 
@@ -473,6 +474,126 @@ def save_config_file(
     request: Request, key: str, state: State, text: Annotated[str, Form()] = ""
 ) -> HTMLResponse:
     return _check(request, state, key, text, write=True)
+
+
+# --- structured settings forms (ranking.yaml, companies.yaml) -----------------------
+
+
+def _file_data(state: WebState, key: str) -> tuple[settings.ConfigFile, Path, str]:
+    file = settings.FILES[key]
+    path = file.path(state.config, state.config_path)
+    return file, path, path.read_text() if path.is_file() else ""
+
+
+@router.get("/settings/ranking", response_class=HTMLResponse)
+def ranking_form(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    file, path, text = _file_data(state, "ranking")
+    model, errors = settings.parse(file, text)
+    return render(
+        request,
+        state,
+        "ranking_form.html",
+        store,
+        rc=model,
+        errors=errors,
+        path=path,
+        exists=path.is_file(),
+    )
+
+
+@router.get("/settings/companies", response_class=HTMLResponse)
+def companies_form(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    from collections import Counter
+
+    from jobsearcher.sources.ats import FETCHERS
+    from jobsearcher.sources.ats.common import feed_source
+
+    file, path, text = _file_data(state, "companies")
+    model, errors = settings.parse(file, text)
+    detected = store.company_ats()
+    open_jobs = Counter(
+        s.source for job in store.iter_jobs() for s in job.sources if ":" in s.source
+    )
+    rows = []
+    for company in model.companies if model else []:  # type: ignore[attr-defined]
+        row = detected.get(company.slug)
+        ats = company.ats.type if company.ats else (row["ats_type"] if row else None)
+        ref = company.ats.ref if company.ats else (row["ats_ref"] if row else None)
+        rows.append(
+            {
+                "company": company,
+                "ats": ats,
+                "ref": ref,
+                "supported": ats in FETCHERS,
+                "error": row["error"] if row and not ats else None,
+                "checked": row["checked_at"][:10] if row else None,
+                "jobs": open_jobs.get(feed_source(ats, ref), 0) if ats and ref else 0,
+            }
+        )
+    return render(
+        request,
+        state,
+        "companies_form.html",
+        store,
+        rows=rows,
+        errors=errors,
+        path=path,
+        exists=path.is_file(),
+        ats_types=list(FETCHERS),
+    )
+
+
+async def _submit_form(request: Request, key: str, write: bool) -> HTMLResponse:
+    """Validate (and with `write`, save) a structured settings form."""
+    require_htmx(request)
+    state = _state(request)
+    # ~12 fields per company: Starlette's default of 1,000 fields covers only ~80.
+    form = await request.form(max_fields=20_000)
+    file, path, old_text = _file_data(state, key)
+    try:
+        old = yaml.safe_load(old_text) if old_text.strip() else {}
+    except yaml.YAMLError:
+        return _result(
+            request, state, False, f"{path.name} has a YAML error; fix it in the YAML editor first."
+        )
+    old = old if isinstance(old, dict) else {}
+    try:
+        data = forms.ranking_data(form, old) if key == "ranking" else forms.companies_data(form)
+    except forms.FormErrors as exc:
+        return _result(request, state, False, "Not saved: fix these first.", exc.errors)
+    new_text = settings.merge_yaml(old_text, data)
+    model, errors = settings.parse(file, new_text)
+    if model is None:
+        return _result(request, state, False, "Not saved: fix these first.", errors)
+    notes = settings.effects(file, old_text, model)
+    if new_text == old_text:
+        return _result(request, state, True, "No changes.")
+    if not write:
+        return _result(request, state, True, "Valid. Saving would:" if notes else "Valid.", notes)
+    backup = settings.save(path, new_text, state.backup_dir)
+    if backup is not None:
+        notes.append(f"The previous version is in {backup}.")
+    return _result(request, state, True, f"Saved {path.name}.", notes)
+
+
+@router.post("/settings/ranking", response_class=HTMLResponse)
+async def save_ranking_form(request: Request) -> HTMLResponse:
+    return await _submit_form(request, "ranking", write=True)
+
+
+@router.post("/settings/ranking/check", response_class=HTMLResponse)
+async def check_ranking_form(request: Request) -> HTMLResponse:
+    return await _submit_form(request, "ranking", write=False)
+
+
+@router.post("/settings/companies", response_class=HTMLResponse)
+async def save_companies_form(request: Request) -> HTMLResponse:
+    return await _submit_form(request, "companies", write=True)
+
+
+@router.post("/settings/companies/check", response_class=HTMLResponse)
+async def check_companies_form(request: Request) -> HTMLResponse:
+    return await _submit_form(request, "companies", write=False)
 
 
 def create_app(config: Config, config_path: Path | None = None) -> FastAPI:

@@ -18,6 +18,7 @@ dependencies = [
     "python-docx>=1.1",
     "python-multipart>=0.0.9",
     "pyyaml>=6",
+    "ruamel.yaml>=0.18",
     "tzdata",
     "uvicorn>=0.30",
 ]

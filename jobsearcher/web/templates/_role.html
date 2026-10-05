@@ -1,0 +1,33 @@
+{# One target role in the ranking form. `i` is the block id ("__i__" in the template). #}
+<fieldset class="card role">
+  <div class="role-head">
+    <label class="grow">Role
+      <input name="role-{{ i }}-name" value="{{ role.name if role else '' }}" placeholder="e.g. HR Business Partner">
+    </label>
+    <button type="button" class="link danger" data-remove=".role" title="Remove this role">Remove</button>
+  </div>
+  <label>Also called
+    <span class="help">One per line, Swedish and English. Searched as keywords, and a job must mention one (as a whole word) to be ranked.</span>
+    <textarea name="role-{{ i }}-aliases" rows="3">{{ role.aliases|join('\n') if role else '' }}</textarea>
+  </label>
+  {% set has_filters = role and (role.exclude_occupations or role.except_occupations or role.include_occupations) %}
+  <details{% if has_filters %} open{% endif %}>
+    <summary>Occupation filters{% if has_filters %} <span class="chip">on</span>{% endif %}</summary>
+    <p class="help">Matched against Arbetsförmedlingen's occupation field or group (part of the name is enough, any case).
+      The <a href="/prefilter">Prefilter page</a> lists the labels in your jobs. Jobs without labels, like most company-feed jobs, always pass.</p>
+    <div class="grid3">
+      <label>Exclude
+        <span class="help">Jobs in these occupations don't count as this role.</span>
+        <textarea name="role-{{ i }}-exclude" rows="3">{{ role.exclude_occupations|join('\n') if role else '' }}</textarea>
+      </label>
+      <label>…except
+        <span class="help">Keep these even when an exclude matches (e.g. <i>logistik</i>).</span>
+        <textarea name="role-{{ i }}-except" rows="3">{{ role.except_occupations|join('\n') if role else '' }}</textarea>
+      </label>
+      <label>Only include
+        <span class="help">If set, only these occupations count.</span>
+        <textarea name="role-{{ i }}-include" rows="3">{{ role.include_occupations|join('\n') if role else '' }}</textarea>
+      </label>
+    </div>
+  </details>
+</fieldset>

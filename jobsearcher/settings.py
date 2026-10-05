@@ -149,3 +149,119 @@ def save(path: Path, text: str, backup_dir: Path) -> Path | None:
     with path.open("w") as f:
         f.write(text)
     return backup
+
+
+# --- structured editing: merge form values into the YAML, keeping comments -----------
+
+# A field set to DELETE in the form data is removed from the file (e.g. emptied).
+DELETE = None
+
+
+def _yaml() -> Any:
+    from ruamel.yaml import YAML
+
+    y = YAML()  # round-trip: keeps comments, key order, quoting and flow style
+    y.preserve_quotes = True
+    y.width = 4096  # never re-wrap lines (companies.yaml has one long line per company)
+    y.indent(mapping=2, sequence=4, offset=2)
+    return y
+
+
+def _plain(node: Any) -> Any:
+    """A ruamel node as plain Python values, for comparisons."""
+    if isinstance(node, dict):
+        return {k: _plain(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_plain(v) for v in node]
+    if isinstance(node, str):
+        return str(node)
+    return node
+
+
+def _new_node(value: Any, flow: bool = False) -> Any:
+    from ruamel.yaml.comments import CommentedMap, CommentedSeq
+
+    if isinstance(value, dict):
+        node = CommentedMap((k, _new_node(v)) for k, v in value.items() if v is not DELETE)
+        if flow:
+            node.fa.set_flow_style()
+        return node
+    if isinstance(value, list):
+        node = CommentedSeq(_new_node(v) for v in value)
+        if all(not isinstance(v, dict | list) for v in value):
+            node.fa.set_flow_style()  # short scalar lists read best as [a, b, c]
+        return node
+    return value
+
+
+def _merge(old: Any, new: Any, key: str | None = None) -> Any:
+    """`new` expressed as an edit of the ruamel node `old`: unchanged parts keep their
+    node (and so their comments and formatting)."""
+    from ruamel.yaml.comments import CommentedMap, CommentedSeq
+    from ruamel.yaml.scalarstring import ScalarString
+
+    if _plain(old) == new:
+        return old
+    if isinstance(new, dict) and isinstance(old, CommentedMap):
+        for k, v in new.items():
+            if v is DELETE:
+                old.pop(k, None)
+            elif k in old:
+                old[k] = _merge(old[k], v, k)
+            else:
+                old[k] = _new_node(v)
+        return old
+    if isinstance(new, list) and isinstance(old, CommentedSeq):
+        # Match mapping items by name, so editing or removing one company or role
+        # leaves the others' nodes (and comments) alone.
+        by_name = {
+            str(item.get("name")): item
+            for item in old
+            if isinstance(item, CommentedMap) and item.get("name") is not None
+        }
+        flow_items = any(isinstance(i, CommentedMap) and i.fa.flow_style() for i in old)
+        matches = []
+        for i, value in enumerate(new):
+            match = by_name.get(str(value.get("name"))) if isinstance(value, dict) else None
+            if match is None and not isinstance(value, dict) and i < len(old):
+                match = old[i]
+            matches.append(match)
+        kept = [id(m) for m in matches if m is not None]
+        if kept == [id(item) for item in old if id(item) in set(kept)]:
+            # Same order: delete and append in place. ruamel keeps comments by item
+            # position and shifts them on `del`, so other items keep theirs.
+            for i in reversed(range(len(old))):
+                if id(old[i]) not in set(kept):
+                    del old[i]
+            position = {id(item): i for i, item in enumerate(old)}
+            for match, value in zip(matches, new, strict=True):
+                if match is None:
+                    old.append(_new_node(value, flow_items))
+                else:
+                    i = position[id(match)]
+                    old[i] = _merge(match, value)
+            return old
+        old[:] = [  # reordered: rebuild (comments between items may move)
+            _merge(m, v) if m is not None else _new_node(v, flow_items)
+            for m, v in zip(matches, new, strict=True)
+        ]
+        return old
+    if isinstance(old, ScalarString) and isinstance(new, str):
+        return type(old)(new)  # keep folded (>-) or quoted style
+    return _new_node(new)
+
+
+def merge_yaml(text: str, data: dict[str, Any]) -> str:
+    """`text` with the values in `data` applied (DELETE removes a key), comments kept."""
+    import io
+
+    from ruamel.yaml.comments import CommentedMap
+
+    y = _yaml()
+    doc = y.load(text) if text.strip() else None
+    if not isinstance(doc, CommentedMap):
+        doc = CommentedMap()
+    _merge(doc, data)
+    out = io.StringIO()
+    y.dump(doc, out)
+    return out.getvalue()

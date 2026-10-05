@@ -1,0 +1,48 @@
+{# One company in the companies form. `i` is the block id ("__i__" in the template). #}
+{% set c = r.company if r else none %}
+<tr class="company{% if c and not c.enabled %} off{% endif %}">
+  <td class="center">
+    <input type="hidden" name="co-{{ i }}-enabled" value="0">
+    <input type="checkbox" name="co-{{ i }}-enabled" value="1" title="Crawl this company"{% if not c or c.enabled %} checked{% endif %}>
+  </td>
+  <td><input name="co-{{ i }}-name" value="{{ c.name if c else '' }}" placeholder="Company name" class="w-name"></td>
+  <td><input name="co-{{ i }}-website" value="{{ c.website or '' if c else '' }}" placeholder="https://…" class="w-url"></td>
+  <td><input name="co-{{ i }}-location" value="{{ c.location or '' if c else '' }}" placeholder="(from ATS)" class="w-loc"></td>
+  <td><input name="co-{{ i }}-tags" value="{{ c.tags|join(', ') if c else '' }}" placeholder="tag, tag" class="w-tags"></td>
+  <td class="ats">
+    {% if r and r.ats %}
+      <span class="chip{{ ' good' if r.supported else ' warn' }}" title="{{ r.ref }}{% if r.checked %} · checked {{ r.checked }}{% endif %}">{{ r.ats }}</span>
+      {% if not r.supported %}<span class="muted small">no adapter yet</span>{% endif %}
+    {% elif r and r.error %}
+      <span class="chip bad" title="{{ r.error }}">none found</span>
+    {% elif r %}
+      <span class="muted small">not checked</span>
+    {% else %}
+      <span class="muted small">new</span>
+    {% endif %}
+  </td>
+  <td class="num">{% if r and r.jobs %}{{ r.jobs }}{% endif %}</td>
+  <td>
+    <details class="more">
+      <summary>More</summary>
+      <div class="more-fields">
+        <label>Careers page <span class="help">When the home page doesn't link to it.</span>
+          <input name="co-{{ i }}-careers_url" value="{{ c.careers_url or '' if c else '' }}" placeholder="https://…"></label>
+        <label>ATS override <span class="help">When detection gets it wrong (e.g. H&amp;M: smartrecruiters / HMGroup).</span>
+          <span class="pair">
+            <select name="co-{{ i }}-ats_type">
+              <option value="">(detect)</option>
+              {% for t in ats_types %}<option{% if c and c.ats and c.ats.type == t %} selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+            <input name="co-{{ i }}-ats_ref" value="{{ c.ats.ref if c and c.ats else '' }}" placeholder="reference">
+          </span></label>
+        <label>News query <span class="help">GDELT query for news signals; needed for names under 4 characters.</span>
+          <input name="co-{{ i }}-news_query" value="{{ c.news_query or '' if c else '' }}" placeholder='"Name" sourcecountry:sweden'></label>
+        <label>Org. nr <input name="co-{{ i }}-org_nr" value="{{ c.org_nr or '' if c else '' }}"></label>
+        <label>Source <span class="help">Where this entry came from.</span>
+          <input name="co-{{ i }}-source" value="{{ c.source or '' if c else 'added in web UI' }}"></label>
+      </div>
+    </details>
+  </td>
+  <td><button type="button" class="link danger" data-remove="tr" title="Remove this company">✕</button></td>
+</tr>

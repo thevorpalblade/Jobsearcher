@@ -34,8 +34,11 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
   read-only `Store` per request (`get_store`); the web process needs no secrets and
   never calls an LLM. HTMX is vendored in `web/static/` (no CDN). `/settings` edits
   CVs (`cvs.py`: uploads converted to Markdown, master + reference CVs) and the
-  YAML configs as text (`settings.py`: validated, backed up to `data/backups/`,
-  written in place for Docker bind mounts). `.env` is never shown or edited.
+  YAML configs (`settings.py`: validated, backed up to `data/backups/`, written in
+  place for Docker bind mounts). Ranking and companies have real forms
+  (`web/forms.py`) whose values are merged into the YAML with ruamel
+  (`settings.merge_yaml`), so comments and formatting survive; config.yaml and an
+  "Edit as YAML" fallback use a text editor. `.env` is never shown or edited.
 - `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
   `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse, SmartRecruiters)
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals

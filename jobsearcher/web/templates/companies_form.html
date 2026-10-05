@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Companies · Settings · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/settings">← Settings</a></p>
+<div class="page-head">
+  <h1>Target companies</h1>
+  <a class="muted small" href="/settings/files/companies">Edit as YAML</a>
+</div>
+<p class="muted">Their careers sites are crawled for jobs on every search, and their news is watched for spontaneous-application signals.
+  Saved to <code>{{ path }}</code>{% if not exists %} (created on first save){% endif %}; comments in the file are kept.</p>
+
+{% if errors %}
+  <div class="result error"><strong>companies.yaml can't be loaded, so the form can't show it.</strong>
+    <ul class="tight">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    Fix it in the <a href="/settings/files/companies">YAML editor</a>.</div>
+{% else %}
+{% set supported = rows|selectattr('supported')|list|length %}
+<form class="settings-form" hx-target="#form-result">
+  <div class="toolbar">
+    <input type="search" placeholder="Filter companies…" data-filter="#companies tbody tr" aria-label="Filter companies">
+    <span class="muted small">{{ rows|length }} companies · {{ supported }} with a supported ATS ·
+      {{ rows|sum(attribute='jobs') }} open jobs from their feeds</span>
+    <button type="button" data-add="company-template" data-into="#companies tbody" data-where="afterbegin">+ Add a company</button>
+  </div>
+  <div class="table-scroll">
+    <table class="jobs edit" id="companies">
+      <thead><tr>
+        <th title="Crawl this company">On</th><th>Name</th><th>Website</th><th>Location</th><th>Tags</th>
+        <th>ATS</th><th class="num">Jobs</th><th></th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}{% set i = loop.index0 %}{% include "_company_row.html" %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <template id="company-template"><table><tbody>{% set r = none %}{% set i = "__i__" %}{% include "_company_row.html" %}</tbody></table></template>
+  <p class="help">New companies' ATS is detected on the next search, or right away with <code>jobsearcher companies --detect</code>.
+    Location is used when the feed has none (Varbi). Removing a row and saving drops the company.</p>
+
+  <div class="savebar">
+    <button type="submit" hx-post="/settings/companies/check">Check</button>
+    <button type="submit" class="primary" hx-post="/settings/companies">Save</button>
+    <div id="form-result"></div>
+  </div>
+</form>
+{% endif %}
+<script src="/static/settings.js" defer></script>
+{% endblock %}

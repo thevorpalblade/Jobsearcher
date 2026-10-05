@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Ranking · Settings · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/settings">← Settings</a></p>
+<div class="page-head">
+  <h1>Ranking</h1>
+  <a class="muted small" href="/settings/files/ranking">Edit as YAML</a>
+</div>
+<p class="muted">Which jobs get scored, and how. Saved to <code>{{ path }}</code>{% if not exists %} (created on first save){% endif %}; comments in the file are kept.</p>
+
+{% if rc is none %}
+  <div class="result error"><strong>ranking.yaml can't be loaded, so the form can't show it.</strong>
+    <ul class="tight">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    Fix it in the <a href="/settings/files/ranking">YAML editor</a>.</div>
+{% else %}
+<form class="settings-form" hx-target="#form-result">
+  <section>
+    <h2>Target roles</h2>
+    <p class="help">The roles you're looking for. Changing roles or preferences re-ranks every open job on the next run (free with GLM, but it takes a while).</p>
+    <div id="roles">
+      {% for role in rc.target_roles %}{% set i = loop.index0 %}{% include "_role.html" %}{% endfor %}
+    </div>
+    <button type="button" data-add="role-template" data-into="#roles">+ Add a role</button>
+    <template id="role-template">{% set role = none %}{% set i = "__i__" %}{% include "_role.html" %}</template>
+  </section>
+
+  <section>
+    <h2>Preferences</h2>
+    <p class="help">A brief for the ranking model, written the way you'd brief a recruiter.</p>
+    {% set p = rc.preferences %}
+    <div class="card">
+      <label>Situation
+        <span class="help">Facts the CV doesn't show (where you live, work permit) and how to weigh them.</span>
+        <textarea name="pref-situation" rows="3">{{ p.situation }}</textarea>
+      </label>
+      <div class="grid2">
+        <label>Seniority <textarea name="pref-seniority" rows="2">{{ p.seniority }}</textarea></label>
+        <label>Languages <textarea name="pref-languages" rows="2">{{ p.languages }}</textarea></label>
+      </div>
+      <div class="grid3">
+        <label>Likes <span class="help">One per line. Raise the score.</span>
+          <textarea name="pref-likes" rows="4">{{ p.likes|join('\n') }}</textarea></label>
+        <label>Dislikes <span class="help">One per line. Lower the score.</span>
+          <textarea name="pref-dislikes" rows="4">{{ p.dislikes|join('\n') }}</textarea></label>
+        <label>Dealbreakers <span class="help">One per line. Cap both scores at 10.</span>
+          <textarea name="pref-dealbreakers" rows="4">{{ p.dealbreakers|join('\n') }}</textarea></label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Scoring</h2>
+    <p class="help">Applied when scores are shown, so changes here are free and immediate: no re-ranking.</p>
+    <div class="card grid2">
+      <fieldset class="plain">
+        <legend>How fit and chances combine</legend>
+        <label class="inline">Fit <input type="number" name="weights-fit" value="{{ rc.weights.fit }}" step="0.05" min="0"></label>
+        <label class="inline">Chance of interview <input type="number" name="weights-success" value="{{ rc.weights.success }}" step="0.05" min="0"></label>
+        <p class="help">Relative weights; they don't need to add up to 1.</p>
+      </fieldset>
+      <fieldset class="plain">
+        <legend>Language adjustments (points, 0–100 scale)</legend>
+        <label class="inline">Ad in English <input type="number" name="adj-english_ad" value="{{ rc.adjustments.english_ad }}" step="1"></label>
+        <label class="inline">Swedish required <input type="number" name="adj-swedish_required" value="{{ rc.adjustments.swedish_required }}" step="1"></label>
+        <label class="inline">Swedish a merit <input type="number" name="adj-swedish_merit" value="{{ rc.adjustments.swedish_merit }}" step="1"></label>
+      </fieldset>
+    </div>
+  </section>
+
+  <section>
+    <h2>Limits</h2>
+    <div class="card grid2">
+      <fieldset class="plain">
+        <legend>Ranking</legend>
+        <input type="hidden" name="prefilter-require_role_match" value="0">
+        <label class="check"><input type="checkbox" name="prefilter-require_role_match" value="1"{% if rc.prefilter.require_role_match %} checked{% endif %}>
+          Only rank jobs that mention a target role</label>
+        <label class="inline">Jobs ranked per run <input type="number" name="prefilter-max_llm_calls_per_run" value="{{ rc.prefilter.max_llm_calls_per_run }}" min="0" step="1"></label>
+      </fieldset>
+      <fieldset class="plain">
+        <legend>Drafting (applications)</legend>
+        <label class="inline">Draft from score <input type="number" name="drafting-min_score" value="{{ rc.drafting.min_score }}" min="0" max="100" step="1"></label>
+        <label class="inline">Drafts per day <input type="number" name="drafting-max_drafts_per_day" value="{{ rc.drafting.max_drafts_per_day }}" min="0" step="1"></label>
+      </fieldset>
+    </div>
+  </section>
+
+  <div class="savebar">
+    <button type="submit" hx-post="/settings/ranking/check">Check</button>
+    <button type="submit" class="primary" hx-post="/settings/ranking">Save</button>
+    <div id="form-result"></div>
+  </div>
+</form>
+{% endif %}
+<script src="/static/settings.js" defer></script>
+{% endblock %}

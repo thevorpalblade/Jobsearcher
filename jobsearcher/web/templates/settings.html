@@ -40,12 +40,22 @@
 
 <section>
   <h2>Configuration</h2>
-  <p class="muted small">Edited as YAML, so comments are kept. Each save is validated first and the previous version is backed up to <code>{{ config.data_dir }}/backups</code>.</p>
-  <dl class="facts">
-  {% for f, path in files %}
-    <dt><a href="/settings/files/{{ f.key }}">{{ f.title }}</a></dt>
-    <dd>{{ f.description }} <span class="muted small"><code>{{ path }}</code>{% if not path.is_file() %} (doesn't exist yet){% endif %}</span></dd>
-  {% endfor %}
-  </dl>
+  <p class="muted small">Every save is checked first, keeps the comments in the file, and backs the previous version up to <code>{{ config.data_dir }}/backups</code>.</p>
+  <div class="cards">
+    <a class="card link-card" href="/settings/ranking">
+      <strong>Ranking</strong>
+      <span>Target roles and their aliases, occupation filters, preferences, score weights, language adjustments and limits.</span>
+    </a>
+    <a class="card link-card" href="/settings/companies">
+      <strong>Target companies</strong>
+      <span>The companies whose careers sites are crawled and whose news is watched: add, remove, turn off, fix ATS detection.</span>
+    </a>
+    <a class="card link-card" href="/settings/files/config">
+      <strong>General (config.yaml)</strong>
+      <span>Search locations and keywords, sources, LLM providers and models, budget, schedule. Edited as YAML; API keys stay in .env.</span>
+    </a>
+  </div>
+  <p class="muted small">Advanced: edit the raw YAML of
+    {% for f, path in files %}<a href="/settings/files/{{ f.key }}">{{ f.title }}</a>{{ ", " if not loop.last }}{% endfor %}.</p>
 </section>
 {% endblock %}
