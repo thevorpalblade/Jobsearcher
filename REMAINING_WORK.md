@@ -130,6 +130,11 @@ everything") and backups in `data/backups/`.
 
 ## 3. Drafting (M4)
 
+**Revised 2026-10-05: on demand, not a daily batch** — see [docs/m4-drafting.md](docs/m4-drafting.md)
+(draft from the job page or dashboard, auto-draft on shortlist, grounding check with a
+repair loop, Word + PDF via python-docx and LibreOffice, spontaneous drafts from signals).
+The items below are the original batch-oriented list; the plan supersedes where they differ.
+
 PLAN.md §5. Not started apart from the empty `drafts` table in
 `store.py` and the thresholds in `ranking.yaml` (`drafting.min_score`,
 `drafting.max_drafts_per_day`).
