@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
 from urllib.parse import urlencode, urlsplit
 
+from markupsafe import Markup
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from jobsearcher.config import LLMConfig
@@ -553,3 +554,16 @@ def dashboard_stats(rows: list[JobRow], last_runs: dict[str, datetime]) -> Dashb
         new=sum(r.age_days <= NEW_DAYS for r in rows),
         last_search=max(last_runs.values()) if last_runs else None,
     )
+
+
+_MARKDOWN = None
+
+
+def render_markdown(text: str) -> Markup:
+    """Markdown to safe HTML for the draft preview: raw HTML in the text is escaped."""
+    global _MARKDOWN
+    if _MARKDOWN is None:
+        from markdown_it import MarkdownIt
+
+        _MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False, "breaks": True})
+    return Markup(_MARKDOWN.render(text or ""))  # noqa: S704  (html is disabled above)

@@ -102,8 +102,12 @@ class Prefilter(BaseModel):
 
 
 class DraftingThresholds(BaseModel):
+    # Scores at or above this are marked as worth drafting in the UI.
     min_score: int = 70
+    # Drafts are made when asked for; shortlisting a job also starts one, up to this many
+    # a day (a safety cap on those automatic drafts, which use the Claude subscription).
     max_drafts_per_day: int = 5
+    auto_on_shortlist: bool = True
 
 
 class RankingConfig(BaseModel):

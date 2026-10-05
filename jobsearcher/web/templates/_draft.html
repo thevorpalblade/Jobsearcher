@@ -1,0 +1,78 @@
+{# The application-draft panel for a job or a company; HTMX swaps it as a whole. While a
+   draft is being written it polls itself every few seconds. #}
+{% set status = draft_status %}
+<section class="draft" id="draft"
+  {% if status and status.active %}hx-get="{{ draft_base }}/draft" hx-trigger="every 3s" hx-target="#draft" hx-swap="outerHTML"{% endif %}>
+  <h2>Application draft</h2>
+
+  {% if status and status.active %}
+    <p class="working">⏳ {{ "Waiting for its turn…" if status.state == "queued" else "Writing the CV and letter, then checking every claim against your CVs…" }}
+      <span class="muted small">This takes a minute or two; the page updates itself.</span></p>
+  {% else %}
+    {% if status and status.state == "failed" %}
+      <div class="result error"><strong>The draft didn't work.</strong> {{ status.error }}</div>
+    {% endif %}
+
+    {% if draft %}
+      <p>
+        {% if draft.needs_review %}<span class="chip warn">needs review</span>{% else %}<span class="chip good">checked against your CVs</span>{% endif %}
+        <span class="muted small">written {{ draft.created_at|localtime }} from <b>{{ draft.base_cv }}</b>
+          {% if draft.addressed_to %}· addressed to {{ draft.addressed_to }}{% endif %}
+          {% if draft.repaired %}· corrected once after the check{% endif %}</span>
+      </p>
+
+      {% if draft.flagged or draft.check_error %}
+      <div class="result error">
+        <strong>Please check these before using the draft.</strong>
+        {% if draft.check_error %}<p>{{ draft.check_error }}</p>{% endif %}
+        {% if draft.flagged %}
+          <p class="small">These statements couldn't be found in your CVs. Remove or fix them in the Word file, or regenerate with instructions.</p>
+          <ul class="tight">{% for claim in draft.flagged %}<li>{{ claim.claim }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if draft.notes %}
+      <div class="notes"><strong>Notes for you</strong>
+        <ul class="tight">{% for note in draft.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      <div class="actions">
+        {% for stem, label in (("letter", "Cover letter"), ("cv", "CV")) %}
+          {% for ext, name in (("pdf", "PDF"), ("docx", "Word"), ("md", "Markdown")) %}
+            {% if stem ~ "." ~ ext in draft.files %}
+              <a class="button secondary" href="{{ draft_base }}/draft/{{ draft.input_hash }}/{{ stem }}.{{ ext }}">{{ label }} · {{ name }}</a>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      </div>
+      {% if "letter.pdf" not in draft.files %}<p class="muted small">PDF files need LibreOffice on this machine; the Word files can be saved as PDF from Word.</p>{% endif %}
+
+      <details class="preview" open><summary>Cover letter</summary>
+        <div class="markdown">{{ draft.cover_letter|markdown }}</div></details>
+      <details class="preview"><summary>Tailored CV</summary>
+        <div class="markdown">{{ draft.cv|markdown }}</div></details>
+
+      {% if draft_versions|length > 1 %}
+        <p class="small muted">Earlier versions:
+          {% for d in draft_versions %}
+            {% if d.input_hash == draft.input_hash %}<b>{{ d.created_at|localtime }}</b>{% else %}<a href="{{ draft_base }}/draft?v={{ d.input_hash }}" hx-get="{{ draft_base }}/draft?v={{ d.input_hash }}" hx-target="#draft" hx-swap="outerHTML">{{ d.created_at|localtime }}</a>{% endif %}{{ " · " if not loop.last }}
+          {% endfor %}</p>
+      {% endif %}
+    {% else %}
+      <p class="muted">Nothing drafted yet. Claude writes a CV and cover letter for this {{ "company" if draft_key.startswith("company:") else "job" }} from your CVs, then checks every statement against them so nothing is invented.</p>
+    {% endif %}
+
+    <form class="draft-form" hx-post="{{ draft_base }}/draft" hx-target="#draft" hx-swap="outerHTML">
+      <label>{{ "What should change?" if draft else "Anything to emphasise?" }} <span class="help">Optional, in your own words: "lead with the merger work", "keep it shorter".</span>
+        <textarea name="instructions" rows="2">{{ draft.instructions if draft else "" }}</textarea></label>
+      {% if draft_cvs|length > 1 %}
+      <label>Start from <select name="base_cv">
+        {% for c in draft_cvs %}<option value="{{ c.name }}"{% if (draft and draft.base_cv == c.name) or (not draft and c.is_master) %} selected{% endif %}>{{ c.name }}{{ " (master)" if c.is_master }}</option>{% endfor %}
+      </select></label>
+      {% endif %}
+      <button type="submit" class="primary">{{ "Regenerate" if draft else "Draft application" }}</button>
+    </form>
+  {% endif %}
+</section>

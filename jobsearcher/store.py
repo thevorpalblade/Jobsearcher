@@ -592,6 +592,41 @@ class Store:
             self.conn.execute("DELETE FROM chat_messages WHERE session_id = ?", (chat_id,))
             self.conn.execute("DELETE FROM chat_sessions WHERE id = ?", (chat_id,))
 
+    # --- application drafts -----------------------------------------------
+
+    def save_draft(self, key: str, input_hash: str, data: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO drafts (job_id, input_hash, data, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (key, input_hash, data, _now().isoformat()),
+            )
+
+    def get_draft(self, key: str, input_hash: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM drafts WHERE job_id = ? AND input_hash = ?", (key, input_hash)
+        ).fetchone()
+
+    def list_drafts(self, key: str) -> list[sqlite3.Row]:
+        """All versions of a job's (or company's) draft, newest first."""
+        return self.conn.execute(
+            "SELECT * FROM drafts WHERE job_id = ? ORDER BY created_at DESC", (key,)
+        ).fetchall()
+
+    def latest_drafts(self) -> dict[str, sqlite3.Row]:
+        """The newest draft per job/company key."""
+        rows = self.conn.execute("SELECT * FROM drafts ORDER BY created_at")
+        return {row["job_id"]: row for row in rows}
+
+    def auto_drafts_since(self, since: datetime) -> int:
+        """Drafts started by shortlisting (not by a click) since `since`."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM drafts WHERE created_at >= ?"
+            " AND json_extract(data, '$.trigger') = 'shortlist'",
+            (since.isoformat(),),
+        ).fetchone()
+        return int(row[0])
+
     # --- news and signals -------------------------------------------------
 
     def save_news_items(self, items: list[dict[str, str | None]]) -> int:

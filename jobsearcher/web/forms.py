@@ -132,6 +132,7 @@ def ranking_data(form: FormData, old: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "drafting": {
+            "auto_on_shortlist": _field(form, "drafting-auto_on_shortlist") == "1",
             "min_score": _number(form, "drafting-min_score", "Drafting minimum score", errors, int),
             "max_drafts_per_day": _number(
                 form, "drafting-max_drafts_per_day", "Drafts per day", errors, int

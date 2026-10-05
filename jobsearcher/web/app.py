@@ -7,11 +7,12 @@ its own SQLite connection (see `get_store`), read-only unless it writes.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
@@ -29,6 +30,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import (
+    FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
@@ -41,8 +43,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher import chat as chat_module
 from jobsearcher import cvs, settings
+from jobsearcher.companies.config import Company, load_companies
 from jobsearcher.config import Config, config_file_path, load_config
 from jobsearcher.contacts import is_generic_email
+from jobsearcher.drafting import service as draft_service
+from jobsearcher.drafting.core import Draft
+from jobsearcher.drafting.manager import DraftManager
 from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.ranker import job_details
@@ -59,6 +65,7 @@ class WebState:
     templates: Jinja2Templates
     tz: ZoneInfo
     chat: chat_module.ChatManager
+    drafts: DraftManager
     ranking: views.MtimeCache[RankingConfig]  # ranking.yaml, reloaded when edited
     cv: views.MtimeCache[str | None]
     memo: views.PrefilterMemo
@@ -137,6 +144,7 @@ def _make_templates(tz: ZoneInfo) -> Jinja2Templates:
         return f"/static/{name}?v={version}"
 
     templates.env.globals["static"] = static_url
+    templates.env.filters["markdown"] = views.render_markdown
     templates.env.filters["localdate"] = local
     templates.env.filters["localtime"] = lambda v: local(v, "%Y-%m-%d %H:%M")
     templates.env.filters["usd"] = lambda v: f"${v:,.2f}"
@@ -176,6 +184,27 @@ def healthz(store: ReadStore) -> str:
     return "ok"
 
 
+def _draft_chips(state: WebState, store: Store) -> dict[str, str]:
+    """Per job or company key: "ready", "review" (needs review) or "working"."""
+    chips: dict[str, str] = {}
+    for key, row in store.latest_drafts().items():
+        chips[key] = "review" if Draft.model_validate_json(row["data"]).needs_review else "ready"
+    for key, status in state.drafts._status.items():
+        if status.active:
+            chips[key] = "working"
+    return chips
+
+
+def _spontaneous_suggestions(state: WebState, store: Store, limit: int = 4) -> list[Any]:
+    """Companies with a fresh, relevant news signal she could write to unprompted."""
+    from jobsearcher.signals.run import digest
+
+    path = state.config.companies_config
+    if not path.is_file():
+        return []
+    return digest(store, load_companies(path), state.config.companies.news_days, 50)[:limit]
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request, state: State, store: ReadStore, chat: str | None = None
@@ -204,6 +233,8 @@ def dashboard(
         "dashboard.html",
         store,
         top=views.top_rows(rows, 5),
+        drafts=_draft_chips(state, store),
+        companies=_spontaneous_suggestions(state, store),
         stats=views.dashboard_stats(rows, store.last_runs()),
         ranking=ctx.config,
         chats=chats,
@@ -317,6 +348,7 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
         ranked_at=latest[1] if latest else None,
         ranking=ctx.config,
         states=list(ApplicationState),
+        **_draft_context(state, store, job_id, f"/jobs/{job_id}"),
     )
 
 
@@ -356,7 +388,27 @@ def set_state(
         raise HTTPException(404)
     current = store.get_application(job_id)
     app = store.set_application(job_id, new_state, current.notes if current else "")
+    if new_state == ApplicationState.SHORTLISTED:
+        _draft_on_shortlist(state, store, job_id)
     return _tracking_response(request, state, store, job_id, app)
+
+
+def _draft_on_shortlist(state: WebState, store: Store, job_id: str) -> None:
+    """Shortlisting shows interest: start a draft unless one exists or is on its way, or
+    today's automatic drafts have used up the cap."""
+    settings_ = state.ranking.get().drafting
+    if not settings_.auto_on_shortlist or store.list_drafts(job_id):
+        return
+    status = state.drafts.status(job_id)
+    if status is not None and status.active:
+        return
+    midnight = datetime.now(state.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    if store.auto_drafts_since(midnight) + state.drafts.pending() >= settings_.max_drafts_per_day:
+        return
+    state.drafts.submit(
+        job_id,
+        lambda config, st: draft_service.draft_job(config, st, job_id, trigger="shortlist"),
+    )
 
 
 @router.post(
@@ -537,6 +589,158 @@ def save_config_file(
     request: Request, key: str, state: State, text: Annotated[str, Form()] = ""
 ) -> HTMLResponse:
     return _check(request, state, key, text, write=True)
+
+
+# --- application drafts --------------------------------------------------------------
+
+DRAFT_FILES = {"cv.md", "cv.docx", "cv.pdf", "letter.md", "letter.docx", "letter.pdf"}
+
+
+def _draft_context(
+    state: WebState, store: Store, key: str, base: str, version: str | None = None
+) -> dict[str, Any]:
+    """What the draft panel shows for a job or company: the chosen version, the
+    others, whether one is being written, and the CVs a draft can start from."""
+    drafts = [Draft.model_validate_json(r["data"]) for r in store.list_drafts(key)]
+    current = next((d for d in drafts if d.input_hash == version), None) or (
+        drafts[0] if drafts else None
+    )
+    return {
+        "draft_key": key,
+        "draft_base": base,
+        "draft": current,
+        "draft_versions": drafts,
+        "draft_status": state.drafts.status(key),
+        "draft_cvs": cvs.list_cvs(state.config.cv_path),
+        "draft_files_ok": True,
+    }
+
+
+def _draft_panel(request: Request, state: WebState, store: Store, key: str, base: str,
+                 version: str | None = None) -> HTMLResponse:  # fmt: skip
+    return render(request, state, "_draft.html", **_draft_context(state, store, key, base, version))
+
+
+def _download_name(draft: Draft, label: str, name: str, ext: str) -> str:
+    candidate = draft.cv.splitlines()[0].lstrip("# ").split(",")[0] if draft.cv else "Application"
+    parts = [candidate, label, "CV" if name.startswith("cv") else "Cover letter"]
+    return re.sub(r"[^A-Za-z0-9åäöÅÄÖ._-]+", "-", "-".join(parts)).strip("-") + "." + ext
+
+
+def _draft_file(state: WebState, store: Store, key: str, label: str, version: str, name: str):  # type: ignore[no-untyped-def]
+    row = store.get_draft(key, version)
+    if row is None or name not in DRAFT_FILES:
+        raise HTTPException(404)
+    draft = Draft.model_validate_json(row["data"])
+    path = draft_service.drafts_dir(state.config) / draft_service._safe_key(key) / version / name
+    if name not in draft.files or not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path, filename=_download_name(draft, label, name, path.suffix[1:]))
+
+
+@router.get("/jobs/{job_id}/draft", response_class=HTMLResponse)
+def job_draft_panel(
+    request: Request, job_id: str, state: State, store: ReadStore, v: str | None = None
+) -> HTMLResponse:
+    return _draft_panel(request, state, store, job_id, f"/jobs/{job_id}", v)
+
+
+@router.post(
+    "/jobs/{job_id}/draft", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def job_draft_start(
+    request: Request,
+    job_id: str,
+    state: State,
+    store: ReadStore,
+    instructions: Annotated[str, Form()] = "",
+    base_cv: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    if store.get_job(job_id) is None:
+        raise HTTPException(404)
+    state.drafts.submit(
+        job_id,
+        lambda config, st: draft_service.draft_job(
+            config, st, job_id, instructions.strip(), base_cv or None, force=True
+        ),
+    )
+    return _draft_panel(request, state, store, job_id, f"/jobs/{job_id}")
+
+
+@router.get("/jobs/{job_id}/draft/{version}/{name}")
+def job_draft_file(job_id: str, version: str, name: str, state: State, store: ReadStore):  # type: ignore[no-untyped-def]
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404)
+    return _draft_file(state, store, job_id, job.company or "Job", version, name)
+
+
+def _company(state: WebState, slug: str) -> Company:
+    for company in load_companies(state.config.companies_config):
+        if company.slug == slug:
+            return company
+    raise HTTPException(404)
+
+
+@router.get("/companies/{slug}", response_class=HTMLResponse)
+def company_page(request: Request, slug: str, state: State, store: ReadStore) -> HTMLResponse:
+    company = _company(state, slug)
+    since = datetime.now(UTC) - timedelta(days=draft_service.SIGNAL_DAYS)
+    signals = [r for r in store.signals_since(since) if r["company"] == slug]
+    open_jobs = [
+        j for j in store.iter_jobs() if (j.company or "").casefold() == company.name.casefold()
+    ]
+    key = draft_service.COMPANY_PREFIX + slug
+    return render(
+        request,
+        state,
+        "company.html",
+        store,
+        company=company,
+        signals=[s for s in signals if s["kind"] != "not_about_company"],
+        open_jobs=open_jobs,
+        **_draft_context(state, store, key, f"/companies/{slug}"),
+    )
+
+
+@router.get("/companies/{slug}/draft", response_class=HTMLResponse)
+def company_draft_panel(
+    request: Request, slug: str, state: State, store: ReadStore, v: str | None = None
+) -> HTMLResponse:
+    _company(state, slug)
+    return _draft_panel(
+        request, state, store, draft_service.COMPANY_PREFIX + slug, f"/companies/{slug}", v
+    )
+
+
+@router.post(
+    "/companies/{slug}/draft", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def company_draft_start(
+    request: Request,
+    slug: str,
+    state: State,
+    store: ReadStore,
+    instructions: Annotated[str, Form()] = "",
+    base_cv: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    company = _company(state, slug)
+    key = draft_service.COMPANY_PREFIX + slug
+    state.drafts.submit(
+        key,
+        lambda config, st: draft_service.draft_company(
+            config, st, company, instructions.strip(), base_cv or None, force=True
+        ),
+    )
+    return _draft_panel(request, state, store, key, f"/companies/{slug}")
+
+
+@router.get("/companies/{slug}/draft/{version}/{name}")
+def company_draft_file(slug: str, version: str, name: str, state: State, store: ReadStore):  # type: ignore[no-untyped-def]
+    company = _company(state, slug)
+    return _draft_file(
+        state, store, draft_service.COMPANY_PREFIX + slug, company.name, version, name
+    )
 
 
 # --- chat with Claude Code ----------------------------------------------------------
@@ -754,6 +958,7 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
         config=config,
         config_path=config_path or config_file_path(),
         chat=chat_module.ChatManager(config.chat, config.db_path, config.web.user_name),
+        drafts=DraftManager(lambda: app.state.web.config, config.db_path),
         templates=_make_templates(tz),
         tz=tz,
         ranking=views.ranking_config_cache(config.ranking_config),

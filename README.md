@@ -98,6 +98,7 @@ jobsearcher llm-check       # test the configured Kimi/Claude models
 jobsearcher budget          # LLM spend this month
 jobsearcher web             # web UI on http://127.0.0.1:8080: dashboard with the top five jobs and a
                             # chat with Claude Code (chat.enabled), jobs, Settings (CVs + config files)
+jobsearcher draft <job-id>   # tailored CV + cover letter for a job, checked against your CVs (also: --company)
 jobsearcher companies --detect  # target companies (companies.yaml): ATS found, open jobs
 jobsearcher signals         # company news → companies worth a spontaneous application
 pytest && ruff check .

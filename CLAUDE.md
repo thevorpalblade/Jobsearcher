@@ -16,6 +16,7 @@ in a local web UI. It runs in Docker on the user's Arch Linux home server.
 pip install -e '.[dev]'
 pytest                 # all tests run offline; keep it that way
 ruff check . && ruff format --check .
+jobsearcher draft <job id> [--instructions "..."] [--cv NAME]   # or --company NAME; jobsearcher drafts
 deploy/install-systemd.sh   # run the daemon + web UI as systemd user services (restart after code changes)
 jobsearcher --help     # search | rank | run | list | show | occupations | companies | signals | llm-check | budget | daemon | web
 jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), jobs (/jobs), chat with Claude Code
@@ -40,6 +41,11 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   (`web/forms.py`) whose values are merged into the YAML with ruamel
   (`settings.merge_yaml`), so comments and formatting survive; config.yaml and an
   "Edit as YAML" fallback use a text editor. `.env` is never shown or edited.
+- `jobsearcher/drafting/`: on-demand application drafts (`docs/m4-drafting.md`). `service.py` builds a job's
+  or company's request and runs `core.generate_draft`: Claude Code writes a tailored CV + cover letter
+  (English, JSON schema), GLM checks every claim against the CVs, one repair round, plus a model-free check
+  of figures. `render.py` makes Word (python-docx) and PDF (LibreOffice); `manager.py` runs web-triggered
+  drafts one at a time. Shortlisting a job starts one (`drafting.auto_on_shortlist`). Never invent experience.
 - `jobsearcher/chat.py`: the dashboard's chat; runs headless `claude -p` (stream-json, resumed per
   conversation) in this checkout with full permissions, one run at a time, off unless `chat.enabled`.
   The UI has no login, so chat routes need the HX-Request header and a non-public Host header.

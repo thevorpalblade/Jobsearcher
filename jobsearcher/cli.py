@@ -264,6 +264,68 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_draft(config: Config, args: argparse.Namespace) -> int:
+    """Draft a tailored CV and cover letter for a job, or a spontaneous application to a
+    company (--company); checked against the CVs. Prints where the files are."""
+    from jobsearcher.companies import load_companies
+    from jobsearcher.companies.config import slugify
+    from jobsearcher.drafting.service import DraftError, draft_company, draft_job, drafts_dir
+    from jobsearcher.llm import LLMError
+
+    store = Store(config.db_path)
+    try:
+        if args.company:
+            wanted = slugify(args.company)
+            companies = [c for c in load_companies(config.companies_config) if c.slug == wanted]
+            if not companies:
+                print(f"No company {args.company!r} in {config.companies_config}", file=sys.stderr)
+                return 1
+            draft = draft_company(
+                config, store, companies[0], args.instructions, args.cv, force=args.force
+            )
+        elif args.job_id:
+            draft = draft_job(
+                config, store, args.job_id, args.instructions, args.cv, force=args.force
+            )
+        else:
+            print("Give a job id, or --company NAME", file=sys.stderr)
+            return 2
+    except (DraftError, LLMError) as exc:
+        print(f"Draft failed: {exc}", file=sys.stderr)
+        return 1
+    folder = drafts_dir(config) / draft.key.replace(":", "-") / draft.input_hash
+    print(
+        f"draft {draft.input_hash} for {draft.key}: "
+        + ("NEEDS REVIEW" if draft.needs_review else "ready")
+    )
+    print(f"  files: {folder}  ({', '.join(draft.files)})")
+    print(
+        f"  checked {draft.claims_checked} claims" + (", repaired once" if draft.repaired else "")
+    )
+    if draft.check_error:
+        print(f"  {draft.check_error}")
+    for claim in draft.flagged:
+        print(f"  UNSUPPORTED: {claim.claim}")
+    for note in draft.notes:
+        print(f"  note: {note}")
+    return 0
+
+
+def cmd_drafts(config: Config, args: argparse.Namespace) -> int:
+    """List stored drafts, newest first."""
+    from jobsearcher.drafting.core import Draft
+
+    store = Store(config.db_path)
+    rows = sorted(store.latest_drafts().values(), key=lambda r: r["created_at"], reverse=True)
+    for row in rows:
+        draft = Draft.model_validate_json(row["data"])
+        job = store.get_job(draft.key)
+        title = f"{job.title} — {job.company}" if job else draft.key
+        flag = "needs review" if draft.needs_review else "ready"
+        print(f"{draft.created_at:%Y-%m-%d %H:%M}  {flag:12} {draft.key}  {title[:70]}")
+    return 0
+
+
 def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
     """Send one tiny request to each configured model to verify keys and pricing."""
     from pydantic import BaseModel
@@ -408,6 +470,16 @@ def main(argv: list[str] | None = None) -> int:
     p_sig.add_argument("--min-relevance", type=int, default=40)
     p_sig.add_argument("--limit", type=int, default=25)
 
+    p_draft = sub.add_parser(
+        "draft", help="draft a tailored CV and cover letter for a job (or --company)"
+    )
+    p_draft.add_argument("job_id", nargs="?", help="job id (shown in the job page's URL)")
+    p_draft.add_argument("--company", help="spontaneous application to a company in companies.yaml")
+    p_draft.add_argument("--instructions", default="", help="what to emphasise, in your words")
+    p_draft.add_argument("--cv", help="base the draft on this CV (a name from the CV list)")
+    p_draft.add_argument("--force", action="store_true", help="draft again even if cached")
+    sub.add_parser("drafts", help="list stored drafts")
+
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
 
@@ -438,6 +510,8 @@ def main(argv: list[str] | None = None) -> int:
         "occupations": cmd_occupations,
         "companies": cmd_companies,
         "signals": cmd_signals,
+        "draft": cmd_draft,
+        "drafts": cmd_drafts,
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
         "daemon": cmd_daemon,

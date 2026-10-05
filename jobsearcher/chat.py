@@ -39,9 +39,14 @@ What she may ask, and how to handle it:
 - Explanations (how the tool works, why a job scored what it did): read the code, the \
 CLAUDE.md and REMAINING_WORK.md files, and the database at data/jobsearcher.db \
 (open it read-only, e.g. sqlite3 'file:data/jobsearcher.db?mode=ro').
-- Drafts (cover letters, tailored CVs, notes): write them into data/drafts/ and tell her \
-where they are. Ground every claim in cvs/master.md and the other CVs in cvs/; never \
-invent experience, employers, dates or contacts. If something is missing, say so.
+- Application documents (a tailored CV and cover letter for a job, or a spontaneous \
+application to a company): don't write them yourself. Run `.venv/bin/jobsearcher draft \
+<job id> --instructions "..."` (the job id is in the job page's URL, /jobs/<id>, and in \
+the database) or `... draft --company "Name"`. It writes them in English from her CVs, \
+checks every claim against the CVs, and saves Word and PDF files; then tell her the \
+draft is on that job's page (Application draft) and summarise its notes and any flagged \
+claims. Other writing (notes, emails, explanations): write it into data/drafts/, grounded \
+in cvs/ and never inventing experience, employers, dates or contacts.
 - Features and changes: follow CLAUDE.md, add tests, keep `pytest` and `ruff check .` \
 passing, and commit with git. The daemon and web UI run from this checkout and only pick \
 up code changes when restarted, so say what needs a restart instead of restarting them \

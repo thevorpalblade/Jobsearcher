@@ -194,3 +194,23 @@ table.jobs th a.sort.active { color: var(--fg); }
 .chip-button { border-radius: 14px; padding: 4px 12px; background: var(--chip); }
 .chat-form textarea { width: 100%; resize: vertical; }
 .chat-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+
+/* Application drafts */
+.draft { margin: 18px 0; }
+.draft .working { padding: 10px 12px; background: var(--chip); border-radius: 6px; }
+.draft .notes { padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--chip); margin: 10px 0; }
+.draft .actions { margin: 10px 0; }
+.button.secondary { background: var(--chip); color: var(--fg); border: 1px solid var(--line); font-weight: 500; }
+details.preview { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+details.preview > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
+.markdown { padding: 4px 16px 12px; max-width: 46rem; }
+.markdown h1 { font-size: 1.25rem; text-align: center; margin: 0.4em 0; }
+.markdown h2 { font-size: 0.95rem; text-transform: uppercase; margin: 1.1em 0 0.3em; }
+.markdown h3 { font-size: 0.95rem; margin: 0.8em 0 0.1em; }
+.markdown p { margin: 0 0 0.7em; }
+.markdown ul { margin: 0.2em 0 0.7em; padding-left: 1.3em; }
+.draft-form { margin-top: 14px; }
+.draft-form label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; font-size: 0.9em; margin-bottom: 8px; max-width: 46rem; }
+.draft-form textarea { width: 100%; font-weight: 400; }
+.draft-form select { max-width: 22rem; font-weight: 400; }
+.top5-draft { margin-left: auto; padding-left: 12px; white-space: nowrap; align-self: center; }

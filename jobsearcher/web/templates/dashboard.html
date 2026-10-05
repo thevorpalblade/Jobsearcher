@@ -29,6 +29,12 @@
           </div>
           <div class="small">{{ a.rationale|truncate(190) }}</div>
         </div>
+        <div class="top5-draft">
+          {% set d = drafts.get(job.id) %}
+          {% if d == "working" %}<span class="chip">drafting…</span>
+          {% elif d %}<a class="chip {{ 'good' if d == 'ready' else 'warn' }}" href="/jobs/{{ job.id }}#draft">{{ "draft ready" if d == "ready" else "draft: review" }}</a>
+          {% else %}<a class="small" href="/jobs/{{ job.id }}#draft">Draft application →</a>{% endif %}
+        </div>
       </li>
     {% endfor %}
   </ol>
@@ -37,6 +43,31 @@
     <p class="muted">Nothing scored yet. The daily run (06:00) searches, then scores new jobs; <a href="/status">Status</a> shows its progress.</p>
   {% endif %}
 </section>
+
+{% if companies %}
+<section>
+  <h2>Companies worth a spontaneous application</h2>
+  <p class="muted small">Something is happening there that could soon need your experience, before any job is advertised.</p>
+  <ul class="top5">
+    {% for c in companies %}
+      <li class="card">
+        <span class="score{{ ' top' if c.score >= 70 }}">{{ c.score }}</span>
+        <div class="top5-body">
+          <a class="top5-title" href="/companies/{{ c.company.slug }}">{{ c.company.name }}</a>
+          <div class="small">{{ c.signals[0].summary|truncate(200) }}</div>
+          <div class="muted small">{{ c.signals[0].kind|replace("_", " ") }} · {{ c.signals[0].domain or "" }}{% if c.open_jobs %} · {{ c.open_jobs }} open jobs{% endif %}</div>
+        </div>
+        <div class="top5-draft">
+          {% set d = drafts.get("company:" ~ c.company.slug) %}
+          {% if d == "working" %}<span class="chip">drafting…</span>
+          {% elif d %}<a class="chip {{ 'good' if d == 'ready' else 'warn' }}" href="/companies/{{ c.company.slug }}#draft">{{ "draft ready" if d == "ready" else "draft: review" }}</a>
+          {% else %}<a class="small" href="/companies/{{ c.company.slug }}#draft">Draft →</a>{% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 
 <section>
   <h2>Ask Claude</h2>

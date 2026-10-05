@@ -93,7 +93,7 @@ Swedish requirement), and her optional instructions. Chat context isn't used.
   default on, within `max_drafts_per_day`).
 - **Chat:** the chat's Claude is told to use `jobsearcher draft` for application
   documents instead of free-handing them, so chat drafts get the same grounding check.
-- **CLI:** `jobsearcher draft <job_id> [--language en|sv] [--instructions "..."]
+- **CLI:** `jobsearcher draft <job_id> [--instructions "..."]
   [--cv NAME]`, `jobsearcher draft --company "Name"` (spontaneous), `jobsearcher drafts`
   (list). The web button runs the same code path in a background thread of the web
   process, using the drafting model (Claude Code on the subscription, no tools).

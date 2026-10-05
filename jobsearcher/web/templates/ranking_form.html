@@ -82,6 +82,9 @@
       </fieldset>
       <fieldset class="plain">
         <legend>Drafting (applications)</legend>
+        <input type="hidden" name="drafting-auto_on_shortlist" value="0">
+        <label class="check"><input type="checkbox" name="drafting-auto_on_shortlist" value="1"{% if rc.drafting.auto_on_shortlist %} checked{% endif %}>
+          Start a draft when I shortlist a job</label>
         <label class="inline">Draft from score <input type="number" name="drafting-min_score" value="{{ rc.drafting.min_score }}" min="0" max="100" step="1"></label>
         <label class="inline">Drafts per day <input type="number" name="drafting-max_drafts_per_day" value="{{ rc.drafting.max_drafts_per_day }}" min="0" step="1"></label>
       </fieldset>

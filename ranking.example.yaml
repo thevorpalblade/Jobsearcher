@@ -73,6 +73,9 @@ prefilter:
   stop_after_failures: 10
 
 drafting:
+  # Drafts are made when you ask (job page, dashboard); shortlisting a job also starts
+  # one automatically, up to max_drafts_per_day of those a day.
+  auto_on_shortlist: true
   # Jobs at or above this combined score get a tailored CV and cover letter.
   min_score: 70
   max_drafts_per_day: 5

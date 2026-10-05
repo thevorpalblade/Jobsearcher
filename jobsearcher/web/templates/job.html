@@ -120,7 +120,7 @@
 </section>
 </div>
 
-{% block drafts %}{% endblock %}
+{% block drafts %}{% include "_draft.html" %}{% endblock %}
 
 <h2>Ad text</h2>
 <div class="adtext">{{ job.description or "(no description)" }}</div>

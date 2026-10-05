@@ -14,7 +14,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M2a LLM layer: Kimi, NVIDIA (e.g. GLM), Claude API, Claude Code (subscription), budget | Done; Claude Code and NVIDIA GLM tested live, no real Kimi or Anthropic API call |
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done; all ~350 candidates ranked live with GLM on 2026-10-01; `calibrate` command missing |
 | M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
-| M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
+| M4 Drafting (tailored CV + cover letter, PDF/DOCX) | Done 2026-10-05: on demand, checked against the CVs (docs/m4-drafting.md) |
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
@@ -128,34 +128,23 @@ everything") and backups in `data/backups/`.
 - [ ] No login: the page writes personal files, so keep the UI on the LAN/Tailscale.
 - [ ] PDF conversion is plain text (no headings); scanned PDFs need OCR first.
 
-## 3. Drafting (M4)
+## 3. Drafting (M4): built 2026-10-05, on demand
 
-**Revised 2026-10-05: on demand, not a daily batch** — see [docs/m4-drafting.md](docs/m4-drafting.md)
-(draft from the job page or dashboard, auto-draft on shortlist, grounding check with a
-repair loop, Word + PDF via python-docx and LibreOffice, spontaneous drafts from signals).
-The items below are the original batch-oriented list; the plan supersedes where they differ.
+See [docs/m4-drafting.md](docs/m4-drafting.md). Draft from the job page, the dashboard
+or `jobsearcher draft`; shortlisting a job starts one (`drafting.auto_on_shortlist`, capped
+by `max_drafts_per_day`); spontaneous applications from news signals (`/companies/<slug>`).
+English only. Claude Code writes, GLM checks every claim against the CVs, one repair round,
+a model-free check of figures; anything unsupported marks the draft "needs review".
+Word via python-docx, PDF via LibreOffice, a Markdown preview in the browser.
 
-PLAN.md §5. Not started apart from the empty `drafts` table in
-`store.py` and the thresholds in `ranking.yaml` (`drafting.min_score`,
-`drafting.max_drafts_per_day`).
-
-- [ ] `jobsearcher draft`: for open jobs with `final_score >= min_score`, best
-      first, at most `max_drafts_per_day` per day. Use `make_llm(config, "drafting", ...)`;
-      the recommended provider is `claude_code` (subscription), which isn't
-      gated by the dollar budget, so the daily cap is what protects the user's
-      Pro usage limits.
-- [ ] Input: `cvs/master.md`, the ad, and the ranking. Output: a tailored CV
-      (Markdown) and a cover letter in the ad's language, addressed to a named
-      contact when there is one.
-- [ ] **Hard rule: never invent experience.** Add a grounding check (a second,
-      cheap call) that flags any claim not supported by the master CV. Flagged
-      drafts are marked for review, not silently shipped.
-- [ ] Cache drafts by a hash of (ad, CV, ranking, model, prompt version), as
-      ranking does.
-- [ ] Rendering: Markdown → PDF (Typst or WeasyPrint) and DOCX (pandoc), into
-      `data/drafts/`. The toolchain must be installed in the Docker image
-      (Debian-based `python:3.12-slim`; the server is Arch on x86-64).
-- [ ] Add drafting to `cmd_run` / the daily daemon after ranking.
+- [ ] Editing a draft in the browser (today: edit the downloaded Word file).
+- [ ] The grounding check is only as strict as GLM; a stricter model (Claude Haiku) is a
+      config switch away if drafts slip through.
+- [ ] Contacts addressed by name come from the ad or the ranking model (`llm:ad_text`);
+      check the name before sending.
+- [ ] PDF needs LibreOffice (not in the Docker image; the drafts also work in Docker
+      without it, as Word + Markdown).
+- [ ] A cover-letter template with her own letterhead / CV styling beyond the plain layout.
 
 ## 4. Contacts and tracking (M5)
 
