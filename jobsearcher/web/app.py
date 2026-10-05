@@ -115,6 +115,16 @@ def _make_templates(tz: ZoneInfo) -> Jinja2Templates:
             value = value.replace(tzinfo=UTC)
         return value.astimezone(tz).strftime(fmt)
 
+    def static_url(name: str) -> str:
+        """A static file's URL with a version that changes with the file, so browsers
+        fetch the new CSS/JS after an update instead of using a stale cached copy."""
+        try:
+            version = (WEB_DIR / "static" / name).stat().st_mtime_ns
+        except OSError:
+            version = 0
+        return f"/static/{name}?v={version}"
+
+    templates.env.globals["static"] = static_url
     templates.env.filters["localdate"] = local
     templates.env.filters["localtime"] = lambda v: local(v, "%Y-%m-%d %H:%M")
     templates.env.filters["usd"] = lambda v: f"${v:,.2f}"

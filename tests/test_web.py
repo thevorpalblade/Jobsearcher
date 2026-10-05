@@ -595,3 +595,11 @@ def test_rows_without_a_value_sort_last_both_ways(filter_jobs):
     for direction in ("asc", "desc"):
         titles = _titles(filter_jobs.client.get(f"/?sort=deadline&dir={direction}").text)
         assert titles[-1] == "Projektledare Okänd"  # no deadline
+
+
+def test_static_urls_are_versioned(web):
+    """Browsers cache CSS/JS; a version in the URL makes them fetch updated files."""
+    page = web.client.get("/").text
+    css = re.search(r'href="(/static/style\.css\?v=\d+)"', page)
+    assert css and re.search(r'src="/static/htmx\.min\.js\?v=\d+"', page)
+    assert web.client.get(css.group(1)).status_code == 200
