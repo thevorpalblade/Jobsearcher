@@ -48,9 +48,27 @@ class CrawlConfig(BaseModel):
         )
 
 
+class JobSpyConfig(BaseModel):
+    """LinkedIn, Indeed (and Glassdoor/Google) via JobSpy, the `jobspy` extra."""
+
+    sites: list[Literal["linkedin", "indeed", "glassdoor", "google"]] = Field(
+        default_factory=list
+    )  # empty: off
+    location: str = "Sweden"  # the search.locations filter then keeps your cities
+    country_indeed: str = "sweden"
+    # These sites only return recent ads, so each run asks for the last `hours_old`.
+    hours_old: int = 168
+    results_per_search: int = 20
+    # Not seeing a JobSpy ad again doesn't mean it's filled (older ads just aren't
+    # asked for), so these jobs expire by age instead.
+    max_age_days: int = 30
+    pause_s: float = 5.0  # between searches on one site, against rate limiting
+
+
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
+    jobspy: JobSpyConfig = Field(default_factory=JobSpyConfig)
     # Careers sites (ATS feeds) of the companies in companies.yaml.
     companies: bool = True
 

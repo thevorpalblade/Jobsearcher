@@ -25,6 +25,16 @@ sources:
   platsbanken: true
   jobtech_links: true
   companies: true          # careers-site feeds of the companies in companies.yaml
+  # LinkedIn and Indeed (also glassdoor, google) via JobSpy: pip install '.[jobspy]'.
+  # Scrapes the sites' public pages without a login, against their terms of service;
+  # keep the volume low. Searches the same keywords as the other sources.
+  jobspy:
+    sites: []                # e.g. [linkedin, indeed]; empty = off
+    location: Sweden         # search.locations then keeps your cities
+    hours_old: 168           # ads from the last week, each run
+    results_per_search: 20
+    max_age_days: 30         # these jobs expire by age (older ads aren't re-fetched)
+    pause_s: 5               # between searches, against rate limiting
 
 # How the crawler presents itself (company sites, ATS feeds, news). Per-host pacing
 # always applies. For a personal, low-volume setup you may prefer:

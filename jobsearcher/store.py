@@ -299,6 +299,35 @@ class Store:
             "SELECT COUNT(*) FROM jobs WHERE status = ?", (status,)
         ).fetchone()[0]
 
+    def expire_by_age(
+        self, sources: set[str], max_age_days: int, now: datetime | None = None
+    ) -> int:
+        """Expire open jobs listed on any of `sources` once their ad is older than
+        `max_age_days` (for sources that only return recent ads, where not seeing a
+        job again says nothing about whether it's filled). Contacts are deleted."""
+        now = now or _now()
+        cutoff = now - timedelta(days=max_age_days)
+        expired = 0
+        rows = self.conn.execute("SELECT id, data FROM jobs WHERE status = ?", (JobStatus.OPEN,))
+        with self.conn:
+            for row in rows.fetchall():
+                job = Job.model_validate_json(row["data"])
+                if not any(s.source in sources for s in job.sources):
+                    continue
+                published = job.published_at
+                if published is not None and published.tzinfo is None:
+                    published = published.replace(tzinfo=UTC)
+                if published is None or published >= cutoff:
+                    continue
+                job.status = JobStatus.EXPIRED
+                job.contacts = []
+                self.conn.execute(
+                    "UPDATE jobs SET status = ?, data = ? WHERE id = ?",
+                    (JobStatus.EXPIRED, job.model_dump_json(), row["id"]),
+                )
+                expired += 1
+        return expired
+
     def expire_jobs(
         self,
         expire_after_days: int,

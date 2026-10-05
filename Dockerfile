@@ -17,7 +17,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY jobsearcher ./jobsearcher
-RUN pip install --no-cache-dir .
+# The jobspy extra: LinkedIn/Indeed, and Chrome impersonation for crawling.
+RUN pip install --no-cache-dir '.[jobspy]'
 
 RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown app /data
 USER app
