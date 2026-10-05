@@ -833,3 +833,33 @@ def test_feed_retried_once_after_a_transient_error(monkeypatch):
     report = CompanyCrawlReport()
     assert list(crawl_feeds(feeds, FakeClient({}), keep_all, report, sleep=lambda s: None)) == []
     assert report.failed == ["lever:acme"] and calls[-2:] == [0, 0]  # tried twice, then gave up
+
+
+def test_workday_multi_location_jobs_use_a_swedish_additional_location():
+    """Xylem's "Senior Project Manager ... Global" is based in Herford (Germany) and also
+    open in Sundbyberg: the location filter must see Sundbyberg, not only Herford."""
+    from jobsearcher.pipeline import matches_filters
+    from jobsearcher.sources.ats import workday
+
+    def info(location, extra=None):
+        data = {"location": location, "jobDescription": "<p>Lead.</p>"}
+        return {"jobPostingInfo": data | ({"additionalLocations": extra} if extra else {})}
+
+    base = Job(
+        id="1",
+        title="Senior Project Manager Commercial Excellence",
+        sources=[SourceRef(source="workday:x", source_id="1")],
+    )
+    search = SearchConfig(locations=["Stockholm", "Göteborg"], include_remote=False)
+
+    herford = workday.with_details(base, info("Herford", ["Nanterre, France", "Sundbyberg"]))
+    assert herford.location == "Sundbyberg" and matches_filters(herford, search)
+    # Nothing Swedish among the extras: the main (foreign) location stays and it's dropped.
+    abroad = workday.with_details(base, info("Herford", ["Nanterre, France", "Madrid"]))
+    assert abroad.location == "Herford" and not matches_filters(abroad, search)
+    # A Swedish main location isn't replaced by an extra one.
+    sweden = workday.with_details(base, info("Sweden, Göteborg", ["Sundbyberg"]))
+    assert sweden.location == "Göteborg"
+    # A single string, or a county town outside the city list (Södertälje, Stockholms län).
+    one = workday.with_details(base, info("Herford", "Södertälje"))
+    assert one.location == "Södertälje" and matches_filters(one, search)

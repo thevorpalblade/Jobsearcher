@@ -15,6 +15,7 @@ from typing import Any
 
 from jobsearcher.companies.config import Company
 from jobsearcher.models import Job, SourceRef, make_job_id
+from jobsearcher.places import county_of
 from jobsearcher.sources.ats.common import (
     AtsClient,
     Wanted,
@@ -141,6 +142,24 @@ def parse_posting(
     )
 
 
+def best_location(info: dict[str, Any], fallback: str | None) -> str | None:
+    """The city to file a posting under. A posting can list several places ("6 Locations":
+    a main one, often abroad, plus additional ones); the main place wins unless an
+    additional one is somewhere we recognise as Swedish, which wins instead, so a job
+    based in Germany that is also open in Sundbyberg isn't dropped by the location filter."""
+    main = city_from(info.get("location")) or fallback
+    if main and (swedish_city(main) or county_of(main)):
+        return main
+    extra = info.get("additionalLocations") or []
+    if isinstance(extra, str):
+        extra = [extra]
+    for text in extra:
+        city = city_from(text)
+        if city and (swedish_city(text) or county_of(city)):
+            return city
+    return main
+
+
 def with_details(job: Job, detail: dict[str, Any]) -> Job:
     info = detail.get("jobPostingInfo") or {}
     url = info.get("externalUrl") or job.url
@@ -151,7 +170,7 @@ def with_details(job: Job, detail: dict[str, Any]) -> Job:
         "deadline": parse_datetime(info.get("endDate")),
         "url": url,
         "apply_url": url,
-        "location": city_from(info.get("location")) or job.location,
+        "location": best_location(info, job.location),
     }
     job = job.model_copy(update=update)
     job.sources[0].url = url
