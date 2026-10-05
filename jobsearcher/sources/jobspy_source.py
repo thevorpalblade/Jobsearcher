@@ -18,26 +18,9 @@ from typing import Any
 from jobsearcher.config import JobSpyConfig
 from jobsearcher.contacts import extract_contacts_from_text
 from jobsearcher.models import Job, SourceRef, make_job_id
+from jobsearcher.sources.ats.common import swedish_name
 
 log = logging.getLogger(__name__)
-
-# English place names the sites use, mapped to the Swedish ones Platsbanken and the
-# company feeds use, so dedupe can merge the same job across sources.
-_CITY_NAMES = {
-    "gothenburg": "Göteborg",
-    "goteborg": "Göteborg",
-    "malmo": "Malmö",
-    "linkoping": "Linköping",
-    "norrkoping": "Norrköping",
-    "vasteras": "Västerås",
-    "orebro": "Örebro",
-    "jonkoping": "Jönköping",
-    "umea": "Umeå",
-    "lulea": "Luleå",
-    "vaxjo": "Växjö",
-    "gavle": "Gävle",
-    "sodertalje": "Södertälje",
-}
 
 
 def available() -> bool:
@@ -63,7 +46,7 @@ def split_location(text: str | None) -> tuple[str | None, str | None]:
     parts = [p.strip() for p in str(text).split(",") if p.strip()]
     city = parts[0] if parts else None
     if city:
-        city = _CITY_NAMES.get(city.casefold(), city)
+        city = swedish_name(city)
     region = parts[1].removesuffix(" County").strip() if len(parts) > 2 else None
     return city, region
 

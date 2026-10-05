@@ -1,6 +1,13 @@
 """Adapters for applicant-tracking systems (ATS) that publish open job feeds."""
 
-from jobsearcher.sources.ats import greenhouse, lever, smartrecruiters, teamtailor, varbi
+from jobsearcher.sources.ats import (
+    greenhouse,
+    lever,
+    smartrecruiters,
+    teamtailor,
+    varbi,
+    workday,
+)
 from jobsearcher.sources.ats.common import AtsFetcher
 
 FETCHERS: dict[str, AtsFetcher] = {
@@ -9,6 +16,7 @@ FETCHERS: dict[str, AtsFetcher] = {
     "lever": lever.fetch_jobs,
     "greenhouse": greenhouse.fetch_jobs,
     "smartrecruiters": smartrecruiters.fetch_jobs,
+    "workday": workday.fetch_jobs,
 }
 
 __all__ = ["FETCHERS"]

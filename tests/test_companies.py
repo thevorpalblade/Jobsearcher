@@ -476,3 +476,119 @@ def test_browser_transport_lets_chrome_set_headers():
     method, url, kwargs = transport.session.calls[0]
     assert (method, url, kwargs["allow_redirects"]) == ("GET", "https://acme.se/jobs", False)
     assert {k.lower() for k in kwargs["headers"]} == {"referer"}  # Chrome sets the rest
+
+
+# --- Workday ---------------------------------------------------------------------
+
+
+def test_workday_ref_parsing_and_cities():
+    from jobsearcher.sources.ats.workday import city_from, parse_ref
+
+    assert parse_ref("essity.wd3.myworkdayjobs.com/en-US/Job_opportunities") == (
+        "essity.wd3.myworkdayjobs.com",
+        "essity",
+        "Job_opportunities",
+    )
+    assert parse_ref("saabgroup.wd116.myworkdayjobs.com/Saab_careers/job/Linkping")[2] == (
+        "Saab_careers"
+    )
+    with pytest.raises(ValueError):
+        parse_ref("example.com/careers")
+    assert city_from("Sweden, Gothenburg") == "Göteborg"
+    assert city_from("Stockholm - Solna") == "Stockholm"
+    assert city_from("3 Locations") is None
+
+
+def test_workday_sweden_facet_flat_and_nested():
+    from jobsearcher.sources.ats.workday import sweden_facet
+
+    flat = [{"facetParameter": "Country", "values": [{"descriptor": "Sweden", "id": "se"}]}]
+    nested = [
+        {
+            "facetParameter": "locationMainGroup",
+            "values": [
+                {
+                    "facetParameter": "locationCountry",
+                    "descriptor": "Location Country",
+                    "values": [
+                        {"descriptor": "Norway", "id": "no"},
+                        {"descriptor": "Sweden", "id": "se2"},
+                    ],
+                }
+            ],
+        }
+    ]
+    assert sweden_facet(flat) == ("Country", "se")
+    assert sweden_facet(nested) == ("locationCountry", "se2")
+    assert sweden_facet([{"facetParameter": "jobFamily", "values": []}]) is None
+
+
+class WorkdayClient:
+    """Serves a fake Workday API: two pages of Swedish jobs and their details."""
+
+    API = "https://acme.wd3.myworkdayjobs.com/wday/cxs/acme/External"
+
+    def __init__(self, facets=True):
+        self.facets, self.posts, self.details = facets, [], []
+
+    def post_json(self, url, body, headers=None):
+        assert url == f"{self.API}/jobs" and headers["Origin"].endswith("myworkdayjobs.com")
+        self.posts.append(body)
+        if body["limit"] == 1:
+            facets = [
+                {"facetParameter": "Country", "values": [{"descriptor": "Sweden", "id": "se"}]}
+            ]
+            return {"total": 99, "facets": facets if self.facets else []}
+        postings = [
+            {"title": "HR Business Partner", "externalPath": "/job/Sweden-Stockholm/HRBP_R1",
+             "locationsText": "Sweden, Stockholm", "bulletFields": ["R1"]},
+            {"title": "Plant manager", "externalPath": "/job/Sweden-Kiruna/PM_R2",
+             "locationsText": "Sweden, Kiruna", "bulletFields": ["R2"]},
+            {"title": "Change lead", "externalPath": "/job/x/CL_R3",
+             "locationsText": "2 Locations", "bulletFields": ["R3"]},
+        ]  # fmt: skip
+        return {"total": 3, "jobPostings": postings if body["offset"] == 0 else []}
+
+    def get_json(self, url, params=None, headers=None):
+        self.details.append(url)
+        location = "Sweden, Gothenburg" if url.endswith("CL_R3") else "Sweden, Stockholm"
+        return {
+            "jobPostingInfo": {
+                "jobDescription": "<p>Lead HR.</p>",
+                "location": location,
+                "startDate": "2026-10-01",
+                "endDate": "2026-10-20",
+                "timeType": "Full time",
+                "externalUrl": "https://acme.wd3.myworkdayjobs.com/External"
+                + url.split("External")[1],
+            }
+        }
+
+
+def test_workday_lists_sweden_and_fetches_wanted_details():
+    from jobsearcher.sources.ats import workday
+
+    client = WorkdayClient()
+    wanted = lambda job: job.location in ("Stockholm", "Göteborg")  # noqa: E731
+    jobs = list(
+        workday.fetch_jobs(client, "acme.wd3.myworkdayjobs.com/en-US/External", ACME, wanted)
+    )
+    assert [(j.title, j.location) for j in jobs] == [
+        ("HR Business Partner", "Stockholm"),
+        ("Change lead", "Göteborg"),  # "2 Locations": known only after its details
+    ]
+    assert client.posts[1]["appliedFacets"] == {"Country": ["se"]}
+    assert not any(u.endswith("PM_R2") for u in client.details)  # Kiruna: no detail request
+    job = jobs[0]
+    assert job.description == "Lead HR." and job.deadline.date().isoformat() == "2026-10-20"
+    assert job.sources[0].source == "workday:acme-wd3-myworkdayjobs-com-external"
+    assert job.sources[0].source_id == "R1"
+
+    no_facets = WorkdayClient(facets=False)  # a Sweden-only site: no country filter
+    assert (
+        len(
+            list(workday.fetch_jobs(no_facets, "acme.wd3.myworkdayjobs.com/External", ACME, wanted))
+        )
+        == 2
+    )
+    assert no_facets.posts[1]["appliedFacets"] == {}

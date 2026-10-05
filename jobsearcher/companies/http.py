@@ -161,8 +161,16 @@ class PoliteClient:
         parser = self._robots[origin]
         return parser is None or parser.can_fetch(self.user_agent, url)
 
-    def get(self, url: str, params: dict | None = None, retries: int = 3) -> httpx.Response:
-        """GET politely, retrying transient failures (network errors, 429, 5xx) with
+    def request(
+        self,
+        method: str,
+        url: str,
+        params: dict | None = None,
+        json: Any = None,
+        headers: dict[str, str] | None = None,
+        retries: int = 3,
+    ) -> httpx.Response:
+        """Send politely, retrying transient failures (network errors, 429, 5xx) with
         backoff that starts at the host's own pace."""
         if not self.allowed(url):
             raise RobotsDisallowed(f"robots.txt disallows {url}")
@@ -171,7 +179,7 @@ class PoliteClient:
         for attempt in range(retries + 1):
             self._wait(host)
             try:
-                resp = self.client.get(url, params=params)
+                resp = self.client.request(method, url, params=params, json=json, headers=headers)
             except httpx.TransportError:
                 if attempt == retries:
                     raise
@@ -179,13 +187,23 @@ class PoliteClient:
                 if resp.status_code != 429 and resp.status_code < 500 or attempt == retries:
                     resp.raise_for_status()
                     return resp
-            log.info("GET %s failed; retrying in %.0fs", url, delay)
+            log.info("%s %s failed; retrying in %.0fs", method, url, delay)
             self._sleep(delay)
             delay *= 2
         raise AssertionError("unreachable")
 
+    def get(
+        self, url: str, params: dict | None = None, headers: dict[str, str] | None = None
+    ) -> httpx.Response:
+        return self.request("GET", url, params=params, headers=headers)
+
     def get_text(self, url: str, params: dict | None = None) -> str:
         return self.get(url, params).text
 
-    def get_json(self, url: str, params: dict | None = None) -> Any:
-        return self.get(url, params).json()
+    def get_json(
+        self, url: str, params: dict | None = None, headers: dict[str, str] | None = None
+    ) -> Any:
+        return self.get(url, params, headers).json()
+
+    def post_json(self, url: str, body: Any, headers: dict[str, str] | None = None) -> Any:
+        return self.request("POST", url, json=body, headers=headers).json()

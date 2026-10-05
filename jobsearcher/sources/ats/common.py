@@ -6,7 +6,7 @@ import html
 import re
 from collections.abc import Callable, Iterator
 from html.parser import HTMLParser
-from typing import Protocol
+from typing import Any, Protocol
 
 from jobsearcher.companies.config import Company, slugify
 from jobsearcher.models import Job
@@ -23,9 +23,13 @@ class AtsFetcher(Protocol):
 
 
 class AtsClient(Protocol):
-    def get_json(self, url: str, params: dict | None = None) -> object: ...
+    def get_json(
+        self, url: str, params: dict | None = None, headers: dict[str, str] | None = None
+    ) -> object: ...
 
     def get_text(self, url: str, params: dict | None = None) -> str: ...
+
+    def post_json(self, url: str, body: Any, headers: dict[str, str] | None = None) -> Any: ...
 
 
 def feed_source(ats_type: str, ref: str) -> str:
@@ -81,15 +85,39 @@ SWEDISH_CITIES = (
 )  # fmt: skip
 
 
+# English place names some sources use, mapped to the Swedish ones Platsbanken uses,
+# so dedupe can merge the same job across sources.
+_CITY_NAMES = {
+    "gothenburg": "Göteborg",
+    "goteborg": "Göteborg",
+    "malmo": "Malmö",
+    "linkoping": "Linköping",
+    "norrkoping": "Norrköping",
+    "vasteras": "Västerås",
+    "orebro": "Örebro",
+    "jonkoping": "Jönköping",
+    "umea": "Umeå",
+    "lulea": "Luleå",
+    "vaxjo": "Växjö",
+    "gavle": "Gävle",
+    "sodertalje": "Södertälje",
+}
+
+
+def swedish_name(city: str) -> str:
+    """ "Gothenburg" -> "Göteborg"; other names unchanged."""
+    return _CITY_NAMES.get(city.strip().casefold(), city.strip())
+
+
 def swedish_city(text: str | None) -> str | None:
-    """The first Swedish city named in `text`, as written there, else None."""
+    """The first Swedish city named in `text` (Swedish spelling), else None."""
     if not text:
         return None
     lowered = text.lower()
     for city in SWEDISH_CITIES:
         i = lowered.find(city)
         if i >= 0:
-            return text[i : i + len(city)]
+            return swedish_name(text[i : i + len(city)])
     return None
 
 
