@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -86,23 +87,39 @@ def resolve_feeds(
     return feeds, detected
 
 
+FEED_RETRY_PAUSE_S = 15.0
+
+
 def crawl_feeds(
     feeds: list[CompanyFeed],
     client: PoliteClient,
     wanted: Callable[[Job], bool],
     report: CompanyCrawlReport,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> Iterator[Job]:
-    """Jobs from every company on a supported ATS. A failing feed is logged and
-    recorded in `report.failed`, and the crawl moves on."""
+    """Jobs from every company on a supported ATS. A feed that fails is retried once
+    after a pause (an ATS occasionally answers a one-off 400/5xx, e.g. Teamtailor for
+    Nobina); if it fails again it's logged and recorded in `report.failed`, and the
+    crawl moves on."""
     for feed in feeds:
         if not feed.supported:
             continue
         report.with_feed += 1
         fetch = FETCHERS[feed.ats_type]  # type: ignore[index]
-        try:
-            for job in fetch(client, feed.ats_ref, feed.company, wanted):  # type: ignore[arg-type]
-                report.jobs += 1
-                yield job
-        except (httpx.HTTPError, ValueError) as exc:  # network/HTTP errors, bad JSON/XML
-            log.warning("%s (%s) failed: %s", feed.company.name, feed.source, exc)
-            report.failed.append(feed.source)
+        seen: set[str] = set()  # a retry restarts the feed; don't yield its jobs twice
+        for attempt in (1, 2):
+            try:
+                for job in fetch(client, feed.ats_ref, feed.company, wanted):  # type: ignore[arg-type]
+                    if job.id in seen:
+                        continue
+                    seen.add(job.id)
+                    report.jobs += 1
+                    yield job
+                break
+            except (httpx.HTTPError, ValueError) as exc:  # network/HTTP errors, bad JSON/XML
+                if attempt == 1:
+                    log.info("%s (%s) failed: %s; retrying", feed.company.name, feed.source, exc)
+                    sleep(FEED_RETRY_PAUSE_S)
+                    continue
+                log.warning("%s (%s) failed: %s", feed.company.name, feed.source, exc)
+                report.failed.append(feed.source)

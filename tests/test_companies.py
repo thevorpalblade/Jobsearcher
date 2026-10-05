@@ -354,10 +354,14 @@ def test_failed_feed_is_reported_and_not_expired():
     store.upsert_job(_job(1, "lever:acme"), now=old)
     store.upsert_job(_job(2, "teamtailor:other"), now=old)
     feed_report = CompanyCrawlReport()
+    pauses = []
     from jobsearcher.companies.crawl import CompanyFeed
 
     feeds = [CompanyFeed(ACME, "lever", "acme")]
-    assert list(crawl_feeds(feeds, FakeClient({}), keep_all, feed_report)) == []
+    assert (
+        list(crawl_feeds(feeds, FakeClient({}), keep_all, feed_report, sleep=pauses.append)) == []
+    )
+    assert pauses == [15.0]  # retried once, after a pause
     assert feed_report.failed == ["lever:acme"]
     assert store.expire_jobs(3, skip_sources=set(feed_report.failed)) == 1
     assert store.get_job(_job(1, "lever:acme").id).status == JobStatus.OPEN
@@ -795,3 +799,37 @@ def test_detection_records_new_ats_refs():
         "reachmee",
         "web103.reachmee.com/ext/I017/653/policy?site=17&validator=abc",
     )
+
+
+def test_feed_retried_once_after_a_transient_error(monkeypatch):
+    """A one-off 400 (seen from Teamtailor for Nobina) shouldn't cost the whole feed."""
+    from jobsearcher.companies import crawl as crawl_module
+    from jobsearcher.companies.crawl import CompanyFeed
+
+    calls = []
+
+    def flaky(client, ref, company, wanted):
+        calls.append(len(calls) + 1)
+        yield _job(1, "lever:acme")
+        if len(calls) == 1:
+            raise httpx.HTTPStatusError(
+                "400", request=httpx.Request("GET", "https://x"), response=httpx.Response(400)
+            )
+        yield _job(2, "lever:acme")
+
+    monkeypatch.setitem(crawl_module.FETCHERS, "lever", flaky)
+    feeds = [CompanyFeed(ACME, "lever", "acme")]
+    report, pauses = CompanyCrawlReport(), []
+    jobs = list(crawl_feeds(feeds, FakeClient({}), keep_all, report, sleep=pauses.append))
+    assert [j.title for j in jobs] == ["Job 1", "Job 2"]  # job 1 isn't yielded twice
+    assert (len(calls), pauses, report.failed, report.jobs) == (2, [15.0], [], 2)
+
+    def broken(client, ref, company, wanted):
+        calls.append(0)
+        raise httpx.ConnectError("down")
+        yield  # pragma: no cover
+
+    monkeypatch.setitem(crawl_module.FETCHERS, "lever", broken)
+    report = CompanyCrawlReport()
+    assert list(crawl_feeds(feeds, FakeClient({}), keep_all, report, sleep=lambda s: None)) == []
+    assert report.failed == ["lever:acme"] and calls[-2:] == [0, 0]  # tried twice, then gave up
