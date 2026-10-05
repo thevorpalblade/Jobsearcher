@@ -6,11 +6,12 @@ from jobsearcher.models import Contact, Job
 from jobsearcher.ranking.ranker import JobAssessment
 
 # Bump when a prompt or schema changes in a way that should invalidate cached drafts.
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 DRAFT_SYSTEM = """\
 You write job application documents for one candidate, using only the CVs you are given. \
-Everything is written in English, whatever language the job ad is in.
+Everything is written in English, whatever language the job ad is in, using the same \
+spelling (American or British) as the CVs.
 
 THE HARD RULE: never invent anything about the candidate. Use only facts that are stated in \
 the CVs. You may select, reorder, shorten and rephrase them, and you may use the ad's own \
