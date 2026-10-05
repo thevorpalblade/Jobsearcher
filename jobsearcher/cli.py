@@ -175,9 +175,15 @@ def cmd_companies(config: Config, args: argparse.Namespace) -> int:
     companies = load_companies(config.companies_config)
     store = Store(config.db_path)
     if args.detect:
-        client = PoliteClient(min_interval_s=config.companies.min_request_interval_s)
+        client = PoliteClient.from_config(config)
         _, detected = resolve_feeds(
-            companies, store, client, config.companies, datetime.now(UTC), force=args.force
+            companies,
+            store,
+            client,
+            config.companies,
+            datetime.now(UTC),
+            force=args.force,
+            retry_failed=args.failed,
         )
         print(f"detected {detected} of {len(companies)} companies", file=sys.stderr)
 
@@ -218,10 +224,11 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
     days = args.days or config.companies.news_days
 
     if not args.digest_only:
-        client = PoliteClient(min_interval_s=config.companies.min_request_interval_s)
-        fetched = fetch_all_news(store, client, companies, days)
+        client = PoliteClient.from_config(config)
+        fetched = fetch_all_news(store, client, companies, days, config.news_source)
         print(
-            f"news: {fetched.companies} companies, {fetched.new_items} new items"
+            f"news ({config.news_source}): {fetched.companies} companies, "
+            f"{fetched.new_items} new items"
             + (f", failed: {', '.join(fetched.failed)}" if fetched.failed else ""),
             file=sys.stderr,
         )
@@ -386,6 +393,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_comp.add_argument("--detect", action="store_true", help="detect ATS for unchecked/stale")
     p_comp.add_argument("--force", action="store_true", help="with --detect: re-check all")
+    p_comp.add_argument(
+        "--failed",
+        action="store_true",
+        help="with --detect: re-check companies where no ATS was found (e.g. after "
+        "changing crawl settings)",
+    )
 
     p_sig = sub.add_parser(
         "signals", help="news about target companies: fetch, classify, print the digest"
@@ -407,6 +420,10 @@ def main(argv: list[str] | None = None) -> int:
     p_daemon.add_argument("--no-initial-run", action="store_true")
 
     args = parser.parse_args(argv)
+    # Line-buffer stdout: the daemon's output goes to a file, where Python would
+    # otherwise hold the summary lines until exit (which a daemon never reaches).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

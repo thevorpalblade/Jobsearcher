@@ -53,9 +53,11 @@ def resolve_feeds(
     settings: CompaniesSettings,
     now: datetime,
     force: bool = False,
+    retry_failed: bool = False,
 ) -> tuple[list[CompanyFeed], int]:
-    """Each company's ATS, from the cached detection unless it's stale (or `force`).
-    Returns the feeds and how many companies were (re-)detected."""
+    """Each company's ATS, from the cached detection unless it's stale (or `force`, or
+    `retry_failed` and nothing was found last time). Returns the feeds and how many
+    companies were (re-)detected."""
     cached = store.company_ats()
     cutoff = now - timedelta(days=settings.redetect_after_days)
     feeds: list[CompanyFeed] = []
@@ -65,7 +67,9 @@ def resolve_feeds(
         if company.ats is not None:
             feeds.append(CompanyFeed(company, company.ats.type, company.ats.ref))
             continue
-        if row is not None and not force and datetime.fromisoformat(row["checked_at"]) >= cutoff:
+        retry = retry_failed and row is not None and row["ats_type"] is None
+        fresh = row is not None and datetime.fromisoformat(row["checked_at"]) >= cutoff
+        if fresh and not force and not retry:
             feeds.append(CompanyFeed(company, row["ats_type"], row["ats_ref"], row["error"]))
             continue
         result = detect(company, client)

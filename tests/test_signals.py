@@ -131,3 +131,38 @@ def test_signals_due_weekly():
     store.set_last_run("signals", NOW - timedelta(days=3))
     assert not due(store, 7)
     assert due(store, 7, now=NOW + timedelta(days=5))
+
+
+GOOGLE_RSS = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+<item><title>Capio köper vårdbolag - Dagens industri</title>
+<link>https://news.google.com/rss/articles/abc</link>
+<pubDate>Wed, 30 Sep 2026 07:56:43 GMT</pubDate>
+<source url="https://www.di.se">Dagens industri</source></item>
+<item><title></title><link>https://news.google.com/rss/articles/empty</link></item>
+</channel></rss>"""
+
+
+def test_google_news_parsing_and_query():
+    from jobsearcher.signals.news import fetch_google_news, google_query
+
+    client = FakeClient(GOOGLE_RSS)
+    [item] = fetch_google_news(client, CAPIO, days=30)
+    assert item["title"] == "Capio köper vårdbolag"  # publisher suffix dropped
+    assert item["domain"] == "Dagens industri"
+    assert item["published_at"].startswith("2026-09-30T07:56:43")
+    assert client.params[0]["q"] == '"Capio" when:30d'
+    seb = Company(name="SEB", news_query='"Skandinaviska Enskilda Banken" sourcecountry:sweden')
+    assert google_query(seb, 7) == '"Skandinaviska Enskilda Banken" when:7d'
+    with pytest.raises(NewsQueryError, match="not RSS"):
+        fetch_google_news(FakeClient("<html>blocked</html"), CAPIO, days=30)
+
+
+def test_news_source_follows_robots_setting():
+    from jobsearcher.config import Config, CrawlConfig
+
+    config = Config()
+    assert config.news_source == "gdelt"
+    config.crawl = CrawlConfig(respect_robots=False)
+    assert config.news_source == "google_news"
+    config.companies.news_source = "gdelt"
+    assert config.news_source == "gdelt"

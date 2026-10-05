@@ -26,12 +26,22 @@ sources:
   jobtech_links: true
   companies: true          # careers-site feeds of the companies in companies.yaml
 
+# How the crawler presents itself (company sites, ATS feeds, news). Per-host pacing
+# always applies. For a personal, low-volume setup you may prefer:
+#   user_agent: chrome     # some sites refuse non-browser user agents
+#   respect_robots: false  # also unlocks Google News for the news signals
+crawl:
+  user_agent: honest           # honest | chrome | any literal User-Agent string
+  respect_robots: true
+
 # Target companies (companies.yaml): crawling and news signals.
 companies:
   redetect_after_days: 7       # re-check which ATS each company uses
   min_request_interval_s: 1.0  # pause between requests to the same host
   signals_every_days: 7        # `jobsearcher run` fetches/classifies news this often
   news_days: 30                # news window for signals and the digest
+  news_source: auto            # auto | google_news | gdelt (auto: Google News unless
+                               # crawl.respect_robots is on; its robots.txt disallows it)
 
 llm:
   # Each role picks its own provider, so they can be mixed:

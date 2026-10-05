@@ -102,9 +102,7 @@ def run_search(
     skip = set(report.failed_sources)
     if companies:
         report.companies = crawl = CompanyCrawlReport(companies=len(companies))
-        client = company_client or PoliteClient(
-            min_interval_s=config.companies.min_request_interval_s
-        )
+        client = company_client or PoliteClient.from_config(config)
         feeds, crawl.detected = resolve_feeds(companies, store, client, config.companies, started)
         # matches_filters only, not keep(): this is a cheap pre-check before an
         # adapter fetches a full ad, and the job is counted when it's yielded.

@@ -1,5 +1,6 @@
-"""A polite HTTP client for crawling company sites and ATS feeds: obeys robots.txt
-and keeps a minimum interval between requests to the same host."""
+"""The HTTP client for crawling company sites, ATS feeds and news: keeps a minimum
+interval between requests to the same host, and obeys robots.txt unless the
+`crawl.respect_robots` setting turns that off."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from jobsearcher.config import Config
 from jobsearcher.sources.base import USER_AGENT, make_client
 
 log = logging.getLogger(__name__)
@@ -37,12 +39,20 @@ class PoliteClient:
         self,
         client: httpx.Client | None = None,
         min_interval_s: float = 1.0,
+        user_agent: str = USER_AGENT,
+        respect_robots: bool = True,
         sleep: Any = time.sleep,
         clock: Any = time.monotonic,
     ):
         self.client = client or make_client(
-            {"Accept": "application/json, text/html, application/xml;q=0.9, */*;q=0.8"}
+            {
+                "Accept": "application/json, text/html, application/xml;q=0.9, */*;q=0.8",
+                "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+            },
+            user_agent=user_agent,
         )
+        self.user_agent = user_agent
+        self.respect_robots = respect_robots
         self.min_interval_s = min_interval_s
         self._sleep, self._clock = sleep, clock
         self._last: dict[str, float] = {}
@@ -59,9 +69,17 @@ class PoliteClient:
                 self._sleep(delay)
         self._last[host] = self._clock()
 
+    @classmethod
+    def from_config(cls, config: Config) -> PoliteClient:
+        return cls(
+            min_interval_s=config.companies.min_request_interval_s,
+            user_agent=config.crawl.user_agent_string,
+            respect_robots=config.crawl.respect_robots,
+        )
+
     def allowed(self, url: str) -> bool:
         parts = urlsplit(url)
-        if parts.hostname in _API_HOSTS:
+        if not self.respect_robots or parts.hostname in _API_HOSTS:
             return True
         origin = f"{parts.scheme}://{parts.netloc}"
         if origin not in self._robots:
@@ -77,7 +95,7 @@ class PoliteClient:
                 parser = None
             self._robots[origin] = parser
         parser = self._robots[origin]
-        return parser is None or parser.can_fetch(USER_AGENT, url)
+        return parser is None or parser.can_fetch(self.user_agent, url)
 
     def get(self, url: str, params: dict | None = None, retries: int = 3) -> httpx.Response:
         """GET politely, retrying transient failures (network errors, 429, 5xx) with

@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from jobsearcher.companies.config import Company
-from jobsearcher.signals.news import fetch_news
+from jobsearcher.signals.news import fetch_google_news, fetch_news
 from jobsearcher.sources.ats.common import AtsClient
 from jobsearcher.store import Store
 
@@ -27,12 +27,14 @@ class FetchReport:
 
 
 def fetch_all_news(
-    store: Store, client: AtsClient, companies: list[Company], days: int
+    store: Store, client: AtsClient, companies: list[Company], days: int, source: str = "gdelt"
 ) -> FetchReport:
+    """Fetch news for every company from `source` ("gdelt" or "google_news")."""
+    fetch = fetch_google_news if source == "google_news" else fetch_news
     report = FetchReport(companies=len(companies))
     for company in companies:
         try:
-            items = fetch_news(client, company, days)
+            items = fetch(client, company, days)
         except (httpx.HTTPError, ValueError) as exc:  # network/HTTP errors, non-JSON reply
             log.warning("News for %s failed: %s", company.name, exc)
             report.failed.append(company.name)

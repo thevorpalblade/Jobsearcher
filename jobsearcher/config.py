@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -25,6 +25,29 @@ class SearchConfig(BaseModel):
     expire_after_days: int = 3
 
 
+HONEST_USER_AGENT = "jobsearcher/0.1 (personal job search tool)"
+CHROME_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+class CrawlConfig(BaseModel):
+    """How the crawler presents itself. The defaults are the polite ones; a personal,
+    low-volume setup may choose a browser user agent and ignore robots.txt (per-host
+    pacing always applies)."""
+
+    # "chrome", "honest", or a literal User-Agent string.
+    user_agent: str = "honest"
+    respect_robots: bool = True
+
+    @property
+    def user_agent_string(self) -> str:
+        return {"chrome": CHROME_USER_AGENT, "honest": HONEST_USER_AGENT}.get(
+            self.user_agent, self.user_agent
+        )
+
+
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
@@ -40,6 +63,9 @@ class CompaniesSettings(BaseModel):
     # News signals: how often to fetch and classify news (days), and how far back.
     signals_every_days: int = 7
     news_days: int = 30
+    # auto: Google News when crawl.respect_robots is off (its robots.txt disallows
+    # the RSS), else GDELT.
+    news_source: Literal["auto", "google_news", "gdelt"] = "auto"
 
 
 class Provider(StrEnum):
@@ -125,6 +151,7 @@ class WebConfig(BaseModel):
 class Config(BaseModel):
     search: SearchConfig = Field(default_factory=SearchConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
+    crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     web: WebConfig = Field(default_factory=WebConfig)
@@ -134,6 +161,13 @@ class Config(BaseModel):
     cv_path: Path = Path("cvs/master.md")
     companies_config: Path = Path("companies.yaml")
     companies: CompaniesSettings = Field(default_factory=CompaniesSettings)
+
+    @property
+    def news_source(self) -> str:
+        source = self.companies.news_source
+        if source == "auto":
+            return "gdelt" if self.crawl.respect_robots else "google_news"
+        return source
 
     @property
     def db_path(self) -> Path:

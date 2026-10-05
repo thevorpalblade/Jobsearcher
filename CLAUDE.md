@@ -56,8 +56,10 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
   subscription token. Never hand that token to an SDK. Don't use `--bare`.
 - The JobTech APIs may be unreachable from cloud sandboxes, so test against
   fixtures in `tests/fixtures/`.
-- **Crawl politely:** company sites and feeds go through `companies/http.py:PoliteClient`
-  (robots.txt, per-host pacing). Don't work around a robots.txt disallow.
+- **Crawl through `PoliteClient`** (`companies/http.py`): per-host pacing always, plus
+  the user's `crawl` settings (user agent; robots.txt on or off). The user runs this
+  for one person at low volume and has chosen a Chrome user agent and no robots.txt;
+  keep the pacing, and keep the code defaults polite for other setups.
 - Match the surrounding style: type hints, pydantic models, short comments
   that explain why.
 - **Web UI:** ad text, titles and URLs are untrusted. Keep Jinja autoescaping on,

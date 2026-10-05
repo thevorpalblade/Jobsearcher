@@ -387,3 +387,66 @@ def test_companies_sharing_a_feed_merge():
     client = FakeClient({"https://acme.varbi.com/en/what:rssfeed/": VARBI_RSS})
     run_search(config, store, [], [], companies=[region, hospital], company_client=client)
     assert store.count_jobs() == 1
+
+
+# --- crawl settings ----------------------------------------------------------------
+
+
+def test_crawl_settings_set_user_agent_and_robots():
+    from jobsearcher.config import CHROME_USER_AGENT, HONEST_USER_AGENT, CrawlConfig
+
+    assert CrawlConfig().user_agent_string == HONEST_USER_AGENT
+    assert CrawlConfig(user_agent="chrome").user_agent_string == CHROME_USER_AGENT
+    assert CrawlConfig(user_agent="Custom/1.0").user_agent_string == "Custom/1.0"
+
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path, request.headers["User-Agent"]))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /\n")
+        return httpx.Response(200, text="ok")
+
+    config = Config()
+    config.crawl = CrawlConfig(user_agent="chrome", respect_robots=False)
+    client = PoliteClient.from_config(config)
+    client.client = httpx.Client(
+        transport=httpx.MockTransport(handler), headers=client.client.headers
+    )
+    client._sleep = lambda s: None
+    assert client.get_text("https://acme.se/karriar") == "ok"
+    assert seen == [("/karriar", CHROME_USER_AGENT)]  # robots.txt never fetched
+
+    polite = PoliteClient(
+        httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda s: None
+    )
+    with pytest.raises(httpx.HTTPError, match="robots.txt"):
+        polite.get("https://acme.se/karriar")
+
+
+def test_enabled_sources_use_the_crawl_user_agent():
+    from jobsearcher.config import CrawlConfig
+    from jobsearcher.sources import enabled_sources
+
+    config = Config()
+    config.crawl = CrawlConfig(user_agent="Custom/1.0")
+    for source in enabled_sources(config):
+        assert source.client.headers["User-Agent"] == "Custom/1.0"
+
+
+def test_retry_failed_redetects_only_failures():
+    store = Store(":memory:")
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    found = Company(name="Found", website="https://found.se")
+    missing = Company(name="Missing", website="https://missing.se")
+    store.save_company_ats("found", "lever", "found", None, None, now)
+    store.save_company_ats("missing", None, None, None, "403 Forbidden", now)
+    client = FakeClient({"https://missing.se": '<a href="https://jobs.lever.co/missing">Jobs</a>'})
+    settings = CompaniesSettings()
+    _, detected = resolve_feeds([found, missing], store, client, settings, now)
+    assert detected == 0
+    feeds, detected = resolve_feeds(
+        [found, missing], store, client, settings, now, retry_failed=True
+    )
+    assert detected == 1 and client.requests == ["https://missing.se"]
+    assert [f.ats_ref for f in feeds] == ["found", "missing"]

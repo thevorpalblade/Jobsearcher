@@ -10,11 +10,12 @@ from typing import Any, Protocol
 
 import httpx
 
+from jobsearcher.config import HONEST_USER_AGENT
 from jobsearcher.models import Job
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "jobsearcher/0.1 (personal job search tool)"
+USER_AGENT = HONEST_USER_AGENT
 
 
 class SourceAdapter(Protocol):
@@ -49,9 +50,11 @@ def get_json(
     raise AssertionError("unreachable")
 
 
-def make_client(headers: dict[str, str] | None = None) -> httpx.Client:
+def make_client(
+    headers: dict[str, str] | None = None, user_agent: str = USER_AGENT
+) -> httpx.Client:
     return httpx.Client(
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json", **(headers or {})},
+        headers={"User-Agent": user_agent, "Accept": "application/json", **(headers or {})},
         timeout=30.0,
         follow_redirects=True,
     )
