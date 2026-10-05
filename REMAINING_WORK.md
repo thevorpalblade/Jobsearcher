@@ -17,7 +17,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
-| M7 LinkedIn / Indeed adapters | **Not started** (optional; terms-of-service risk) |
+| M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
 offline against recorded or simulated responses.
@@ -39,13 +39,13 @@ could not be built there.
 - [ ] Optional: replace `tests/fixtures/*.json` with real (anonymised) responses.
 - [x] `claude_code` provider: `llm-check` succeeded for Haiku 4.5 and Opus 5.5
       (2026-10-01).
-- [ ] `jobsearcher llm-check` with real `MOONSHOT_API_KEY` and
-      `CLAUDE_CODE_OAUTH_TOKEN`. Confirm Moonshot reports cached tokens where
+- [ ] Kimi isn't in use (ranking runs on GLM via NVIDIA). If it's switched on:
+      `jobsearcher llm-check` with a real `MOONSHOT_API_KEY`. Confirm Moonshot reports cached tokens where
       `_cached_tokens()` in `llm/openai_compatible.py` expects them, and that the
       model IDs `kimi-k2.6` / `kimi-k3` and their prices in `config.py`
       `DEFAULT_PRICES` are still current.
-- [ ] First `jobsearcher rank` on real ads. Sanity-check the scores and the
-      `swedish` / `language` fields the language adjustments depend on.
+- [x] First `jobsearcher rank` on real ads (2026-10-01; re-ranked after the CV
+      and preference changes). Scores looked sensible; language fields work.
 
 ## 1. Ranking leftovers (M2)
 
@@ -156,22 +156,15 @@ Live results (2026-10-01): a supported ATS for 31 of 107 companies; the company
 feeds added ~1,900 open jobs (mostly Region Stockholm/VGR healthcare) and ~175
 new ranking candidates.
 
-- [ ] **Workday adapter** (Saab, Essity, Sandvik, Husqvarna, Elekta, King,
-      Apotek Hjärtat, and likely Volvo/Ericsson). The career sites' `/wday/cxs/…/jobs`
-      POST returned 422 for every guessed tenant/site; needs investigation.
-- [ ] **ReachMee** (Sweco, Regeringskansliet, Göteborgs universitet, Bravida),
-      **Jobylon** (LKAB, Coor, Unilabs, Kronans Apotek) and **SuccessFactors**
-      (Scania, Axfood, Atlas Copco, Tele2) adapters.
-- [ ] 57 companies with no ATS found. About 9 block our User-Agent (403/401:
-      Volvo Cars, Ericsson, PostNord, AstraZeneca, Hexagon, Epiroc, Getinge,
-      Kriminalvården) or errored; set `careers_url` or a manual `ats:` in
-      `companies.yaml`, or add LLM extraction from careers pages (plan, phase 2).
-- [ ] **News coverage is thin.** GDELT rate-limits hard (~1 request / 5–7 s with
-      frequent 429s, so ~107 companies take 30–45 minutes) and covers Swedish
-      news sparsely: several companies had no articles in 30 days. Google News
-      RSS and MFN are disallowed by robots.txt. Candidates: companies' own
-      press-room RSS feeds (Cision/MyNewsdesk), Bing News RSS (allowed, but
-      stale results in a test).
+- [x] Workday adapter, Chrome impersonation for the sites that blocked us, and
+      Google News for signals: done in M8 (§6).
+- [ ] **ReachMee** (Sweco, Regeringskansliet, Göteborgs universitet, Bravida) and
+      **Jobylon** (LKAB, Coor, Unilabs, Kronans Apotek) adapters; SuccessFactors
+      is in §6.
+- [ ] Companies with no ATS and no JSON-LD: set `careers_url` or a manual `ats:`
+      in `companies.yaml`, or add LLM extraction from careers pages.
+- [ ] News: MFN press releases (listed companies' M&A and reorganisations) as a
+      second signal source.
 - [ ] ATS jobs have no occupation labels, so the per-role occupation filters
       don't apply to them; the role prefilter and the LLM decide.
 - [ ] Web UI: a Companies page with the signals digest (after M3 is merged), and
