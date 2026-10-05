@@ -592,3 +592,75 @@ def test_workday_lists_sweden_and_fetches_wanted_details():
         == 2
     )
     assert no_facets.posts[1]["appliedFacets"] == {}
+
+
+# --- generic JSON-LD reader ---------------------------------------------------------
+
+AD_PAGE = """<html><head>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [
+  {"@type": "Organization", "name": "Randstad"},
+  {"@type": "JobPosting", "title": "HR-partner till Acme",
+   "description": "&lt;p&gt;Du blir HR-partner.&lt;/p&gt;",
+   "identifier": {"@type": "PropertyValue", "value": "ad-1"},
+   "datePosted": "2026-10-02T11:40:09+0000", "validThrough": "2026-10-25T12:00:00+0000",
+   "employmentType": ["FULL_TIME"],
+   "hiringOrganization": {"@type": "Organization", "name": "Acme AB"},
+   "jobLocation": {"@type": "Place", "address": {"addressLocality": "Gothenburg",
+     "addressRegion": "Västra Götaland", "addressCountry": "SE"}}}
+]}</script></head><body>Ad</body></html>"""
+
+LISTING = """<html><body>
+<a href="/jobb/re-stockholms-lan/ci-stockholm/">Stockholm</a>
+<a href="/jobb/hr-partner-till-acme_goteborg_08122283-ad3a-4fca-bcb1-f94a46e2064e/">HR-partner</a>
+<a href="/jobb/?pg=2">Next</a>
+<a href="https://other.se/jobb/123456/">Elsewhere</a>
+<a href="/om-oss/">About</a>
+</body></html>"""
+
+
+def test_jsonld_job_postings_and_links():
+    from jobsearcher.sources.ats.jsonld import job_links, job_postings
+
+    [posting] = job_postings(AD_PAGE)
+    assert posting["title"] == "HR-partner till Acme"
+    assert job_postings('<script type="application/ld+json">{broken</script>') == []
+    assert job_postings(
+        '<script type="application/ld+json">[{"@type": "JobPosting", "title": "A"}]</script>'
+    )
+    links = job_links(LISTING, "https://www.randstad.se/jobb/")
+    # The ad (an id in its URL) comes first; category and pagination pages are skipped.
+    assert links == [
+        "https://www.randstad.se/jobb/hr-partner-till-acme_goteborg_08122283-ad3a-4fca-bcb1-f94a46e2064e/"
+    ]
+
+
+def test_jsonld_reader_follows_ads_and_maps_postings():
+    from jobsearcher.sources.ats import jsonld
+
+    ad = "https://www.randstad.se/jobb/hr-partner-till-acme_goteborg_08122283-ad3a-4fca-bcb1-f94a46e2064e/"
+    client = FakeClient({"https://www.randstad.se/jobb/": LISTING, ad: AD_PAGE})
+    randstad = Company(name="Randstad")
+    [job] = jsonld.fetch_jobs(client, "https://www.randstad.se/jobb/", randstad, keep_all)
+    assert (job.title, job.company, job.location) == ("HR-partner till Acme", "Acme AB", "Göteborg")
+    assert job.description == "Du blir HR-partner."
+    assert job.deadline.date().isoformat() == "2026-10-25" and job.employment_type == "full time"
+    assert job.sources[0].source_id == "ad-1" and job.url == ad
+
+
+def test_jsonld_reader_gives_up_on_sites_without_job_data(monkeypatch):
+    from jobsearcher.sources.ats import jsonld
+
+    monkeypatch.setattr(jsonld, "MAX_MISSES", 3)
+    links = "".join(f'<a href="/jobb/ad-{n}-12345/">Ad</a>' for n in range(10))
+    pages = {f"https://acme.se/jobb/ad-{n}-12345/": "<html>no data</html>" for n in range(10)}
+    client = FakeClient({"https://acme.se/jobb/": links, **pages})
+    assert list(jsonld.fetch_jobs(client, "https://acme.se/jobb/", ACME, keep_all)) == []
+    assert len(client.requests) == 1 + 3  # the listing, then three misses
+
+
+def test_detect_falls_back_to_jsonld():
+    ad = "https://www.randstad.se/jobb/hr-partner-till-acme_goteborg_08122283-ad3a-4fca-bcb1-f94a46e2064e/"
+    randstad = Company(name="Randstad", careers_url="https://www.randstad.se/jobb/")
+    client = FakeClient({"https://www.randstad.se/jobb/": LISTING, ad: AD_PAGE})
+    result = detect(randstad, client)
+    assert (result.ats_type, result.ats_ref) == ("jsonld", "https://www.randstad.se/jobb/")

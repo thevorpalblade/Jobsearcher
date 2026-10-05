@@ -118,3 +118,16 @@ Build in a worktree (the daemon runs from the main checkout), merge to `main`,
 install `.[jobspy]` in the main venv, update the user's `config.yaml`
 (`crawl`, `sources.jobspy`) and `companies.yaml` (recruiters), restart the
 daemon, re-detect failed companies, and report what each new source added.
+
+## Changes made while building
+
+- **A Chrome User-Agent header wasn't enough**: bot protection fingerprints the
+  TLS handshake. With `crawl.user_agent: chrome`, `PoliteClient` sends requests
+  through curl_cffi impersonating Chrome (installed with the `jobspy` extra); then
+  Volvo Cars, Ericsson, PostNord, Poolia and AstraZeneca all answered.
+- **Recruiters**: none use a supported ATS. Randstad's ads carry JobPosting
+  JSON-LD (detected as `jsonld`); the others' don't in their server HTML.
+- **Workday** facets nest on some sites (Saab), and some sites have no country
+  filter (Apotek Hjärtat); both are handled. Postings listed in several places
+  are fetched first (capped) to learn their city.
+- **Headless browser: deferred** (see REMAINING_WORK §6).

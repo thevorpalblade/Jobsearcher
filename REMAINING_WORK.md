@@ -177,11 +177,21 @@ new ranking candidates.
 - [ ] Web UI: a Companies page with the signals digest (after M3 is merged), and
       in M4 a spontaneous-application draft for a chosen company.
 
-## 6. LinkedIn / Indeed (M7, optional)
+## 6. More sources (M8, docs/m8-more-sources.md): done 2026-10-05
 
-Postponed by the user. No official API exists; `python-jobspy` scrapes them,
-which breaks LinkedIn's terms and is brittle. Low volume and no logged-in
-scraping, if done at all.
+Crawl settings (`crawl.user_agent: chrome` impersonates Chrome via curl_cffi;
+`crawl.respect_robots`), Google News for signals, 12 recruitment agencies,
+LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
+
+- [ ] **Headless browser** (Playwright) for careers pages built with JavaScript
+      (Academic Work and other recruiters): deferred. Their jobs mostly reach
+      LinkedIn/Indeed/Platsbanken, and Chromium adds ~300 MB.
+- [ ] **SuccessFactors** adapter (Volvo Cars, Ericsson, Scania, Axfood, Atlas
+      Copco, Tele2), **ReachMee** and **Jobylon**.
+- [ ] JobSpy: watch for LinkedIn rate limiting (429) as volume grows; Glassdoor
+      and Google Jobs are supported but untested.
+- [ ] Dedupe can't merge the same ad under different titles across sources
+      (e.g. "HR Business Partner" vs "Human Resources Business Partner").
 
 ## Known caveats / tech debt
 

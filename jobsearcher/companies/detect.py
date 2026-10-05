@@ -160,6 +160,7 @@ def detect(company: Company, client: PoliteClient) -> Detection:
         return Detection(*found, careers_url=page_url)  # type: ignore[misc]
 
     errors: list[str] = []
+    visited: list[tuple[str, str]] = []  # careers pages, for the JSON-LD fallback
     for url in careers_links(html_text, page_url)[:MAX_CAREERS_PAGES]:
         try:
             resp = client.get(url)
@@ -169,6 +170,7 @@ def detect(company: Company, client: PoliteClient) -> Detection:
         found = find_ats(resp.text, str(resp.url))
         if _usable(found, client):
             return Detection(*found, careers_url=str(resp.url))  # type: ignore[misc]
+        visited.append((str(resp.url), resp.text))
         # One more hop: careers landing pages often link to the actual job list.
         for deeper in careers_links(resp.text, str(resp.url))[:2]:
             if deeper == url:
@@ -181,5 +183,29 @@ def detect(company: Company, client: PoliteClient) -> Detection:
             found = find_ats(inner.text, str(inner.url))
             if _usable(found, client):
                 return Detection(*found, careers_url=str(inner.url))  # type: ignore[misc]
+            visited.append((str(inner.url), inner.text))
+    # No known ATS: maybe the site's own job ads carry schema.org JobPosting data.
+    # A given careers_url is the job list itself, so it's tried first.
+    pages = ([(page_url, html_text)] if company.careers_url else []) + visited
+    listing = jsonld_listing(pages, client)
+    if listing:
+        return Detection("jsonld", listing, listing)
     error = "no known ATS found" + (f" ({'; '.join(errors[:2])})" if errors else "")
     return Detection(None, None, None, error)
+
+
+def jsonld_listing(pages: list[tuple[str, str]], client: PoliteClient) -> str | None:
+    """The first page that lists job ads carrying JobPosting JSON-LD (checked on the
+    page itself, then on its first ad-looking link), for the generic `jsonld` reader."""
+    from jobsearcher.sources.ats.jsonld import job_links, job_postings
+
+    for url, text in pages:
+        if job_postings(text):
+            return url
+        for link in job_links(text, url)[:1]:
+            try:
+                if job_postings(client.get(link).text):
+                    return url
+            except httpx.HTTPError:
+                continue
+    return None

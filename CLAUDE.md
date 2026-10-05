@@ -40,7 +40,10 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
   (`settings.merge_yaml`), so comments and formatting survive; config.yaml and an
   "Edit as YAML" fallback use a text editor. `.env` is never shown or edited.
 - `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
-  `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse, SmartRecruiters)
+  `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse,
+  SmartRecruiters, Workday) plus `jsonld.py`, a generic reader for job ads with schema.org JobPosting data
+- `jobsearcher/sources/jobspy_source.py`: LinkedIn/Indeed via JobSpy (optional `jobspy` extra);
+  these jobs expire by age, not by absence
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules

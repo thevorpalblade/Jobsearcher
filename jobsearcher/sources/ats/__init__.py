@@ -2,6 +2,7 @@
 
 from jobsearcher.sources.ats import (
     greenhouse,
+    jsonld,
     lever,
     smartrecruiters,
     teamtailor,
@@ -17,6 +18,7 @@ FETCHERS: dict[str, AtsFetcher] = {
     "greenhouse": greenhouse.fetch_jobs,
     "smartrecruiters": smartrecruiters.fetch_jobs,
     "workday": workday.fetch_jobs,
+    "jsonld": jsonld.fetch_jobs,  # generic: schema.org JobPosting on job pages
 }
 
 __all__ = ["FETCHERS"]
