@@ -38,7 +38,8 @@ companies:
   - {name: H&M, news_query: '"Hennes & Mauritz" sourcecountry:sweden', website: https://career.hm.com, ats: {type: smartrecruiters, ref: HMGroup}, tags: [largest, international], source: syna-top100-2023}
   - {name: Sweco, website: https://www.sweco.se, tags: [largest], source: syna-top100-2023}
   - {name: Praktikertjänst, website: https://www.praktikertjanst.se, tags: [largest, healthcare], source: syna-top100-2023}
-  - {name: ICA, news_query: '"ICA Gruppen" sourcecountry:sweden', website: https://www.ica.se, tags: [largest], source: syna-top100-2023}
+  # ICA's careers site (Phenom) is a front-end over this Workday site, which detection can't see.
+  - {name: ICA, news_query: '"ICA Gruppen" sourcecountry:sweden', website: https://www.ica.se, ats: {type: workday, ref: icagruppen.wd3.myworkdayjobs.com/EXTID}, tags: [largest], source: syna-top100-2023}
   - {name: Telia, website: https://www.telia.se, tags: [largest], source: syna-top100-2023}
   - {name: AFA Försäkring, website: https://www.afaforsakring.se, tags: [largest], source: syna-top100-2023}
   - {name: Skanska, website: https://www.skanska.se, tags: [largest], source: syna-top100-2023}
