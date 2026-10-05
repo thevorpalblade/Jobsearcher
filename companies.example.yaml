@@ -17,6 +17,8 @@
 #   curated:healthcare Private healthcare and pharmacy operators (candidate's background).
 #   curated:international  International employers with Stockholm/Gothenburg offices,
 #                      often with English as the working language.
+#   curated:recruiters Recruitment and staffing agencies with HR, operations and
+#                      management roles, many never advertised under the employer's name.
 
 companies:
   # --- syna-top100-2023: companies ----------------------------------------------
@@ -139,3 +141,19 @@ companies:
   - {name: Coor, website: https://www.coor.se, tags: [international], source: "curated:international"}  # facility management: operations roles
   - {name: ISS Sverige, website: https://www.se.issworld.com, tags: [international], source: "curated:international"}
   - {name: Tink, website: https://tink.com, tags: [international], source: "curated:international"}
+
+  # --- curated:recruiters ---------------------------------------------------------
+  # Their own job boards; many also post on Platsbanken, LinkedIn and Indeed (merged
+  # there). Consulting assignments are scored down by the "short consulting" dislike.
+  - {name: Wise Professionals, website: https://www.wise.se, careers_url: https://www.wise.se/lediga-jobb/, tags: [recruiter], source: "curated:recruiters"}  # HR specialists
+  - {name: Perido, website: https://perido.se, tags: [recruiter], source: "curated:recruiters"}  # HR consultancy
+  - {name: Academic Work, website: https://www.academicwork.se, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Poolia, website: https://www.poolia.se, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Michael Page, website: https://www.michaelpage.se, tags: [recruiter, international], source: "curated:recruiters"}
+  - {name: Hays, website: https://www.hays.se, tags: [recruiter, international], source: "curated:recruiters"}
+  - {name: Mercuri Urval, website: https://www.mercuriurval.com, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Randstad, website: https://www.randstad.se, careers_url: https://www.randstad.se/jobb/, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Adecco, website: https://www.adecco.se, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Experis, website: https://www.experis.se, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Bravura, website: https://www.bravura.se, tags: [recruiter], source: "curated:recruiters"}
+  - {name: Novare, website: https://novare.se, tags: [recruiter], source: "curated:recruiters"}

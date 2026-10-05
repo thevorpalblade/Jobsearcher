@@ -450,3 +450,29 @@ def test_retry_failed_redetects_only_failures():
     )
     assert detected == 1 and client.requests == ["https://missing.se"]
     assert [f.ats_ref for f in feeds] == ["found", "missing"]
+
+
+def test_browser_transport_lets_chrome_set_headers():
+    from jobsearcher.companies.http import BrowserTransport
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"Content-Type": "text/html", "Content-Encoding": "gzip"}
+        content = b"<html>ok</html>"
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = []
+
+        def request(self, method, url, **kwargs):
+            self.calls.append((method, url, kwargs))
+            return FakeResponse()
+
+    transport = BrowserTransport.__new__(BrowserTransport)  # skip importing curl_cffi
+    transport.session = FakeSession()
+    client = httpx.Client(transport=transport, headers={"User-Agent": "python", "Referer": "r"})
+    response = client.get("https://acme.se/jobs")
+    assert response.text == "<html>ok</html>"  # not decoded a second time as gzip
+    method, url, kwargs = transport.session.calls[0]
+    assert (method, url, kwargs["allow_redirects"]) == ("GET", "https://acme.se/jobs", False)
+    assert {k.lower() for k in kwargs["headers"]} == {"referer"}  # Chrome sets the rest

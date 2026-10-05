@@ -34,6 +34,60 @@ class RobotsDisallowed(httpx.HTTPError):
     pass
 
 
+_BROWSER_SET = {
+    "accept", "accept-encoding", "accept-language", "connection", "host", "user-agent",
+}  # fmt: skip
+
+
+class BrowserTransport(httpx.BaseTransport):
+    """Sends httpx requests through curl_cffi impersonating Chrome. Bot protection
+    (Akamai, Cloudflare) fingerprints the TLS handshake, so a browser User-Agent
+    header alone still gets 403 from sites like Volvo Cars, Ericsson and PostNord.
+    Redirects are left to httpx, so callers still see the final URL."""
+
+    def __init__(self, impersonate: str = "chrome"):
+        from curl_cffi import requests as curl_requests
+
+        self.session = curl_requests.Session(impersonate=impersonate)
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        from curl_cffi.requests.exceptions import RequestException
+
+        try:
+            resp = self.session.request(
+                request.method,
+                str(request.url),
+                # Chrome's own headers come from the impersonation; replacing them with
+                # httpx's defaults (Accept, User-Agent, ...) gives the imitation away.
+                headers={k: v for k, v in request.headers.items() if k.lower() not in _BROWSER_SET},
+                data=request.read() or None,
+                allow_redirects=False,
+                timeout=30,
+            )
+        except RequestException as exc:
+            raise httpx.ConnectError(str(exc), request=request) from exc
+        # curl_cffi already decompressed the body; don't let httpx decode it again.
+        headers = [
+            (k, v)
+            for k, v in resp.headers.items()
+            if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")
+        ]
+        return httpx.Response(
+            resp.status_code, headers=headers, content=resp.content, request=request
+        )
+
+    def close(self) -> None:
+        self.session.close()
+
+
+def browser_transport() -> BrowserTransport | None:
+    """A Chrome-impersonating transport, if curl_cffi is installed (the `jobspy` extra)."""
+    try:
+        return BrowserTransport()
+    except ImportError:
+        return None
+
+
 class PoliteClient:
     def __init__(
         self,
@@ -71,11 +125,21 @@ class PoliteClient:
 
     @classmethod
     def from_config(cls, config: Config) -> PoliteClient:
-        return cls(
+        polite = cls(
             min_interval_s=config.companies.min_request_interval_s,
             user_agent=config.crawl.user_agent_string,
             respect_robots=config.crawl.respect_robots,
         )
+        if config.crawl.user_agent == "chrome":
+            transport = browser_transport()
+            if transport is None:
+                log.info("curl_cffi not installed: sending a Chrome User-Agent header only")
+            else:
+                headers = polite.client.headers
+                polite.client = httpx.Client(
+                    transport=transport, headers=headers, timeout=30.0, follow_redirects=True
+                )
+        return polite
 
     def allowed(self, url: str) -> bool:
         parts = urlsplit(url)
