@@ -103,3 +103,21 @@ companies_config: "companies.yaml"  # target companies (copy companies.example.y
 web:
   host: "127.0.0.1"
   port: 8080
+  user_name: ""          # the dashboard says "Welcome, <name>"
+  allowed_hosts: []      # extra host names the chat accepts (see chat); "*" = any
+
+# The dashboard's chat with Claude Code, run in this repository (needs the `claude`
+# CLI and a checkout, so not in Docker). Uses your own Claude login or
+# CLAUDE_CODE_OAUTH_TOKEN, one message at a time.
+# WARNING: it runs with full access (no permission prompts) and the web UI has no
+# login, so anyone who can open the page can make Claude Code read and change files
+# and run commands on this machine. Enable it only on a network you trust (or Tailscale).
+# It refuses requests addressed to public-looking host names (DNS rebinding); open
+# the UI by IP address, or list your name under web.allowed_hosts.
+chat:
+  enabled: false
+  model: opus
+  effort: medium
+  permission_mode: bypassPermissions
+  timeout_s: 1800        # one reply may run this long
+  # workdir: .           # the checkout Claude works in; default: the folder with this file

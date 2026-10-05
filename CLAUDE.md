@@ -17,7 +17,7 @@ pip install -e '.[dev]'
 pytest                 # all tests run offline; keep it that way
 ruff check . && ruff format --check .
 jobsearcher --help     # search | rank | run | list | show | occupations | companies | signals | llm-check | budget | daemon | web
-jobsearcher web        # local web UI on http://127.0.0.1:8080
+jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), jobs (/jobs), chat with Claude Code
 ```
 
 ## Layout
@@ -39,6 +39,9 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080
   (`web/forms.py`) whose values are merged into the YAML with ruamel
   (`settings.merge_yaml`), so comments and formatting survive; config.yaml and an
   "Edit as YAML" fallback use a text editor. `.env` is never shown or edited.
+- `jobsearcher/chat.py`: the dashboard's chat; runs headless `claude -p` (stream-json, resumed per
+  conversation) in this checkout with full permissions, one run at a time, off unless `chat.enabled`.
+  The UI has no login, so chat routes need the HX-Request header and a non-public Host header.
 - `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
   `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse,
   SmartRecruiters, Workday, SuccessFactors, ReachMee, Jobylon) plus `jsonld.py`, a generic

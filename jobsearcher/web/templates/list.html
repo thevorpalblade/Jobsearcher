@@ -10,8 +10,8 @@
 {% endmacro %}
 {% block content %}
 {# Works as a plain GET form without JavaScript; with HTMX only the table is replaced. #}
-<form class="filters" method="get" action="/"
-      hx-get="/" hx-target="#rows" hx-push-url="true"
+<form class="filters" method="get" action="/jobs"
+      hx-get="/jobs" hx-target="#rows" hx-push-url="true"
       hx-trigger="submit, change, keyup changed delay:300ms from:[name=q]">
   {{ select("view", "View", [("ranked", "Ranked"), ("pending", "Waiting for ranking"),
       ("excluded", "Excluded by prefilter"), ("all", "All open"), ("expired", "Expired (latest 200)"),
@@ -47,7 +47,7 @@
   {% if filters.occupation %}<input type="hidden" name="occupation" value="{{ filters.occupation }}">
     <span class="chip">occupation: {{ filters.occupation }}</span>{% endif %}
   <button type="submit">Filter</button>
-  <a href="/" class="small">Reset</a>
+  <a href="/jobs" class="small">Reset</a>
 </form>
 <div id="rows">
   {% include "_rows.html" %}

@@ -12,7 +12,7 @@
 {% block content %}
 {% set a = row.ranking.assessment if row.ranking else none %}
 {% set b = row.breakdown %}
-<p class="small"><a href="/">← Jobs</a> · <a href="/jobs/{{ job.id }}.json">JSON</a></p>
+<p class="small"><a href="/jobs">← Jobs</a> · <a href="/jobs/{{ job.id }}.json">JSON</a></p>
 <h1>{{ job.title }}</h1>
 <p>
   {% if row.score is not none %}<span class="score{{ ' top' if row.score >= ranking.drafting.min_score }}">{{ row.score }}</span>{% endif %}

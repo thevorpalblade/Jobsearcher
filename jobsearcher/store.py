@@ -84,6 +84,24 @@ CREATE TABLE IF NOT EXISTS company_ats (
     error        TEXT
 );
 
+-- Conversations with Claude Code from the web UI.
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id                 TEXT PRIMARY KEY,
+    title              TEXT NOT NULL,
+    claude_session_id  TEXT NOT NULL,   -- Claude Code's own session, resumed each turn
+    started            INTEGER NOT NULL DEFAULT 0,  -- 1 once Claude Code has seen it
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL REFERENCES chat_sessions(id),
+    role        TEXT NOT NULL,          -- user | assistant | tool | error
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS chat_messages_session ON chat_messages(session_id, id);
+
 -- News about target companies, and what each item signals for a spontaneous application.
 CREATE TABLE IF NOT EXISTS news_items (
     id            TEXT PRIMARY KEY,   -- hash of the URL
@@ -523,6 +541,56 @@ class Store:
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (company, ats_type, ats_ref, careers_url, (when or _now()).isoformat(), error),
             )
+
+    # --- chat ---------------------------------------------------------------
+
+    def create_chat(self, chat_id: str, claude_session_id: str, title: str = "New chat") -> None:
+        now = _now().isoformat()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO chat_sessions (id, title, claude_session_id, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (chat_id, title, claude_session_id, now, now),
+            )
+
+    def get_chat(self, chat_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM chat_sessions WHERE id = ?", (chat_id,)).fetchone()
+
+    def list_chats(self, limit: int = 30) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM chat_sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+    def mark_chat_started(self, chat_id: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE chat_sessions SET started = 1 WHERE id = ?", (chat_id,))
+
+    def set_chat_title(self, chat_id: str, title: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE chat_sessions SET title = ? WHERE id = ?", (title, chat_id))
+
+    def add_chat_message(self, chat_id: str, role: str, text: str) -> int:
+        now = _now().isoformat()
+        with self.conn:
+            cursor = self.conn.execute(
+                "INSERT INTO chat_messages (session_id, role, text, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (chat_id, role, text, now),
+            )
+            self.conn.execute(
+                "UPDATE chat_sessions SET updated_at = ? WHERE id = ?", (now, chat_id)
+            )
+        return int(cursor.lastrowid or 0)
+
+    def chat_messages(self, chat_id: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY id", (chat_id,)
+        ).fetchall()
+
+    def delete_chat(self, chat_id: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM chat_messages WHERE session_id = ?", (chat_id,))
+            self.conn.execute("DELETE FROM chat_sessions WHERE id = ?", (chat_id,))
 
     # --- news and signals -------------------------------------------------
 

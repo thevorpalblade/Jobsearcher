@@ -1,0 +1,35 @@
+{# The chat panel. History is embedded as JSON and rendered by chat.js (one renderer for live and stored messages). #}
+{% if chat_problem %}
+  <div class="result error"><strong>The chat isn't available.</strong> {{ chat_problem }}</div>
+{% else %}
+<div class="chat" id="chat"
+     data-chat-id="{{ current.id if current else '' }}"
+     {% if running_after is not none %}data-running="1" data-after="{{ running_after }}"{% endif %}>
+  <div class="chat-head">
+    <label class="muted small">Conversation
+      <select id="chat-switch" aria-label="Choose a conversation">
+        <option value="new"{% if not current %} selected{% endif %}>New conversation</option>
+        {% for c in chats %}<option value="{{ c.id }}"{% if current and c.id == current.id %} selected{% endif %}>{{ c.title }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if current %}<button type="button" class="link danger" id="chat-delete" data-chat="{{ current.id }}" title="Delete this conversation">Delete</button>{% endif %}
+  </div>
+  <div class="chat-log" id="chat-log" aria-live="polite"></div>
+  <script type="application/json" id="chat-history">{{ messages|tojson }}</script>
+  {% if not messages %}
+  <div class="chat-suggestions" id="chat-suggestions">
+    {% for text in suggestions %}<button type="button" class="chip-button" data-suggest="{{ text }}">{{ text }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  <form class="chat-form" id="chat-form">
+    <textarea name="message" id="chat-input" rows="2" placeholder="Ask a question, request a draft, or describe a change you'd like…" required></textarea>
+    <div class="chat-actions">
+      <button type="submit" class="primary" id="chat-send">Send</button>
+      <button type="button" id="chat-stop" hidden>Stop</button>
+      <span class="muted small" id="chat-status"></span>
+    </div>
+  </form>
+  <p class="muted small">Claude works directly on this installation with full access: it can read your CV and the job database and change the program.
+    It uses your shared Claude subscription, one message at a time.</p>
+</div>
+{% endif %}

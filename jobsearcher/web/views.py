@@ -405,7 +405,7 @@ def sort_links(filters: ListFilters) -> dict[str, dict[str, str]]:
         if direction != natural:
             query["dir"] = direction
         links[key] = {
-            "href": "/?" + urlencode(query),
+            "href": "/jobs?" + urlencode(query),
             "arrow": ("▼" if current == "desc" else "▲") if active else "",
         }
     return links
@@ -518,3 +518,38 @@ _PROVENANCE_LABELS = {
 def provenance_label(provenance: str) -> str:
     """A readable label for a contact's provenance (the raw value is shown too)."""
     return _PROVENANCE_LABELS.get(provenance, provenance)
+
+
+# Jobs she's already acted on (or dismissed) don't belong in "top jobs to look at".
+_ACTED_ON = {
+    ApplicationState.APPLIED,
+    ApplicationState.INTERVIEW,
+    ApplicationState.REJECTED,
+    ApplicationState.IGNORED,
+}
+
+
+def top_rows(rows: list[JobRow], n: int = 5) -> list[JobRow]:
+    """The best-scoring open jobs she hasn't acted on yet."""
+    candidates = [r for r in rows if r.stage == "ranked" and r.score is not None]
+    candidates = [r for r in candidates if r.state not in _ACTED_ON]
+    return sort_rows(candidates, "score")[:n]
+
+
+@dataclass
+class DashboardStats:
+    open: int
+    ranked: int
+    waiting: int
+    new: int  # first seen in the last NEW_DAYS days
+    last_search: datetime | None
+
+
+def dashboard_stats(rows: list[JobRow], last_runs: dict[str, datetime]) -> DashboardStats:
+    return DashboardStats(
+        open=len(rows),
+        ranked=sum(r.stage == "ranked" for r in rows),
+        waiting=sum(r.stage == "pending" for r in rows),
+        new=sum(r.age_days <= NEW_DAYS for r in rows),
+        last_search=max(last_runs.values()) if last_runs else None,
+    )

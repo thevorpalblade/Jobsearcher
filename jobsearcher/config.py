@@ -164,12 +164,34 @@ class WebConfig(BaseModel):
     # `jobsearcher web` defaults; the Docker service passes --host 0.0.0.0.
     host: str = "127.0.0.1"
     port: int = 8080
+    # Who the dashboard greets ("Welcome, Jenny"); plain "Welcome" when empty.
+    user_name: str = ""
+    # Host names (besides IP addresses, localhost and one-word or .local/.lan names)
+    # the chat accepts requests for; "*" turns the check off. Guards the chat against
+    # DNS rebinding, since the UI has no login.
+    allowed_hosts: list[str] = Field(default_factory=list)
+
+
+class ChatConfig(BaseModel):
+    """The dashboard's chat with Claude Code, run in this repository."""
+
+    # Off unless asked for: with no login and full access, anyone who can open the
+    # page can make Claude Code act on this machine.
+    enabled: bool = False
+    model: str = "opus"
+    effort: str | None = "medium"
+    # bypassPermissions: no prompts (there's nobody at the terminal to answer them).
+    permission_mode: str = "bypassPermissions"
+    timeout_s: float = 1800
+    # The checkout Claude works in; default: the folder holding config.yaml.
+    workdir: Path | None = None
 
 
 class Config(BaseModel):
     search: SearchConfig = Field(default_factory=SearchConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
+    chat: ChatConfig = Field(default_factory=ChatConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     web: WebConfig = Field(default_factory=WebConfig)
@@ -223,4 +245,6 @@ def load_config(path: str | Path | None = None) -> Config:
     ):
         value = Path(os.environ.get(env) or getattr(config, field))
         setattr(config, field, value if value.is_absolute() else base / value)
+    workdir = config.chat.workdir or Path()
+    config.chat.workdir = workdir if workdir.is_absolute() else (base / workdir).resolve()
     return config

@@ -3,16 +3,16 @@
 {% macro count_link(role, item) -%}
   {%- if item.label is none -%}{{ item.count }}
   {%- else -%}
-    <a href="/?view={{ 'excluded' if item.excluded else 'all' }}&amp;role={{ role|urlencode }}&amp;occupation={{ item.label|urlencode }}">{{ item.count }}</a>
+    <a href="/jobs?view={{ 'excluded' if item.excluded else 'all' }}&amp;role={{ role|urlencode }}&amp;occupation={{ item.label|urlencode }}">{{ item.count }}</a>
   {%- endif -%}
 {%- endmacro %}
 {% block content %}
 <h1>Prefilter</h1>
 <p>
   {{ total }} open jobs:
-  <a href="/?view=ranked">{{ stages.ranked }} ranked</a>,
-  <a href="/?view=pending">{{ stages.pending }} waiting for ranking</a>,
-  <a href="/?view=excluded">{{ stages.excluded }} excluded by the prefilter</a>.
+  <a href="/jobs?view=ranked">{{ stages.ranked }} ranked</a>,
+  <a href="/jobs?view=pending">{{ stages.pending }} waiting for ranking</a>,
+  <a href="/jobs?view=excluded">{{ stages.excluded }} excluded by the prefilter</a>.
 </p>
 <p class="muted small">
   Occupation fields and groups of the open jobs that mention each target role, as

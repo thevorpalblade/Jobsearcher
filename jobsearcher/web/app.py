@@ -6,6 +6,8 @@ its own SQLite connection (see `get_store`), read-only unless it writes.
 
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -26,11 +28,18 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from jobsearcher import chat as chat_module
 from jobsearcher import cvs, settings
 from jobsearcher.config import Config, config_file_path, load_config
 from jobsearcher.contacts import is_generic_email
@@ -49,6 +58,7 @@ class WebState:
     config_path: Path
     templates: Jinja2Templates
     tz: ZoneInfo
+    chat: chat_module.ChatManager
     ranking: views.MtimeCache[RankingConfig]  # ranking.yaml, reloaded when edited
     cv: views.MtimeCache[str | None]
     memo: views.PrefilterMemo
@@ -56,6 +66,8 @@ class WebState:
     def reload_config(self) -> None:
         """Pick up a saved config.yaml (paths to ranking.yaml and the CV may change)."""
         self.config = load_config(self.config_path)
+        self.chat.config = self.config.chat
+        self.chat.user_name = self.config.web.user_name
         self.ranking = views.ranking_config_cache(self.config.ranking_config)
         self.cv = views.cv_cache(self.config.cv_path)
 
@@ -165,6 +177,45 @@ def healthz(store: ReadStore) -> str:
 
 
 @router.get("/", response_class=HTMLResponse)
+def dashboard(
+    request: Request, state: State, store: ReadStore, chat: str | None = None
+) -> HTMLResponse:
+    ctx = state.row_context()
+    rows = views.load_rows(store, ctx, "all")
+    chats = store.list_chats()
+    current = None
+    if chat != "new":
+        current = store.get_chat(chat) if chat else (chats[0] if chats else None)
+    run = state.chat.run_for(current["id"]) if current else None
+    # Read the event count first: anything emitted after it is streamed, anything
+    # before it is already in the stored messages (each is saved before it's emitted).
+    after = len(run.events) if run and not run.done else None
+    messages = (
+        [
+            {"id": m["id"], "role": m["role"], "text": m["text"]}
+            for m in store.chat_messages(current["id"])
+        ]
+        if current
+        else []
+    )
+    return render(
+        request,
+        state,
+        "dashboard.html",
+        store,
+        top=views.top_rows(rows, 5),
+        stats=views.dashboard_stats(rows, store.last_runs()),
+        ranking=ctx.config,
+        chats=chats,
+        current=current,
+        messages=messages,
+        running_after=after,
+        chat_problem=state.chat.unavailable(),
+        suggestions=chat_module.SUGGESTIONS,
+    )
+
+
+@router.get("/jobs", response_class=HTMLResponse)
 def job_list(
     request: Request,
     state: State,
@@ -488,6 +539,85 @@ def save_config_file(
     return _check(request, state, key, text, write=True)
 
 
+# --- chat with Claude Code ----------------------------------------------------------
+
+
+def require_chat_host(request: Request) -> None:
+    """Refuse chat requests addressed to a public-looking name (DNS rebinding)."""
+    allowed = _state(request).config.web.allowed_hosts
+    if not chat_module.host_allowed(request.headers.get("host", ""), allowed):
+        raise HTTPException(
+            403,
+            f"The chat doesn't accept requests for host {request.headers.get('host')!r}. "
+            "Open the page by IP address, or add the name to web.allowed_hosts in config.yaml.",
+        )
+
+
+ChatGuards = [Depends(require_htmx), Depends(require_chat_host)]
+
+
+@router.post("/chat/send", dependencies=ChatGuards)
+def chat_send(
+    state: State,
+    message: Annotated[str, Form()] = "",
+    chat_id: Annotated[str, Form()] = "",
+) -> JSONResponse:
+    try:
+        new_id, _ = state.chat.start(chat_id or None, message)
+    except chat_module.ChatUnavailable as exc:
+        return JSONResponse({"error": str(exc)}, status_code=503)
+    except chat_module.ChatBusy as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    return JSONResponse({"chat_id": new_id})
+
+
+@router.get("/chat/{chat_id}/stream", dependencies=[Depends(require_chat_host)])
+def chat_stream(chat_id: str, state: State, after: int = 0) -> StreamingResponse:
+    """Server-Sent Events for the chat's current run, from event number `after`."""
+    run = state.chat.run_for(chat_id)
+
+    def events() -> Iterator[str]:
+        if run is None:
+            yield f"data: {json.dumps({'type': 'done', 'error': None})}\n\n"
+            return
+        index, idle = max(after, 0), 0.0
+        while True:
+            fresh, done = run.since(index)
+            for event in fresh:
+                index += 1
+                yield f"id: {index}\ndata: {json.dumps(event)}\n\n"
+            if done and not fresh:
+                return
+            if not fresh:
+                time.sleep(0.25)
+                idle += 0.25
+                if idle >= 15:
+                    yield ": keepalive\n\n"  # keeps proxies from closing a quiet stream
+                    idle = 0.0
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/chat/{chat_id}/cancel", dependencies=ChatGuards)
+def chat_cancel(chat_id: str, state: State) -> JSONResponse:
+    return JSONResponse({"stopped": state.chat.cancel(chat_id)})
+
+
+@router.post("/chat/{chat_id}/delete", dependencies=ChatGuards)
+def chat_delete(chat_id: str, state: State, store: WriteStore) -> Response:
+    run = state.chat.run_for(chat_id)
+    if run is not None and not run.done:
+        raise HTTPException(409, "Stop the running reply first.")
+    store.delete_chat(chat_id)
+    return htmx_redirect("/?chat=new")
+
+
 # --- structured settings forms (ranking.yaml, companies.yaml) -----------------------
 
 
@@ -623,6 +753,7 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
     app.state.web = WebState(
         config=config,
         config_path=config_path or config_file_path(),
+        chat=chat_module.ChatManager(config.chat, config.db_path, config.web.user_name),
         templates=_make_templates(tz),
         tz=tz,
         ranking=views.ranking_config_cache(config.ranking_config),

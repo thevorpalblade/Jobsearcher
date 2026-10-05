@@ -17,6 +17,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | **Not started** |
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
+| M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -95,6 +96,22 @@ PLAN.md §6; implementation notes and decisions in
 - [ ] Later (after M4): draft downloads and a Regenerate button. Regenerate
       should queue a request for the daemon, so the web container never needs
       API keys or the Claude token.
+
+## 2a. Dashboard and chat (M9, done 2026-10-05)
+
+`/` is a dashboard (greeting from `web.user_name`, top five jobs she hasn't acted
+on, counts) with a chat panel that runs Claude Code in this checkout
+(`chat.enabled`, off by default). The job list moved to `/jobs`.
+
+- [ ] **Security:** the user chose no login and full access, so anyone who can open
+      the page can run Claude Code on this machine. Mitigations: off by default, the
+      HX-Request header on writes, a Host-header check against DNS rebinding
+      (`web.allowed_hosts`). A shared password (`WEB_PASSWORD`) would be the next step.
+- [ ] The chat needs the `claude` CLI and the checkout, so it doesn't work in the
+      Docker web service.
+- [ ] Replies appear per message, not token by token (`--include-partial-messages`
+      would stream words); the chat shows tool activity as one-line notes.
+- [ ] One run at a time across the whole UI (shared subscription limits, one checkout).
 
 ## 2b. Settings page (done 2026-10-04)
 

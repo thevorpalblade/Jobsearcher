@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Jobsearcher{% endblock %}
+{% block content %}
+<h1>Welcome{% if config.web.user_name %}, {{ config.web.user_name }}{% endif %}</h1>
+<p class="muted">
+  {{ stats.open }} open jobs, {{ stats.ranked }} scored{% if stats.waiting %}, {{ stats.waiting }} waiting to be scored{% endif %}
+  {% if stats.new %} · <a href="/jobs?new=2&amp;sort=published">{{ stats.new }} new in the last 2 days</a>{% endif %}
+  {% if stats.last_search %} · last search {{ stats.last_search|localtime }}{% endif %}
+</p>
+
+<section>
+  <h2>Your top five right now</h2>
+  {% if top %}
+  <ol class="top5">
+    {% for row in top %}
+      {% set job = row.job %}
+      {% set a = row.ranking.assessment %}
+      <li class="card">
+        <span class="score{{ ' top' if row.score >= ranking.drafting.min_score }}">{{ row.score }}</span>
+        <div class="top5-body">
+          <a class="top5-title" href="/jobs/{{ job.id }}">{{ job.title }}</a>
+          <div class="muted small">
+            {{ job.company or "" }}{% if job.company and (job.location or job.region) %} · {% endif %}{{ job.location or job.region or "" }}
+            {% if job.remote %}<span class="chip">remote</span>{% endif %}
+            {% if row.days_left is not none and row.days_left >= 0 %} · deadline {% if row.days_left == 0 %}today{% else %}in {{ row.days_left }} days{% endif %}{% endif %}
+            {% if a.swedish == "required" %}<span class="chip bad">Swedish required</span>
+            {% elif a.language == "en" %}<span class="chip good">English ad</span>{% endif %}
+            {% if job.contacts %}<span class="chip">contact known</span>{% endif %}
+          </div>
+          <div class="small">{{ a.rationale|truncate(190) }}</div>
+        </div>
+      </li>
+    {% endfor %}
+  </ol>
+  <p class="small"><a href="/jobs">See all jobs →</a></p>
+  {% else %}
+    <p class="muted">Nothing scored yet. The daily run (06:00) searches, then scores new jobs; <a href="/status">Status</a> shows its progress.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Ask Claude</h2>
+  {% include "_chat.html" %}
+</section>
+<script src="{{ static('chat.js') }}" defer></script>
+{% endblock %}

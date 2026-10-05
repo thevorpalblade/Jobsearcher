@@ -7,13 +7,13 @@
 <section>
   <h2>Jobs</h2>
   <dl class="facts">
-    <dt>Open</dt><dd><a href="/?view=all">{{ open_jobs }}</a></dd>
-    <dt>Ranked</dt><dd><a href="/?view=ranked">{{ counts.ranked }}</a>
+    <dt>Open</dt><dd><a href="/jobs?view=all">{{ open_jobs }}</a></dd>
+    <dt>Ranked</dt><dd><a href="/jobs?view=ranked">{{ counts.ranked }}</a>
       {% if counts.stale %}<span class="muted">({{ counts.stale }} stale: ranked before a CV, role or model change)</span>{% endif %}</dd>
-    <dt>Waiting for ranking</dt><dd><a href="/?view=pending">{{ counts.pending }}</a>
+    <dt>Waiting for ranking</dt><dd><a href="/jobs?view=pending">{{ counts.pending }}</a>
       {% if counts.unparseable %}<span class="muted">(incl. {{ counts.unparseable }} with an outdated ranking)</span>{% endif %}</dd>
-    <dt>Excluded by prefilter</dt><dd><a href="/?view=excluded">{{ counts.excluded }}</a></dd>
-    <dt>Expired</dt><dd><a href="/?view=expired">{{ expired_jobs }}</a></dd>
+    <dt>Excluded by prefilter</dt><dd><a href="/jobs?view=excluded">{{ counts.excluded }}</a></dd>
+    <dt>Expired</dt><dd><a href="/jobs?view=expired">{{ expired_jobs }}</a></dd>
   </dl>
 
   <h2>Last search per source</h2>
