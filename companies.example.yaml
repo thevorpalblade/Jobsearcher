@@ -17,6 +17,7 @@
 #   curated:healthcare Private healthcare and pharmacy operators (candidate's background).
 #   curated:international  International employers with Stockholm/Gothenburg offices,
 #                      often with English as the working language.
+#   curated:games      Games studios in Stockholm (and Malmö).
 #   curated:recruiters Recruitment and staffing agencies with HR, operations and
 #                      management roles, many never advertised under the employer's name.
 
@@ -122,7 +123,7 @@ companies:
   - {name: King, news_query: '"King Digital Entertainment"', website: https://careers.king.com, tags: [international], source: "curated:international"}
   - {name: Epidemic Sound, website: https://www.epidemicsound.com, tags: [international], source: "curated:international"}
   - {name: Truecaller, website: https://www.truecaller.com, tags: [international], source: "curated:international"}
-  - {name: Paradox Interactive, website: https://www.paradoxinteractive.com, tags: [international], source: "curated:international"}
+  - {name: Paradox Interactive, website: https://www.paradoxinteractive.com, careers_url: "https://career.paradoxplaza.com/jobs", tags: [games, international], source: "curated:international"}
   - {name: Voi, news_query: '"Voi Technology" sourcecountry:sweden', website: https://www.voi.com, tags: [international], source: "curated:international"}
   - {name: Einride, website: https://www.einride.tech, tags: [international], source: "curated:international"}
   - {name: Oatly, website: https://www.oatly.com, tags: [international], source: "curated:international"}
@@ -141,6 +142,7 @@ companies:
   - {name: Coor, website: https://www.coor.se, tags: [international], source: "curated:international"}  # facility management: operations roles
   - {name: ISS Sverige, website: https://www.se.issworld.com, tags: [international], source: "curated:international"}
   - {name: Tink, website: https://tink.com, tags: [international], source: "curated:international"}
+  - {name: Xylem, website: https://www.xylem.com, tags: [international], source: "curated:international"}
 
   # --- curated:recruiters ---------------------------------------------------------
   # Their own job boards; many also post on Platsbanken, LinkedIn and Indeed (merged
@@ -157,3 +159,23 @@ companies:
   - {name: Experis, website: https://www.experis.se, tags: [recruiter], source: "curated:recruiters"}
   - {name: Bravura, website: https://www.bravura.se, tags: [recruiter], source: "curated:recruiters"}
   - {name: Novare, website: https://novare.se, tags: [recruiter], source: "curated:recruiters"}
+
+  # --- curated:games -----------------------------------------------------------------
+  # Games studios in Stockholm (and Malmö), many with English as the working language.
+  # careers_url points detection at a job site the home page doesn't link to.
+  - {name: DICE, news_query: '("EA DICE" OR "DICE Stockholm")', website: https://www.dice.se, careers_url: "https://jobs.ea.com/", tags: [games, international], source: "curated:games"}
+  - {name: Avalanche Studios Group, website: https://avalanchestudios.com, tags: [games, international], source: "curated:games"}
+  - {name: Embark Studios, website: https://www.embark-studios.com, tags: [games, international], source: "curated:games"}
+  - {name: Starbreeze Studios, website: https://www.starbreeze.com, tags: [games, international], source: "curated:games"}
+  - {name: Fatshark, website: https://www.fatshark.se, careers_url: "https://jobs.fatsharkgames.com", tags: [games, international], source: "curated:games"}
+  - {name: Mojang Studios, website: https://www.mojang.com, careers_url: "https://jobs.mojang.com/", tags: [games, international], source: "curated:games"}
+  - {name: Resolution Games, website: https://www.resolutiongames.com, tags: [games, international], source: "curated:games"}
+  - {name: Toca Boca, website: https://tocaboca.com, tags: [games, international], source: "curated:games"}
+  - {name: Raw Fury, website: https://rawfury.com, tags: [games, international], source: "curated:games"}
+  - {name: MAG Interactive, website: https://www.maginteractive.com, careers_url: "https://career.maginteractive.com", tags: [games, international], source: "curated:games"}
+  - {name: Hazelight Studios, website: https://www.hazelight.se, tags: [games, international], source: "curated:games"}
+  - {name: Snowprint Studios, website: https://www.snowprintstudios.com, tags: [games, international], source: "curated:games"}
+  - {name: Enad Global 7, website: https://www.enadglobal7.com, tags: [games, international], source: "curated:games"}
+  - {name: Thunderful Group, website: https://thunderfulgroup.com, tags: [games, international], source: "curated:games"}
+  - {name: Massive Entertainment, website: https://www.massive.se, tags: [games, international], source: "curated:games"}
+  - {name: Sharkmob, website: https://sharkmob.com, tags: [games, international], source: "curated:games"}
