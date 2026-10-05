@@ -339,3 +339,28 @@ def test_manager_runs_one_draft_at_a_time_and_reports_failures(tmp_path):
     assert first.state == "done" and second.state == "failed"
     assert second.error == "usage limit reached" and order == ["slow"]
     assert manager.submit("a", lambda c, s: None) is not first  # a finished key can run again
+
+
+def test_a_slow_primary_check_falls_back_to_the_next_model():
+    store = Store(":memory:")
+    bad = content(letter="Dear Hiring Manager,\n\nI hold a PMP.\n\nAlex")
+    good = content(letter="Dear Hiring Manager,\n\nI led the rollout of 3 new warehouses.\n\nAlex")
+    drafter = FakeLLM("opus", bad, good)
+    primary = FakeLLM("glm", LLMError("504 gateway timeout"))  # GLM is queued behind other work
+    fallback = FakeLLM("haiku", verdict(("Holds a PMP", False)), verdict(("Led 3 warehouses", True)))
+    draft = run(store, drafter, primary, fallback_llm=fallback)
+    assert draft.check_model == "haiku" and draft.check_error is None
+    assert draft.repaired and not draft.needs_review  # the fallback's verdict drove the repair
+    assert len(primary.calls) == 1  # asked first, never again once it failed
+
+
+def test_both_checkers_down_marks_the_draft_for_review():
+    store = Store(":memory:")
+    draft = run(
+        store,
+        FakeLLM("opus", content()),
+        FakeLLM("glm", LLMError("504")),
+        fallback_llm=FakeLLM("haiku", LLMError("usage limit")),
+    )
+    assert draft.needs_review and draft.check_model is None
+    assert "usage limit" in draft.check_error  # the last failure is the one shown

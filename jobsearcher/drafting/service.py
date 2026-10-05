@@ -33,13 +33,18 @@ class DraftError(RuntimeError):
 class Llms:
     draft: BudgetedLLM
     check: BudgetedLLM
+    fallback: BudgetedLLM | None = None  # checks instead when `check` is slow or down
 
 
 def make_llms(config: Config, store: Store) -> Llms:
-    """Drafting model (Claude Code) and the independent grounding-check model (the
-    ranking model, GLM, which is free)."""
+    """Drafting model (Claude Code), the independent grounding-check model (by default
+    the ranking model, GLM, which is free) and, if configured, a fallback checker."""
     tracker = BudgetTracker(store, config.llm)
-    return Llms(make_llm(config, "drafting", tracker), make_llm(config, "ranking", tracker))
+    return Llms(
+        make_llm(config, "drafting", tracker),
+        make_llm(config, "grounding", tracker),
+        make_llm(config, "grounding_fallback", tracker) if config.llm.grounding_fallback else None,
+    )
 
 
 def drafts_dir(config: Config) -> Path:
@@ -150,6 +155,7 @@ def draft_job(
         drafts_dir(config),
         render or render_files,
         trigger=trigger,
+        fallback_llm=llms.fallback,
         force=force,
     )
 
@@ -175,5 +181,6 @@ def draft_company(
         llms.check,
         drafts_dir(config),
         render or render_files,
+        fallback_llm=llms.fallback,
         force=force,
     )

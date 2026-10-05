@@ -83,6 +83,12 @@ llm:
   #   enforce_schema: true      # server enforces the JSON schema (response_format json_schema)
   #   max_parallel: 4           # concurrent requests; the free tier queues each one
 
+  # Drafts are checked claim by claim against your CVs by a second model (default: the
+  # ranking model, with a 150 s time limit so a busy free tier can't stall a draft).
+  # If it is too slow or down, this model checks instead:
+  # grounding_fallback: {provider: claude_code, model: haiku}   # quick, on the subscription
+  # grounding: {provider: nvidia, model: z-ai/glm-5.3-flash, timeout_s: 150, max_retries: 0}
+
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%
   # Prices (USD per million tokens) for models not in the built-in table:

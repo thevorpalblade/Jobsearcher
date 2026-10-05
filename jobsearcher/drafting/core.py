@@ -126,38 +126,39 @@ def unsupported_numbers(text: str, sources: list[str]) -> list[Claim]:
 
 
 def _check(
-    check_llm: BudgetedLLM, context: str, draft: DraftContent
-) -> tuple[list[Claim], str | None]:
-    """The model's verdict on every claim; (claims, error) when the check couldn't run."""
+    checkers: list[BudgetedLLM], context: str, draft: DraftContent
+) -> tuple[list[Claim], BudgetedLLM | None, str | None]:
+    """The first checker that answers: (claims, the checker, error). The checkers are
+    tried in order, so a slow or failing primary falls back to the next one."""
     error = None
-    for attempt in (1, 2):
+    for checker in checkers:
         try:
-            result = check_llm.complete(
+            result = checker.complete(
                 system=prompts.CHECK_SYSTEM,
                 context=context,
                 prompt=prompts.check_prompt(draft.cv, draft.cover_letter),
                 schema=GroundingCheck,
             )
-            return result.parsed.claims, None  # type: ignore[union-attr]
+            return result.parsed.claims, checker, None  # type: ignore[union-attr]
         except LLMError as exc:
             error = f"The grounding check couldn't run: {exc}"
-            log.warning("Grounding check attempt %d failed: %s", attempt, exc)
-    return [], error
+            log.warning("Grounding check by %s failed: %s", checker.model, exc)
+    return [], None, error
 
 
 def check_draft(
-    check_llm: BudgetedLLM,
+    checkers: list[BudgetedLLM],
     context: str,
     draft: DraftContent,
     cv_texts: list[str],
     sources: list[str],
-) -> tuple[list[Claim], int, str | None]:
-    """(unsupported claims, claims checked, error)."""
-    claims, error = _check(check_llm, context, draft)
+) -> tuple[list[Claim], int, BudgetedLLM | None, str | None]:
+    """(unsupported claims, claims checked, the checker that answered, error)."""
+    claims, answered, error = _check(checkers, context, draft)
     flagged = [c for c in claims if not c.supported]
     flagged += unsupported_numbers(draft.cv, cv_texts)
     flagged += unsupported_numbers(draft.cover_letter, cv_texts + sources)
-    return flagged, len(claims), error
+    return flagged, len(claims), answered, error
 
 
 def generate_draft(
@@ -169,6 +170,7 @@ def generate_draft(
     out_dir: Path,
     render: Renderer,
     trigger: Literal["manual", "shortlist"] = "manual",
+    fallback_llm: BudgetedLLM | None = None,
     force: bool = False,
     now: datetime | None = None,
 ) -> Draft:
@@ -183,7 +185,12 @@ def generate_draft(
     content: DraftContent = draft_llm.complete(
         system=prompts.DRAFT_SYSTEM, context=context, prompt=request.prompt, schema=DraftContent
     ).parsed  # type: ignore[assignment]
-    flagged, checked, error = check_draft(check_llm, context, content, cv_texts, request.sources)
+    checkers = [check_llm] + ([fallback_llm] if fallback_llm else [check_llm])  # no fallback: retry
+    flagged, checked, answered, error = check_draft(
+        checkers, context, content, cv_texts, request.sources
+    )
+    if answered is not None:  # the re-check starts with whoever answered, not a slow primary
+        checkers = [answered] + [c for c in checkers if c is not answered]
 
     repaired = False
     if flagged and error is None:
@@ -198,8 +205,8 @@ def generate_draft(
             schema=DraftContent,
         ).parsed
         content = again  # type: ignore[assignment]
-        flagged, checked, error = check_draft(
-            check_llm, context, content, cv_texts, request.sources
+        flagged, checked, answered, error = check_draft(
+            checkers, context, content, cv_texts, request.sources
         )
 
     version_dir = out_dir / _safe(request.key) / input_hash
@@ -210,7 +217,7 @@ def generate_draft(
         created_at=now or datetime.now(UTC),
         trigger=trigger,
         model=draft_llm.model,
-        check_model=check_llm.model,
+        check_model=answered.model if answered else None,
         base_cv=cvs[0][0],
         instructions=request.instructions.strip(),
         addressed_to=request.addressed_to,

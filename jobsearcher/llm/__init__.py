@@ -15,12 +15,27 @@ from jobsearcher.llm.base import (
 )
 from jobsearcher.llm.budget import BudgetedLLM, BudgetTracker
 
-Role = Literal["ranking", "drafting"]
+Role = Literal["ranking", "drafting", "grounding", "grounding_fallback"]
+
+
+def _spec(config: Config, role: Role):  # type: ignore[no-untyped-def]
+    llm = config.llm
+    if role == "ranking":
+        return llm.ranking
+    if role == "drafting":
+        return llm.drafting
+    if role == "grounding":
+        # Unset: the ranking model, but quick to give up, so a busy provider doesn't hold
+        # up a draft (the fallback, if any, then takes over).
+        return llm.grounding or llm.ranking.model_copy(update={"timeout_s": 150, "max_retries": 0})
+    if llm.grounding_fallback is None:
+        raise LLMError("No grounding fallback model configured")
+    return llm.grounding_fallback
 
 
 def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
     """Build the client configured for `role`, wrapped with budget enforcement."""
-    spec = config.llm.ranking if role == "ranking" else config.llm.drafting
+    spec = _spec(config, role)
     client: LLMClient
     if spec.provider == Provider.CLAUDE_CODE:
         from jobsearcher.llm.claude_code_client import ClaudeCodeLLM
@@ -41,6 +56,8 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,
+            timeout_s=spec.timeout_s,
+            max_retries=spec.max_retries,
         )
     else:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
@@ -51,6 +68,8 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,
+            timeout_s=spec.timeout_s,
+            max_retries=spec.max_retries,
         )
     return BudgetedLLM(client, tracker, purpose=role)
 

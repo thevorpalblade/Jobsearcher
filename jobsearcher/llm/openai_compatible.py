@@ -23,6 +23,8 @@ class OpenAICompatibleLLM:
         max_tokens: int = 16000,
         extra_body: dict[str, Any] | None = None,
         enforce_schema: bool = False,
+        timeout_s: float | None = None,
+        max_retries: int = 2,
         client: openai.OpenAI | None = None,
     ):
         self.model = model
@@ -36,7 +38,12 @@ class OpenAICompatibleLLM:
             api_key = os.environ.get(api_key_env)
             if not api_key:
                 raise LLMError(f"{api_key_env} is not set")
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
+            client = openai.OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout_s if timeout_s is not None else openai.NOT_GIVEN,
+                max_retries=max_retries,
+            )
         self.client = client
 
     def complete(

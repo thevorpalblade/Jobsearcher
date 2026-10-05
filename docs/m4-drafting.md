@@ -82,6 +82,14 @@ Swedish requirement), and her optional instructions. Chat context isn't used.
 - Files go to `data/drafts/<job_id>/<version>/` (`cv.md|docx|pdf`, `letter.md|docx|pdf`).
   Names for download: `<Name>-CV-<Company>.pdf`.
 
+### Check reliability (found in the first live run)
+
+The GLM check on NVIDIA's free tier answered with 504s for ~30 minutes while the daemon
+was ranking (every call waits in the same queue). So the check has a 150 s time limit and
+no SDK retries, and an optional `llm.grounding_fallback` (Claude Haiku on the subscription)
+answers instead when GLM is slow or down; the re-check after a repair starts with whoever
+answered. If every checker fails, the draft is saved as "needs review" (check couldn't run).
+
 ## Where it's used
 
 - **Job page** (`{% block drafts %}`): a "Draft application" panel: optional

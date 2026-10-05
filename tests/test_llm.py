@@ -245,3 +245,28 @@ def test_enforce_schema_sends_json_schema_response_format():
     assert fmt["json_schema"]["name"] == "Score"
     assert fmt["json_schema"]["strict"] is True
     assert fmt["json_schema"]["schema"]["properties"].keys() == {"fit", "reason"}
+
+
+def test_grounding_models_default_to_a_quick_ranking_model(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import BudgetTracker, LLMError, make_llm
+    from jobsearcher.store import Store
+
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.NVIDIA, model="z-ai/glm-5.3-flash")
+    tracker = BudgetTracker(Store(":memory:"), config.llm)
+
+    check = make_llm(config, "grounding", tracker)
+    assert check.model == "z-ai/glm-5.3-flash" and check.purpose == "grounding"
+    sdk = check.client.client  # the OpenAI SDK client: short timeout, no automatic retries
+    assert (sdk.timeout, sdk.max_retries) == (150, 0)
+    ranking = make_llm(config, "ranking", tracker).client.client
+    assert (ranking.timeout, ranking.max_retries) == (600, 2)  # ranking is unchanged
+
+    with pytest.raises(LLMError, match="No grounding fallback"):
+        make_llm(config, "grounding_fallback", tracker)
+    config.llm.grounding_fallback = ModelRole(provider=Provider.CLAUDE_CODE, model="haiku")
+    assert make_llm(config, "grounding_fallback", tracker).model == "haiku"
+    config.llm.grounding = ModelRole(provider=Provider.NVIDIA, model="other", timeout_s=30)
+    assert make_llm(config, "grounding", tracker).client.client.timeout == 30

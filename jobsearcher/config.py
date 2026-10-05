@@ -100,8 +100,10 @@ class ModelRole(BaseModel):
     # Leave unset for models that don't support it (e.g. claude-haiku-4-5).
     effort: str | None = None
     max_tokens: int = 16000
-    # claude_code: seconds before a CLI call is abandoned.
+    # Seconds before a call is abandoned (claude_code CLI; OpenAI-compatible requests).
     timeout_s: float = 600
+    # moonshot / nvidia: automatic retries of a failed request (each may wait timeout_s).
+    max_retries: int = 2
     # moonshot / nvidia: extra provider-specific request fields, e.g.
     # {"thinking": {"type": "disabled"}} to stop GLM reasoning before it answers.
     extra_body: dict[str, Any] = Field(default_factory=dict)
@@ -137,6 +139,10 @@ DEFAULT_PRICES: dict[str, ModelPrice] = {
 
 
 class LLMConfig(BaseModel):
+    # The independent model that checks drafts against the CVs; default: the ranking model,
+    # with a short timeout. `grounding_fallback` answers instead when it is too slow or down.
+    grounding: ModelRole | None = None
+    grounding_fallback: ModelRole | None = None
     ranking: ModelRole = Field(
         default_factory=lambda: ModelRole(provider=Provider.MOONSHOT, model="kimi-k2.6")
     )
