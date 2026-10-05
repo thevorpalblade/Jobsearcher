@@ -42,7 +42,8 @@
   {{ select("swedish", "Swedish", [("any", "Any"), ("exclude_required", "Not required"), ("not_mentioned", "Not mentioned")], filters.swedish) }}
   <label>First seen within<input type="number" name="new" min="0" placeholder="days" value="{{ filters.new if filters.new is not none else '' }}"></label>
   <label class="check"><input type="checkbox" name="has_contact" value="true"{% if filters.has_contact %} checked{% endif %}> Contact known</label>
-  {{ select("sort", "Sort by", [("score", "Score"), ("fit", "Fit"), ("success", "Success"), ("deadline", "Deadline"), ("published", "Published")], filters.sort) }}
+  {{ select("sort", "Sort by", sort_labels.items(), filters.sort) }}
+  {% if filters.dir %}<input type="hidden" name="dir" value="{{ filters.dir }}">{% endif %}
   {% if filters.occupation %}<input type="hidden" name="occupation" value="{{ filters.occupation }}">
     <span class="chip">occupation: {{ filters.occupation }}</span>{% endif %}
   <button type="submit">Filter</button>

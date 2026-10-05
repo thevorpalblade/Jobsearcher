@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -212,6 +212,12 @@ def load_rows(store: Store, ctx: RowContext, view: str = "ranked") -> list[JobRo
     return [make_row(r, rankings.get(r.job.id), ctx, apps.get(r.job.id)) for r in records]
 
 
+SortKey = Literal[
+    "score", "fit", "success", "title", "company", "location", "remote", "deadline",
+    "language", "contact", "source", "tracking", "published",
+]  # fmt: skip
+
+
 class ListFilters(BaseModel):
     """Query parameters of the job list. Every filter is optional."""
 
@@ -230,7 +236,8 @@ class ListFilters(BaseModel):
     has_contact: bool | None = None
     new: int | None = Field(None, ge=0)  # first seen within N days
     q: str | None = None  # title or company
-    sort: Literal["score", "fit", "success", "deadline", "published"] = "score"
+    sort: SortKey = "score"
+    dir: Literal["asc", "desc"] | None = None  # None: the column's natural direction
 
     @model_validator(mode="before")
     @classmethod
@@ -312,23 +319,96 @@ def _published(row: JobRow) -> float:
     return (p if p.tzinfo else p.replace(tzinfo=UTC)).timestamp()
 
 
-_SORT_VALUES: dict[str, Callable[[JobRow], int | None]] = {
+def _text(value: str | None) -> str | None:
+    return value.casefold() if value else None
+
+
+_LANGUAGE_ORDER = {"en": 0, "other": 1, "sv": 2}
+_SWEDISH_ORDER = {"not_mentioned": 0, "merit": 1, "required": 2}
+
+# Sort key per table column; None means "no value", which always sorts last.
+_SORT_VALUES: dict[str, Callable[[JobRow], Any]] = {
     "score": lambda r: r.score,
     "fit": lambda r: r.ranking.assessment.fit_score if r.ranking else None,
     "success": lambda r: r.ranking.assessment.success_score if r.ranking else None,
+    "title": lambda r: _text(r.job.title),
+    "company": lambda r: _text(r.job.company),
+    "location": lambda r: _text(r.job.location or r.job.region),
+    "remote": lambda r: 1 if r.job.remote else 0,
+    "deadline": lambda r: r.days_left,
+    # Easiest first: English ads, then Swedish not mentioned, a merit, required.
+    "language": lambda r: (
+        (
+            _LANGUAGE_ORDER.get(r.ranking.assessment.language, 1),
+            _SWEDISH_ORDER.get(r.ranking.assessment.swedish, 0),
+        )
+        if r.ranking
+        else None
+    ),
+    "contact": lambda r: 1 if r.job.contacts else 0,
+    "source": lambda r: ", ".join(sorted({s.source for s in r.job.sources})) or None,
+    "tracking": lambda r: r.state.value if r.application else None,
+    "published": _published,
+}
+# Clicking a column sorts it this way first: best, most and newest first; soonest
+# deadline first; text A to Z.
+_DESCENDING = {"score", "fit", "success", "remote", "contact", "published"}
+SORT_LABELS = {
+    "score": "Score",
+    "fit": "Fit",
+    "success": "Success",
+    "deadline": "Deadline",
+    "published": "Published",
+    "title": "Title",
+    "company": "Company",
+    "location": "Location",
+    "remote": "Remote",
+    "language": "Language",
+    "contact": "Contact",
+    "source": "Source",
+    "tracking": "Tracking",
 }
 
 
-def sort_rows(rows: list[JobRow], sort: str = "score") -> list[JobRow]:
-    """Best (or soonest deadline) first; rows without the value go last, and ties
-    keep newest ads first."""
-    rows = sorted(rows, key=_published, reverse=True)
-    if sort == "published":
-        return rows
-    if sort == "deadline":
-        return sorted(rows, key=lambda r: (r.days_left is None, r.days_left or 0))
+def sort_direction(sort: str, direction: str | None) -> str:
+    return direction or ("desc" if sort in _DESCENDING else "asc")
+
+
+def sort_rows(
+    rows: list[JobRow], sort: str = "score", direction: str | None = None
+) -> list[JobRow]:
+    """Rows by one column. Rows without a value go last either way, and ties keep
+    the newest ads first."""
     value = _SORT_VALUES.get(sort, _SORT_VALUES["score"])
-    return sorted(rows, key=lambda r: (value(r) is None, -(value(r) or 0)))
+    rows = sorted(rows, key=_published, reverse=True)
+    present = [r for r in rows if value(r) is not None]
+    missing = [r for r in rows if value(r) is None]
+    present.sort(key=value, reverse=sort_direction(sort, direction) == "desc")
+    return present + missing
+
+
+def sort_links(filters: ListFilters) -> dict[str, dict[str, str]]:
+    """For each sortable column: the URL that sorts by it (keeping the other filters)
+    and the arrow to show on the active one. Clicking the active column flips it."""
+    params = {
+        k: str(v).lower() if isinstance(v, bool) else str(v)
+        for k, v in filters.model_dump(exclude_none=True).items()
+        if k not in ("sort", "dir") and v != ""
+    }
+    current = sort_direction(filters.sort, filters.dir)
+    links = {}
+    for key in _SORT_VALUES:
+        natural = sort_direction(key, None)
+        active = key == filters.sort
+        direction = ("asc" if current == "desc" else "desc") if active else natural
+        query = {**params, "sort": key}
+        if direction != natural:
+            query["dir"] = direction
+        links[key] = {
+            "href": "/?" + urlencode(query),
+            "arrow": ("▼" if current == "desc" else "▲") if active else "",
+        }
+    return links
 
 
 @dataclass

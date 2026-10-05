@@ -227,6 +227,17 @@ def filter_jobs(web):
         ("q=company+3", ["Projektledare Merit"]),
         ("sort=deadline", ["Projektledare Merit", "Projektledare Remote", "HRBP Stockholm"]),
         ("sort=fit&swedish=exclude_required", ["Projektledare Remote", "Projektledare Merit"]),
+        (
+            "sort=deadline&dir=desc",
+            ["HRBP Stockholm", "Projektledare Remote", "Projektledare Merit"],
+        ),
+        ("sort=score&dir=asc", ["Projektledare Merit", "HRBP Stockholm", "Projektledare Remote"]),
+        ("sort=title", ["HRBP Stockholm", "Projektledare Merit", "Projektledare Remote"]),
+        ("sort=title&dir=desc", ["Projektledare Remote", "Projektledare Merit", "HRBP Stockholm"]),
+        ("sort=location", ["Projektledare Remote", "HRBP Stockholm", "Projektledare Merit"]),
+        ("sort=remote", ["Projektledare Remote", "HRBP Stockholm", "Projektledare Merit"]),
+        ("sort=contact", ["Projektledare Remote", "HRBP Stockholm", "Projektledare Merit"]),
+        ("sort=language", ["Projektledare Remote", "Projektledare Merit", "HRBP Stockholm"]),
     ],
 )
 def test_list_filters(filter_jobs, query, expected):
@@ -565,3 +576,22 @@ def test_tracked_jobs_stay_visible_after_expiry(web):
     assert _titles(web.client.get("/").text) == []
     rows = _row_html(web.client.get("/?view=tracked").text)
     assert "applied" in rows["Projektledare sökt"] and "expired" in rows["Projektledare sökt"]
+
+
+def test_column_headers_sort_and_flip(filter_jobs):
+    page = filter_jobs.client.get("/?min_score=10").text
+    # Each header links to a sort that keeps the other filters; the sorted column
+    # (score, by default best first) shows an arrow and flips when clicked.
+    assert 'href="/?view=ranked&amp;min_score=10&amp;swedish=any&amp;sort=title"' in page
+    assert re.search(r'class="sort active" href="[^"]*sort=score&amp;dir=asc">Score ▼', page)
+    flipped = filter_jobs.client.get("/?min_score=10&sort=score&dir=asc").text
+    assert re.search(r'class="sort active" href="[^"]*sort=score">Score ▲', flipped)
+    # The filter form keeps the direction, so changing a filter keeps the sort.
+    assert '<input type="hidden" name="dir" value="asc">' in flipped
+
+
+def test_rows_without_a_value_sort_last_both_ways(filter_jobs):
+    filter_jobs.add(make_job(4, "Projektledare Okänd"), make_assessment(50, 50))
+    for direction in ("asc", "desc"):
+        titles = _titles(filter_jobs.client.get(f"/?sort=deadline&dir={direction}").text)
+        assert titles[-1] == "Projektledare Okänd"  # no deadline

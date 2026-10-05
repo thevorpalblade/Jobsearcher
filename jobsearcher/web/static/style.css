@@ -107,7 +107,7 @@ button.danger { color: var(--bad); border-color: var(--bad); }
   background: var(--card); border: 1px solid var(--line); border-radius: 6px;
   padding: 12px 14px; margin: 0 0 12px;
 }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: 1fr; gap: 12px; }  /* one category per line */
 .link-card { display: flex; flex-direction: column; gap: 4px; color: var(--fg); }
 .link-card:hover { border-color: var(--accent); text-decoration: none; }
 .link-card span { color: var(--muted); font-size: 0.9em; }
@@ -119,8 +119,8 @@ button.danger { color: var(--bad); border-color: var(--bad); }
 .help { font-weight: 400; font-size: 0.85em; color: var(--muted); }
 p.help { margin: 0 0 8px; }
 .grid2, .grid3 { display: grid; gap: 0 16px; }
-.grid2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.grid3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* Option boxes stack, one per line (the names are kept for grouping in the markup). */
+.grid2, .grid3 { grid-template-columns: 1fr; }
 fieldset.plain { border: 0; padding: 0; margin: 0 0 8px; }
 fieldset.plain legend { font-weight: 600; margin-bottom: 6px; }
 .role-head { display: flex; gap: 12px; align-items: end; }
@@ -153,3 +153,12 @@ details.more[open] .more-fields {
 }
 .more-fields label { font-weight: 600; font-size: 0.85em; }
 .pair { display: flex; gap: 6px; }
+
+/* Sortable column headers */
+table.jobs th a.sort { color: var(--muted); white-space: nowrap; }
+table.jobs th a.sort:hover { color: var(--accent); text-decoration: none; }
+table.jobs th a.sort.active { color: var(--fg); }
+
+/* YAML editor pages: the example goes below the editor, not beside it */
+.editor-cols { grid-template-columns: 1fr; }
+.settings-form label.inline { max-width: 420px; }

@@ -1,13 +1,23 @@
 {# The job table; swapped into #rows by the filter form. #}
 {% set show_prefilter = filters.view in ("pending", "excluded") %}
+{# A column header that sorts by `key`; clicking the sorted column flips it. Plain
+   links: a full page load keeps the filter form's sort in step with the table. #}
+{% macro th(key, label, title="") -%}
+  {%- set link = sort_links[key] -%}
+  <a class="sort{{ ' active' if link.arrow }}" href="{{ link.href }}"{% if title %} title="{{ title }}"{% endif %}>{{ label }}{% if link.arrow %} {{ link.arrow }}{% endif %}</a>
+{%- endmacro %}
 <p class="muted small">{{ rows|length }} job{{ "" if rows|length == 1 else "s" }}</p>
 {% if rows %}
 <table class="jobs">
   <thead>
     <tr>
-      <th>Score</th><th>Fit / succ.</th><th>Title</th><th>Company</th><th>Location</th>
-      <th>Remote</th><th>Deadline</th><th>Lang.</th><th title="Contact person known">✉</th>
-      <th>Sources</th><th>Tracking</th>
+      <th>{{ th("score", "Score") }}</th>
+      <th>{{ th("fit", "Fit", "Experience match") }} / {{ th("success", "succ.", "Chance of interview") }}</th>
+      <th>{{ th("title", "Title") }}</th><th>{{ th("company", "Company") }}</th>
+      <th>{{ th("location", "Location") }}</th><th>{{ th("remote", "Remote") }}</th>
+      <th>{{ th("deadline", "Deadline") }}</th><th>{{ th("language", "Lang.", "Ad language, then Swedish requirement") }}</th>
+      <th>{{ th("contact", "✉", "Contact person known") }}</th>
+      <th>{{ th("source", "Sources") }}</th><th>{{ th("tracking", "Tracking") }}</th>
       {% if show_prefilter %}<th>Prefilter</th>{% endif %}
     </tr>
   </thead>

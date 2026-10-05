@@ -164,7 +164,7 @@ def job_list(
     ctx = state.row_context()
     rows = views.load_rows(store, ctx, filters.view)
     options = views.filter_options(rows, ctx.config)
-    rows = views.sort_rows(views.apply_filters(rows, filters), filters.sort)
+    rows = views.sort_rows(views.apply_filters(rows, filters), filters.sort, filters.dir)
     fragment = is_htmx(request)
     response = render(
         request,
@@ -176,6 +176,8 @@ def job_list(
         options=options,
         ranking=ctx.config,
         new_days=filters.new or views.NEW_DAYS,
+        sort_links=views.sort_links(filters),
+        sort_labels=views.SORT_LABELS,
     )
     # The same URL returns a fragment or a full page; keep caches from mixing them up.
     response.headers["Vary"] = "HX-Request"
