@@ -110,15 +110,15 @@ def swedish_name(city: str) -> str:
 
 
 def swedish_city(text: str | None) -> str | None:
-    """The first Swedish city named in `text` (Swedish spelling), else None."""
+    """The Swedish city named first in `text` (Swedish spelling), else None."""
     if not text:
         return None
     lowered = text.lower()
-    for city in SWEDISH_CITIES:
-        i = lowered.find(city)
-        if i >= 0:
-            return swedish_name(text[i : i + len(city)])
-    return None
+    found = [(i, city) for city in SWEDISH_CITIES if (i := lowered.find(city)) >= 0]
+    if not found:
+        return None
+    i, city = min(found)  # the first one named, e.g. "Solna, Göteborg" -> Solna
+    return swedish_name(text[i : i + len(city)])
 
 
 _SWEDEN = re.compile(r"\b(sweden|sverige|schweden|suède)\b", re.IGNORECASE)

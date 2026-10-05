@@ -64,6 +64,7 @@ def test_sweden_detection():
     assert is_sweden(None, "Remote") is None
     assert swedish_city("Hybrid - Göteborg") == "Göteborg"
     assert swedish_city("London") is None
+    assert swedish_city("Solna, Göteborg") == "Solna"  # the first named, not list order
 
 
 def test_company_list(tmp_path):
@@ -664,3 +665,133 @@ def test_detect_falls_back_to_jsonld():
     client = FakeClient({"https://www.randstad.se/jobb/": LISTING, ad: AD_PAGE})
     result = detect(randstad, client)
     assert (result.ats_type, result.ats_ref) == ("jsonld", "https://www.randstad.se/jobb/")
+
+
+# --- SuccessFactors, ReachMee, Jobylon ---------------------------------------------
+
+SF_RSS = """<?xml version="1.0" encoding="UTF-8" ?><rss version='2.0'><channel>
+<item><title>HR Partner (Södertälje, AB, 151 87)</title>
+<description>&lt;p&gt;Partner HR at Scania.&lt;/p&gt;</description>
+<pubDate>Mon, 05 Oct 2026 2:00:00 GMT</pubDate>
+<link>https://jobs.scania.com/job/Sodertalje-HR-Partner/1413706233/?feedId=null&amp;utm_source=J2WRSS</link></item>
+<item><title>Plant manager (Kosice, SK, 040 01)</title><link>https://jobs.scania.com/job/x/1413706234/</link></item>
+<item><title>Service Manager (Luleå, Other/Not Applicable, Sweden)</title><link>https://jobs.scania.com/job/y/1413706235/</link></item>
+<item><title>Controller</title><link>https://jobs.scania.com/job/z/1413706236/</link></item>
+</channel></rss>"""
+
+
+def test_successfactors_feed():
+    from jobsearcher.sources.ats import successfactors
+
+    client = FakeClient(
+        {"https://jobs.scania.com/services/rss/job/?locale=en_US&rows=3000": SF_RSS}
+    )
+    scania = Company(name="Scania", location="Södertälje")
+    jobs = list(
+        successfactors.fetch_jobs(client, "https://jobs.scania.com/go/x/1/", scania, keep_all)
+    )
+    assert [(j.title, j.location) for j in jobs] == [
+        ("HR Partner", "Södertälje"),
+        ("Service Manager", "Luleå"),
+        ("Controller", "Södertälje"),  # no place in the title: the company's location
+    ]  # Kosice (Slovakia) is dropped
+    job = jobs[0]
+    assert job.description == "Partner HR at Scania." and job.url.endswith("/1413706233/")
+    assert job.sources[0].source_id == "1413706233"
+    with pytest.raises(ValueError, match="careers_url"):
+        successfactors.base_url("performancemanager5.successfactors.eu/verp/x.js")
+
+
+REACHMEE_MAIN = """<table><thead><tr><th>Tjänst</th><th>Publicerat</th><th>Sista ansökningsdag</th>
+<th>Ort</th><th>Län</th></tr></thead><tbody>
+<tr><td><a href='https://web103.reachmee.com/ext/I017/653/job?site=17&lang=SE&validator=abc&job_id=25659' class='btn'>HR-specialist</a></td>
+<td><span style="display:none">2026-10-02</span> 2026-10-02</td><td><span>2026-10-31</span> 2026-10-31</td>
+<td>Solna</td><td>Stockholms län</td></tr>
+<tr><td><a href='https://web103.reachmee.com/ext/I017/653/job?site=17&lang=SE&validator=abc&job_id=25660'>Byggledare</a></td>
+<td>2026-10-01</td><td>2026-10-30</td><td>Kiruna</td><td>Norrbottens län</td></tr>
+</tbody></table>"""
+
+
+def test_reachmee_table_and_ad():
+    from jobsearcher.sources.ats import reachmee
+
+    ref = "web103.reachmee.com/ext/I017/653/policy?site=17&amp;lang=SE&amp;validator=abc&amp;ihelper=x"
+    main = "https://web103.reachmee.com/ext/I017/653/main?site=17&lang=SE&validator=abc"
+    detail = (
+        "https://web103.reachmee.com/ext/I017/653/job?site=17&lang=SE&validator=abc&job_id=25659"
+    )
+    client = FakeClient(
+        {main: REACHMEE_MAIN, detail: '<div class="jobad-body"><p>Du stöttar chefer.</p></div>'}
+    )
+    sweco = Company(name="Sweco")
+    wanted = lambda job: job.location == "Solna"  # noqa: E731
+    [job] = reachmee.fetch_jobs(client, ref, sweco, wanted)
+    assert (job.title, job.location, job.region) == ("HR-specialist", "Solna", "Stockholms län")
+    assert job.deadline.date().isoformat() == "2026-10-31"
+    assert job.description == "Du stöttar chefer." and job.sources[0].source_id == "25659"
+    assert not any(r.endswith("25660") for r in client.requests)  # unwanted: no detail
+    with pytest.raises(ValueError, match="site/validator"):
+        reachmee.main_url("web103.reachmee.com/ext/I017/653/policy")
+
+
+JOBYLON_WIDGET = """<script>var jobs = [
+{ id: '366341', url: '/jobs/366341-acme-hr-partner/', title: 'HR-partner till Acme', company: 'Acme AB',
+  company_id: '1815', locations_text: 'Solna, Göteborg', employment_type: 'Heltid',
+  to_date: '15 november 2026', published_date: '15 september 2026', language: 'Swedish' },
+{ id: '366342', url: '/jobs/366342-acme-o-neill/', title: 'Lagerchef \\u0026 planerare', company: 'Acme AB',
+  locations_text: 'Kiruna', to_date: '', published_date: '1 oktober 2026' },
+];</script>"""
+
+
+def test_jobylon_widget_company_id_and_ad():
+    from jobsearcher.sources.ats import jobylon
+
+    client = FakeClient(
+        {
+            "https://emp.jobylon.com/jobs/285413/": '<a href="/companies/1815/terms/">Terms</a>',
+            "https://cdn.jobylon.com/jobs/companies/1815/embed/v2/": JOBYLON_WIDGET,
+            "https://emp.jobylon.com/jobs/366341-acme-hr-partner/": (
+                "<style>.canvas-job-description { x }</style>"
+                '<div class="canvas-job-description"><p>Leda HR-arbete.</p></div>'
+            ),
+        }
+    )
+    ref = "emp.jobylon.com/applications/jobs/285413/create"
+    assert jobylon.company_id(client, ref) == "1815"
+    assert jobylon.company_id(client, "media-eu.jobylon.com/assets/companies/2062/x.mp4") == "2062"
+    wanted = lambda job: job.location == "Solna"  # noqa: E731
+    [job] = jobylon.fetch_jobs(client, ref, ACME, wanted)
+    assert (job.title, job.company, job.location) == ("HR-partner till Acme", "Acme AB", "Solna")
+    assert job.deadline.date().isoformat() == "2026-11-15"
+    assert job.published_at.date().isoformat() == "2026-09-15"
+    assert job.description == "Leda HR-arbete."
+    assert jobylon.parse_widget(JOBYLON_WIDGET)[1]["title"] == "Lagerchef & planerare"
+    assert jobylon.swedish_date("3 maj 2026").month == 5 and jobylon.swedish_date("") is None
+
+
+def test_county_fills_in_for_the_location_filter():
+    from jobsearcher.pipeline import matches_filters
+    from jobsearcher.places import county_of
+
+    assert (
+        county_of("Södertälje") == "Stockholms län"
+        and county_of("Mölndal") == "Västra Götalands län"
+    )
+    assert county_of("Kiruna") is None
+    search = SearchConfig(locations=["Stockholm"], include_remote=False)
+    job = Job(id="1", title="HR", location="Södertälje", sources=[])
+    assert matches_filters(job, search)  # via Stockholms län, as Platsbanken jobs are
+    assert not matches_filters(job.model_copy(update={"location": "Kiruna"}), search)
+
+
+def test_detection_records_new_ats_refs():
+    sf_page = '<script src="https://performancemanager5.successfactors.eu/verp/jquery.js"></script>'
+    assert find_ats(sf_page, "https://jobs.scania.com/go/Jobs/9096601/") == (
+        "successfactors",
+        "https://jobs.scania.com",
+    )
+    rm = '<a href="https://web103.reachmee.com/ext/I017/653/policy?site=17&amp;validator=abc">x</a>'
+    assert find_ats(rm, "https://sweco.se") == (
+        "reachmee",
+        "web103.reachmee.com/ext/I017/653/policy?site=17&validator=abc",
+    )

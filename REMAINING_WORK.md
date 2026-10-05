@@ -158,9 +158,7 @@ new ranking candidates.
 
 - [x] Workday adapter, Chrome impersonation for the sites that blocked us, and
       Google News for signals: done in M8 (§6).
-- [ ] **ReachMee** (Sweco, Regeringskansliet, Göteborgs universitet, Bravida) and
-      **Jobylon** (LKAB, Coor, Unilabs, Kronans Apotek) adapters; SuccessFactors
-      is in §6.
+- [x] **ReachMee** and **Jobylon** adapters (2026-10-05).
 - [ ] Companies with no ATS and no JSON-LD: set `careers_url` or a manual `ats:`
       in `companies.yaml`, or add LLM extraction from careers pages.
 - [ ] News: MFN press releases (listed companies' M&A and reorganisations) as a
@@ -176,11 +174,13 @@ Crawl settings (`crawl.user_agent: chrome` impersonates Chrome via curl_cffi;
 `crawl.respect_robots`), Google News for signals, 12 recruitment agencies,
 LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
 
-- [ ] **Headless browser** (Playwright) for careers pages built with JavaScript
-      (Academic Work and other recruiters): deferred. Their jobs mostly reach
-      LinkedIn/Indeed/Platsbanken, and Chromium adds ~300 MB.
-- [ ] **SuccessFactors** adapter (Volvo Cars, Ericsson, Scania, Axfood, Atlas
-      Copco, Tele2), **ReachMee** and **Jobylon**.
+- Headless browser: dropped (user decision, 2026-10-05). JavaScript-only careers
+  pages (Academic Work and other recruiters) are covered via LinkedIn/Indeed/Platsbanken.
+- [x] **SuccessFactors** (career sites' RSS: Volvo Cars, Scania, Axfood, Atlas Copco),
+      **ReachMee** (Sweco, Bravida, Regeringskansliet, Göteborgs universitet, Malmö stad)
+      and **Jobylon** (Coor, Unilabs, Kronans Apotek, LKAB) adapters (2026-10-05).
+      Ericsson moved to Eightfold (jobs.ericsson.com): not supported; its jobs reach
+      LinkedIn.
 - [ ] JobSpy: watch for LinkedIn rate limiting (429) as volume grows; Glassdoor
       and Google Jobs are supported but untested.
 - [ ] Dedupe can't merge the same ad under different titles across sources

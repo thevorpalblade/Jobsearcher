@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from dataclasses import dataclass
@@ -32,7 +33,8 @@ ATS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("varbi", re.compile(r"https?://([a-z0-9-]+)\.varbi\.com")),
     ("teamtailor", re.compile(r"https?://([a-z0-9-]+\.teamtailor\.com)")),
     ("workday", re.compile(r"https?://([a-z0-9-]+\.wd\d+\.myworkdayjobs\.com/[^\s\"'<>?#]*)")),
-    ("reachmee", re.compile(r"https?://([a-z0-9.-]*reachmee\.com/[^\s\"'<>?#]*)")),
+    # Keep the query: ReachMee needs the customer's site and validator parameters.
+    ("reachmee", re.compile(r"https?://([a-z0-9.-]*reachmee\.com/ext/[^\s\"'<>#]*)")),
     ("jobylon", re.compile(r"https?://([a-z0-9.-]*jobylon\.com/[^\s\"'<>?#]*)")),
     ("successfactors", re.compile(r"https?://([a-z0-9.-]*successfactors\.(?:com|eu)[^\s\"'<>]*)")),
 ]
@@ -81,6 +83,13 @@ def find_ats(html_text: str, page_url: str) -> tuple[str, str] | None:
                 continue
             if ats_type == "teamtailor":
                 ref = f"https://{ref}"
+            elif ats_type == "reachmee":
+                ref = html.unescape(ref)
+            elif ats_type == "successfactors":
+                # The script/link points at the SuccessFactors backend; the job feed
+                # lives on the career site that embeds it (e.g. jobs.scania.com).
+                parts = urlsplit(page_url)
+                ref = f"{parts.scheme}://{parts.netloc}"
             return ats_type, ref
     if _TEAMTAILOR_HOSTED.search(html_text):
         parts = urlsplit(page_url)
@@ -131,16 +140,22 @@ def careers_links(html_text: str, page_url: str) -> list[str]:
 
 
 def _usable(found: tuple[str, str] | None, client: PoliteClient) -> bool:
-    """Teamtailor refs are guessed from page origins, so confirm the feed exists."""
+    """Teamtailor and SuccessFactors refs are guessed from page origins, so confirm
+    their feed exists before recording them."""
     if found is None:
         return False
-    if found[0] != "teamtailor":
-        return True
     try:
-        feed = client.get_json(found[1] + "/jobs.json")
+        if found[0] == "teamtailor":
+            feed = client.get_json(found[1] + "/jobs.json")
+            return isinstance(feed, dict) and "items" in feed
+        if found[0] == "successfactors":
+            from jobsearcher.sources.ats.successfactors import base_url
+
+            text = client.get_text(f"{base_url(found[1])}/services/rss/job/?locale=en_US&rows=1")
+            return "<rss" in text[:500]
     except (httpx.HTTPError, ValueError):
         return False
-    return isinstance(feed, dict) and "items" in feed
+    return True
 
 
 def detect(company: Company, client: PoliteClient) -> Detection:

@@ -12,6 +12,7 @@ from jobsearcher.companies.crawl import CompanyCrawlReport, crawl_feeds, resolve
 from jobsearcher.companies.http import PoliteClient
 from jobsearcher.config import Config, SearchConfig
 from jobsearcher.models import Job
+from jobsearcher.places import county_of
 from jobsearcher.sources import SourceAdapter, enabled_sources
 from jobsearcher.store import Store
 
@@ -37,7 +38,10 @@ def matches_filters(job: Job, search: SearchConfig) -> bool:
         return True
     if search.include_remote and job.remote:
         return True
-    place = f"{job.location or ''} {job.region or ''}".lower()
+    # Sources without a county (company feeds, LinkedIn) get it from the city, so
+    # "Stockholm" matches Södertälje for them too, as it does for Platsbanken.
+    county = job.region or county_of(job.location) or ""
+    place = f"{job.location or ''} {county}".lower()
     return any(loc.lower() in place for loc in search.locations)
 
 
