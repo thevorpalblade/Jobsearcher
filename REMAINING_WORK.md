@@ -236,12 +236,13 @@ Ranking, news classification and draft checks run on GLM through NVIDIA's free h
 ## Ranking model benchmark (2026-10-06)
 
 `scripts/rank_benchmark.py` ranks a fixed set of 40 jobs (30 spread over GLM's scores plus
-GLM's top 10, copied to `data/benchmark/ranking/jobs.json`) with any model and compares the
-runs. First results, with Opus 5.5 (Claude Code, effort medium) as the reference:
+GLM's top 10) with any model and compares the runs; the set and every run's scores are
+committed in `benchmarks/ranking/` (see its README). First results, with Opus 5.5 (Claude
+Code, effort medium) as the reference:
 
 | model | spearman vs Opus | top 10 shared | mean score | s/job | $/job |
 |---|---|---|---|---|---|
-| GLM 5.3 Flash (NVIDIA, free) | 0.88 | 10 | 33 | (queued) | 0 |
+| GLM 5.3 Flash (NVIDIA, free), 11 jobs only | 0.78 | 10 of 10 | 21 | (queued) | 0 |
 | Kimi K2.6, no thinking | 0.81 | 9 | 23 | 20 | 0.0034 |
 | Kimi K3, no thinking | 0.96 | 10 | 31 | 20 | 0.013 |
 | Opus 5.5 | 1.00 | 10 | 24 | 12 | subscription |
@@ -249,6 +250,9 @@ runs. First results, with Opus 5.5 (Claude Code, effort medium) as the reference
 Qwen3 8B on Ollama (local RTX 3080) looked loose in a 3-job smoke test, then the GPU driver
 crashed mid-run (NVRM errors), so it has no full result. One run per model, 40 jobs: treat
 differences under ~0.05 as noise.
+
+- [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
+      them predate the current CV, so they aren't comparable).
 
 ## Known caveats / tech debt
 

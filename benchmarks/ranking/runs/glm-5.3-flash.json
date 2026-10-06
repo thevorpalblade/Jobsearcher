@@ -1,0 +1,88 @@
+{
+ "meta": {
+  "model": "glm-5.3-flash",
+  "source": "pipeline rankings",
+  "prompt_version": "2",
+  "cv_sha": "11f85373cd40",
+  "ranking_sha": "eab4803f9cd8"
+ },
+ "results": {
+  "f28a5799b77cc997": {
+   "fit_score": 10,
+   "success_score": 5,
+   "matched_role": "Project manager (projektchef) - construction",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "244424d82481a47e": {
+   "fit_score": 10,
+   "success_score": 10,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "a628433a0489724f": {
+   "fit_score": 15,
+   "success_score": 5,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "615a294273574097": {
+   "fit_score": 25,
+   "success_score": 10,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "bfbd0cc9cfe96828": {
+   "fit_score": 15,
+   "success_score": 10,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "not_mentioned"
+  },
+  "d89415ca450eebe9": {
+   "fit_score": 22,
+   "success_score": 15,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "merit"
+  },
+  "579fb69046b894cb": {
+   "fit_score": 45,
+   "success_score": 10,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "4f4862593a55fd66": {
+   "fit_score": 55,
+   "success_score": 5,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "3b060080a1f23257": {
+   "fit_score": 50,
+   "success_score": 15,
+   "matched_role": "HR Business Partner",
+   "language": "sv",
+   "swedish": "required"
+  },
+  "f09819dc2e0a665a": {
+   "fit_score": 62,
+   "success_score": 5,
+   "matched_role": "HR Business Partner",
+   "language": "sv",
+   "swedish": "not_mentioned"
+  },
+  "bb9e0ca4de6a1c16": {
+   "fit_score": 78,
+   "success_score": 55,
+   "matched_role": "Change management",
+   "language": "en",
+   "swedish": "not_mentioned"
+  }
+ }
+}

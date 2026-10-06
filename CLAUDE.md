@@ -57,6 +57,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   like Platsbanken (which gives the county)
 - `jobsearcher/sources/jobspy_source.py`: LinkedIn/Indeed via JobSpy (optional `jobspy` extra);
   these jobs expire by age, not by absence
+- `benchmarks/ranking/` + `scripts/rank_benchmark.py`: a fixed job set and every ranking model's
+  scores on it, to compare a new model before switching (scores only: no CV-derived text in git)
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules
