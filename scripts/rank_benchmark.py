@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import statistics
 import sys
@@ -233,6 +234,9 @@ def cmd_run(config: Config, args: argparse.Namespace) -> None:
     )
     if args.rpm is not None:
         config.llm.moonshot_requests_per_minute = args.rpm
+    if args.no_thinking:
+        # Claude Code reads this; Haiku otherwise thinks for 3-9k tokens per job (60-90 s).
+        os.environ["MAX_THINKING_TOKENS"] = "0"
     store = Store(config.db_path)
     llm = make_llm(config, "ranking", BudgetTracker(store, config.llm))
     run = load_run(args.label)
@@ -247,6 +251,7 @@ def cmd_run(config: Config, args: argparse.Namespace) -> None:
         "model": args.model,
         "effort": args.effort,
         "extra_body": extra,
+        "thinking": not args.no_thinking,
         "date": datetime.now(UTC).date().isoformat(),
     } | now
     context = build_context(cv, rc)
@@ -362,6 +367,7 @@ def main() -> None:
     r.add_argument("--extra", help="extra request fields as JSON (OpenAI-compatible providers)")
     r.add_argument("--timeout", type=float, default=600)
     r.add_argument("--rpm", type=int, help="Moonshot requests per minute")
+    r.add_argument("--no-thinking", action="store_true", help="claude_code: thinking off")
     c = sub.add_parser("compare")
     c.add_argument("--reference", default="opus-5.5")
     c.add_argument("--jobs", action="store_true", help="also list every job's scores")

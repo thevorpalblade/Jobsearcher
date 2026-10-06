@@ -246,8 +246,12 @@ Code, effort medium) as the reference:
 | Kimi K2.6, no thinking | 0.81 | 9 | 23 | 20 | 0.0034 |
 | Kimi K3, no thinking | 0.96 | 10 | 31 | 20 | 0.013 |
 | Opus 5.5 | 1.00 | 10 | 24 | 12 | subscription |
+| Sonnet 5.5 (effort medium) | 0.96 | 10 | 22 | 7 | subscription |
+| Haiku 4.5, thinking off | 0.79 | 7 | 36 | 9 | subscription |
 
-Qwen3 8B on Ollama (local RTX 3080) looked loose in a 3-job smoke test, then the GPU driver
+Sonnet matches Opus almost exactly (mean gap 3.8 points). Haiku through Claude Code thinks for
+3-9k tokens a job (60-90 s) unless `MAX_THINKING_TOKENS=0`; thinking off it takes 9 s but is
+the loosest ranker here. Qwen3 8B on Ollama (local RTX 3080) looked loose in a 3-job smoke test, then the GPU driver
 crashed mid-run (NVRM errors), so it has no full result. One run per model, 40 jobs: treat
 differences under ~0.05 as noise.
 

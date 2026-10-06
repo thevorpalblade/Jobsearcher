@@ -1,0 +1,414 @@
+{
+ "meta": {
+  "provider": "claude_code",
+  "model": "sonnet",
+  "effort": "medium",
+  "extra_body": {},
+  "date": "2026-10-06",
+  "prompt_version": "2",
+  "cv_sha": "11f85373cd40",
+  "ranking_sha": "eab4803f9cd8"
+ },
+ "results": {
+  "f28a5799b77cc997": {
+   "fit_score": 12,
+   "success_score": 3,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.0,
+   "output_tokens": 754,
+   "cost_usd": 0.0
+  },
+  "cb19ffbb28c54771": {
+   "fit_score": 12,
+   "success_score": 3,
+   "matched_role": null,
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.7,
+   "output_tokens": 789,
+   "cost_usd": 0.0
+  },
+  "244424d82481a47e": {
+   "fit_score": 8,
+   "success_score": 3,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.8,
+   "output_tokens": 806,
+   "cost_usd": 0.0
+  },
+  "a628433a0489724f": {
+   "fit_score": 35,
+   "success_score": 4,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.7,
+   "output_tokens": 794,
+   "cost_usd": 0.0
+  },
+  "dd5500593ce210b0": {
+   "fit_score": 15,
+   "success_score": 3,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.9,
+   "output_tokens": 842,
+   "cost_usd": 0.0
+  },
+  "2bbcaf7f745a7dfa": {
+   "fit_score": 35,
+   "success_score": 4,
+   "matched_role": "Change management",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 8.8,
+   "output_tokens": 888,
+   "cost_usd": 0.0
+  },
+  "8143036c78b9dbb9": {
+   "fit_score": 35,
+   "success_score": 4,
+   "matched_role": "Change management",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.0,
+   "output_tokens": 737,
+   "cost_usd": 0.0
+  },
+  "615a294273574097": {
+   "fit_score": 35,
+   "success_score": 4,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 9.1,
+   "output_tokens": 779,
+   "cost_usd": 0.0
+  },
+  "b9e1a2541f625f51": {
+   "fit_score": 12,
+   "success_score": 3,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.4,
+   "output_tokens": 664,
+   "cost_usd": 0.0
+  },
+  "8ed48e8d32abf640": {
+   "fit_score": 22,
+   "success_score": 4,
+   "matched_role": null,
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.4,
+   "output_tokens": 691,
+   "cost_usd": 0.0
+  },
+  "bfbd0cc9cfe96828": {
+   "fit_score": 12,
+   "success_score": 3,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.9,
+   "output_tokens": 773,
+   "cost_usd": 0.0
+  },
+  "353811de947b24fb": {
+   "fit_score": 22,
+   "success_score": 3,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.8,
+   "output_tokens": 708,
+   "cost_usd": 0.0
+  },
+  "d89415ca450eebe9": {
+   "fit_score": 42,
+   "success_score": 6,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "not_mentioned",
+   "seconds": 6.8,
+   "output_tokens": 802,
+   "cost_usd": 0.0
+  },
+  "e50de571160c4233": {
+   "fit_score": 22,
+   "success_score": 4,
+   "matched_role": null,
+   "language": "sv",
+   "swedish": "not_mentioned",
+   "seconds": 6.7,
+   "output_tokens": 721,
+   "cost_usd": 0.0
+  },
+  "761763c5b0dd0376": {
+   "fit_score": 15,
+   "success_score": 3,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.1,
+   "output_tokens": 658,
+   "cost_usd": 0.0
+  },
+  "579fb69046b894cb": {
+   "fit_score": 22,
+   "success_score": 4,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.7,
+   "output_tokens": 967,
+   "cost_usd": 0.0
+  },
+  "1b8ff90d2dfb7879": {
+   "fit_score": 35,
+   "success_score": 5,
+   "matched_role": "Change management",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.7,
+   "output_tokens": 986,
+   "cost_usd": 0.0
+  },
+  "809a57031d47f516": {
+   "fit_score": 22,
+   "success_score": 4,
+   "matched_role": null,
+   "language": "sv",
+   "swedish": "not_mentioned",
+   "seconds": 6.3,
+   "output_tokens": 705,
+   "cost_usd": 0.0
+  },
+  "4f4862593a55fd66": {
+   "fit_score": 35,
+   "success_score": 7,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.3,
+   "output_tokens": 903,
+   "cost_usd": 0.0
+  },
+  "3b060080a1f23257": {
+   "fit_score": 40,
+   "success_score": 8,
+   "matched_role": "HR Business Partner",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 8.1,
+   "output_tokens": 879,
+   "cost_usd": 0.0
+  },
+  "a9091e4711836bc5": {
+   "fit_score": 25,
+   "success_score": 4,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.4,
+   "output_tokens": 704,
+   "cost_usd": 0.0
+  },
+  "cfe5c086a8886fb2": {
+   "fit_score": 45,
+   "success_score": 8,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.4,
+   "output_tokens": 744,
+   "cost_usd": 0.0
+  },
+  "c8d2b4f7b67f1fb5": {
+   "fit_score": 50,
+   "success_score": 8,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.9,
+   "output_tokens": 843,
+   "cost_usd": 0.0
+  },
+  "011fb747a3cac89a": {
+   "fit_score": 55,
+   "success_score": 12,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.8,
+   "output_tokens": 786,
+   "cost_usd": 0.0
+  },
+  "447273b3b7cccd58": {
+   "fit_score": 40,
+   "success_score": 8,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 6.0,
+   "output_tokens": 624,
+   "cost_usd": 0.0
+  },
+  "86635ea737d10e97": {
+   "fit_score": 55,
+   "success_score": 12,
+   "matched_role": "Project manager",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 7.4,
+   "output_tokens": 627,
+   "cost_usd": 0.0
+  },
+  "f09819dc2e0a665a": {
+   "fit_score": 35,
+   "success_score": 6,
+   "matched_role": "HR Business Partner",
+   "language": "sv",
+   "swedish": "required",
+   "seconds": 8.3,
+   "output_tokens": 826,
+   "cost_usd": 0.0
+  },
+  "ab2dbefa669e5ce4": {
+   "fit_score": 22,
+   "success_score": 6,
+   "matched_role": null,
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 7.6,
+   "output_tokens": 891,
+   "cost_usd": 0.0
+  },
+  "cf194487ebcd6371": {
+   "fit_score": 25,
+   "success_score": 8,
+   "matched_role": null,
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 6.6,
+   "output_tokens": 762,
+   "cost_usd": 0.0
+  },
+  "00323f0dcd9f334c": {
+   "fit_score": 22,
+   "success_score": 4,
+   "matched_role": "Operations manager",
+   "language": "en",
+   "swedish": "required",
+   "seconds": 7.1,
+   "output_tokens": 817,
+   "cost_usd": 0.0
+  },
+  "d8bf80cd0ff30cd7": {
+   "fit_score": 58,
+   "success_score": 30,
+   "matched_role": "Project manager",
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 6.9,
+   "output_tokens": 771,
+   "cost_usd": 0.0
+  },
+  "23728a788d742864": {
+   "fit_score": 45,
+   "success_score": 25,
+   "matched_role": "Operations manager",
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 7.4,
+   "output_tokens": 776,
+   "cost_usd": 0.0
+  },
+  "bb9e0ca4de6a1c16": {
+   "fit_score": 68,
+   "success_score": 45,
+   "matched_role": "Change management",
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 6.9,
+   "output_tokens": 719,
+   "cost_usd": 0.0
+  },
+  "d3434e38b2432d72": {
+   "fit_score": 55,
+   "success_score": 25,
+   "matched_role": "Project manager",
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 7.6,
+   "output_tokens": 859,
+   "cost_usd": 0.0
+  },
+  "d36f13d58cf58778": {
+   "fit_score": 50,
+   "success_score": 22,
+   "matched_role": "HR Business Partner",
+   "language": "en",
+   "swedish": "merit",
+   "seconds": 7.7,
+   "output_tokens": 838,
+   "cost_usd": 0.0
+  },
+  "702c96ba2bcce857": {
+   "fit_score": 62,
+   "success_score": 38,
+   "matched_role": "Change management",
+   "language": "en",
+   "swedish": "merit",
+   "seconds": 7.8,
+   "output_tokens": 850,
+   "cost_usd": 0.0
+  },
+  "e22f05c75c9db5b0": {
+   "fit_score": 55,
+   "success_score": 12,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "not_mentioned",
+   "seconds": 8.0,
+   "output_tokens": 832,
+   "cost_usd": 0.0
+  },
+  "a240e9465a6160f3": {
+   "fit_score": 68,
+   "success_score": 20,
+   "matched_role": "Operations manager",
+   "language": "sv",
+   "swedish": "not_mentioned",
+   "seconds": 8.0,
+   "output_tokens": 889,
+   "cost_usd": 0.0
+  },
+  "724e5d6a6f703de7": {
+   "fit_score": 35,
+   "success_score": 15,
+   "matched_role": "Project manager",
+   "language": "en",
+   "swedish": "merit",
+   "seconds": 6.4,
+   "output_tokens": 724,
+   "cost_usd": 0.0
+  },
+  "0c7a3d91c295a8d2": {
+   "fit_score": 30,
+   "success_score": 18,
+   "matched_role": "Project Manager",
+   "language": "en",
+   "swedish": "not_mentioned",
+   "seconds": 9.2,
+   "output_tokens": 907,
+   "cost_usd": 0.0
+  }
+ }
+}
