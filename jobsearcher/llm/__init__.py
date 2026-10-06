@@ -61,6 +61,20 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             max_retries=spec.max_retries,
             limiter=limiter_for("nvidia", config.llm.nvidia_requests_per_minute),
         )
+    elif spec.provider == Provider.OLLAMA:
+        from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(
+            spec.model,
+            base_url=config.llm.ollama_base_url,
+            api_key_env=None,
+            label="Ollama",
+            max_tokens=spec.max_tokens,
+            extra_body=spec.extra_body,
+            enforce_schema=spec.enforce_schema,
+            timeout_s=spec.timeout_s,
+            max_retries=spec.max_retries,
+        )
     else:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
 
@@ -72,6 +86,7 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             enforce_schema=spec.enforce_schema,
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
+            limiter=limiter_for("moonshot", config.llm.moonshot_requests_per_minute),
         )
     return BudgetedLLM(client, tracker, purpose=role)
 

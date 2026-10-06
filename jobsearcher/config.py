@@ -90,6 +90,7 @@ class Provider(StrEnum):
     MOONSHOT = "moonshot"  # Kimi models, OpenAI-compatible API
     ANTHROPIC = "anthropic"  # Claude models, pay-per-token API key
     NVIDIA = "nvidia"  # models on NVIDIA's serverless endpoints (e.g. GLM), OpenAI-compatible API
+    OLLAMA = "ollama"  # a model on this machine through Ollama's OpenAI-compatible API
     CLAUDE_CODE = "claude_code"  # Claude via the Claude Code CLI on a Claude subscription
 
 
@@ -151,11 +152,15 @@ class LLMConfig(BaseModel):
     )
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    ollama_base_url: str = "http://localhost:11434/v1"
     # NVIDIA's free hosted API allows about 40 requests a minute per key, shared by every
     # model, and answers 429 beyond it. Every NVIDIA request (retries included, from
     # ranking, news classification and draft checks alike) is spaced to stay under this;
     # 0 turns the limiter off (e.g. on a paid plan).
     nvidia_requests_per_minute: int = 30
+    # Moonshot's request limit depends on the account's tier (3 a minute for a new account);
+    # 0 = no limiter.
+    moonshot_requests_per_minute: int = 0
     monthly_budget_usd: float = 20.0
     # Drafting pauses once this share of the monthly budget is spent; ranking at 100%.
     drafting_budget_share: float = 0.8

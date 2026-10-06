@@ -58,6 +58,7 @@ llm:
   #   moonshot    - Kimi, pay per token (MOONSHOT_API_KEY)
   #   anthropic   - Claude API, pay per token (ANTHROPIC_API_KEY)
   #   nvidia      - models on NVIDIA's serverless endpoints, e.g. GLM (NVIDIA_API_KEY)
+  #   ollama      - a model on this machine through Ollama (no key; `ollama pull <model>`)
   #   claude_code - Claude via the Claude Code CLI on your Claude Pro/Max subscription
   #                 (CLAUDE_CODE_OAUTH_TOKEN); counts against the subscription's usage
   #                 limits instead of the $ budget. Best for low-volume drafting.
@@ -82,6 +83,13 @@ llm:
   #   extra_body: {thinking: {type: disabled}}   # skip reasoning; the JSON is enough
   #   enforce_schema: true      # server enforces the JSON schema (response_format json_schema)
   #   max_parallel: 4           # concurrent requests; the free tier queues each one
+  # ranking:                    # local; Qwen3 8B fits a 10 GB GPU but scored loosely
+  #   provider: ollama
+  #   model: qwen3:8b
+  #   extra_body: {reasoning_effort: none}
+  #   enforce_schema: true
+  #   timeout_s: 300
+  # Compare candidates on a fixed set of jobs first: scripts/rank_benchmark.py.
 
   # Drafts are checked claim by claim against your CVs by a second model (default: the
   # ranking model, with a 150 s time limit so a busy free tier can't stall a draft).
@@ -93,6 +101,8 @@ llm:
   # and answers 429 beyond it. Every NVIDIA request, retries included, is spaced to stay
   # under this; 0 turns the limiter off (e.g. on a paid plan or a raised limit).
   nvidia_requests_per_minute: 30
+  # Moonshot's limit depends on the account's tier: a new account gets 3 requests a minute.
+  # moonshot_requests_per_minute: 3   # 0 (default) = no limiter
 
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%

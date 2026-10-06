@@ -227,6 +227,30 @@ def test_make_llm_nvidia(monkeypatch):
     assert llm.client.label == "NVIDIA"
 
 
+def test_make_llm_ollama_needs_no_key(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import make_llm
+
+    monkeypatch.delenv("MOONSHOT_API_KEY", raising=False)
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.OLLAMA, model="qwen3:8b")
+    llm = make_llm(config, "ranking", tracker=None)
+    assert str(llm.client.client.base_url).startswith("http://localhost:11434/v1")
+    assert llm.client.label == "Ollama" and llm.client.limiter is None
+
+
+def test_moonshot_limiter_is_opt_in(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import make_llm
+
+    monkeypatch.setenv("MOONSHOT_API_KEY", "sk-test")
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.MOONSHOT, model="kimi-k2.6")
+    assert make_llm(config, "ranking", tracker=None).client.limiter is None
+    config.llm.moonshot_requests_per_minute = 3
+    assert make_llm(config, "ranking", tracker=None).client.limiter is not None
+
+
 def test_extra_body_is_sent():
     client, requests = _moonshot(['{"fit": 70, "reason": "ok"}'])
     llm = OpenAICompatibleLLM(

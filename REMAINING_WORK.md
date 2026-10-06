@@ -233,6 +233,23 @@ Ranking, news classification and draft checks run on GLM through NVIDIA's free h
 - [ ] A per-minute limit isn't the only cap we might hit (unpublished per-model or daily
       limits): if 429s persist at a low request rate, check build.nvidia.com's account page.
 
+## Ranking model benchmark (2026-10-06)
+
+`scripts/rank_benchmark.py` ranks a fixed set of 40 jobs (30 spread over GLM's scores plus
+GLM's top 10, copied to `data/benchmark/ranking/jobs.json`) with any model and compares the
+runs. First results, with Opus 5.5 (Claude Code, effort medium) as the reference:
+
+| model | spearman vs Opus | top 10 shared | mean score | s/job | $/job |
+|---|---|---|---|---|---|
+| GLM 5.3 Flash (NVIDIA, free) | 0.88 | 10 | 33 | (queued) | 0 |
+| Kimi K2.6, no thinking | 0.81 | 9 | 23 | 20 | 0.0034 |
+| Kimi K3, no thinking | 0.96 | 10 | 31 | 20 | 0.013 |
+| Opus 5.5 | 1.00 | 10 | 24 | 12 | subscription |
+
+Qwen3 8B on Ollama (local RTX 3080) looked loose in a 3-job smoke test, then the GPU driver
+crashed mid-run (NVRM errors), so it has no full result. One run per model, 40 jobs: treat
+differences under ~0.05 as noise.
+
 ## Known caveats / tech debt
 
 - **Dedupe can over-merge:** two genuinely different ads with the same normalised
