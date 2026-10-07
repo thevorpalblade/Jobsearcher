@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -116,7 +117,8 @@ def crawl_feeds(
                     report.jobs += 1
                     yield job
                 break
-            except (httpx.HTTPError, ValueError) as exc:  # network/HTTP errors, bad JSON/XML
+            # network/HTTP errors, bad JSON; ET.ParseError (bad XML) isn't a ValueError
+            except (httpx.HTTPError, ValueError, ET.ParseError) as exc:
                 if attempt == 1:
                     log.info("%s (%s) failed: %s; retrying", feed.company.name, feed.source, exc)
                     sleep(FEED_RETRY_PAUSE_S)

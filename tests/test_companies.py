@@ -835,6 +835,18 @@ def test_feed_retried_once_after_a_transient_error(monkeypatch):
     assert report.failed == ["lever:acme"] and calls[-2:] == [0, 0]  # tried twice, then gave up
 
 
+def test_malformed_xml_feed_fails_alone():
+    """A Varbi feed once answered with broken XML; that crashed the whole daemon."""
+    from jobsearcher.companies.crawl import CompanyFeed
+
+    company = ACME.model_copy(update={"ats": AtsRef(type="varbi", ref="acme")})
+    client = FakeClient({"https://acme.varbi.com/en/what:rssfeed/": "<rss><channel></rss>"})
+    feeds = [CompanyFeed(company, "varbi", "acme")]
+    report = CompanyCrawlReport()
+    assert list(crawl_feeds(feeds, client, keep_all, report, sleep=lambda s: None)) == []
+    assert report.failed == ["varbi:acme"]
+
+
 def test_workday_multi_location_jobs_use_a_swedish_additional_location():
     """Xylem's "Senior Project Manager ... Global" is based in Herford (Germany) and also
     open in Sundbyberg: the location filter must see Sundbyberg, not only Herford."""
