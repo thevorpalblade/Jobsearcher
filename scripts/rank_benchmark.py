@@ -171,7 +171,7 @@ def cmd_build(config: Config, args: argparse.Namespace) -> None:
     Its existing rankings made with today's CV and ranking.yaml become its run."""
     if (BENCH / "jobs.json").exists() and not args.force:
         sys.exit("The set exists; --force replaces it (and makes earlier runs incomparable)")
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     rc = load_ranking_config(config.ranking_config)
     latest = reference_rankings(config, args.reference_model)
     ids = sorted(latest, key=lambda j: final_score(latest[j][1], rc))
@@ -188,7 +188,7 @@ def cmd_build(config: Config, args: argparse.Namespace) -> None:
 def reference_rankings(config: Config, model: str) -> dict[str, tuple[bool, JobAssessment]]:
     """The newest ranking of each job by `model` in the database, and whether it was made
     with today's CV, ranking.yaml and prompt."""
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     rc = load_ranking_config(config.ranking_config)
     cv = cv_text(config)
     found: dict[str, tuple[bool, JobAssessment]] = {}
@@ -244,7 +244,7 @@ def cmd_run(config: Config, args: argparse.Namespace) -> None:
     if args.no_thinking:
         # Claude Code reads this; Haiku otherwise thinks for 3-9k tokens per job (60-90 s).
         os.environ["MAX_THINKING_TOKENS"] = "0"
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     llm = make_llm(config, "ranking", BudgetTracker(store, config.llm))
     run = load_run(args.label)
     now = inputs(config, rc)
@@ -358,6 +358,7 @@ def cmd_compare(config: Config, args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--config")
+    parser.add_argument("--profile", help="whose CVs and ranking.yaml (default: the first)")
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build", help="pick the job set from a model's existing rankings")
     b.add_argument("--reference-model", default="glm-5.3-flash")
@@ -379,7 +380,7 @@ def main() -> None:
     c.add_argument("--reference", default="opus-5.5")
     c.add_argument("--jobs", action="store_true", help="also list every job's scores")
     args = parser.parse_args()
-    config = load_config(args.config)
+    config = load_config(args.config).for_profile(args.profile)
     commands = {"build": cmd_build, "import": cmd_import, "run": cmd_run, "compare": cmd_compare}
     commands[args.command](config, args)
 

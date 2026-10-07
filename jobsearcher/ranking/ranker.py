@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 from collections import deque
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -190,16 +191,23 @@ class RankReport:
 
 
 def run_ranking(
-    store: Store, llm: BudgetedLLM, config: RankingConfig, cv: str, max_parallel: int = 1
+    store: Store,
+    llm: BudgetedLLM,
+    config: RankingConfig,
+    cv: str,
+    max_parallel: int = 1,
+    wanted: Callable[[Job], bool] | None = None,
 ) -> RankReport:
-    """Rank open jobs that pass the prefilter and have no cached ranking.
+    """Rank open jobs that pass the prefilter and have no cached ranking. `wanted` is
+    the profile's own search filter (its region and excluded words): the job pool is
+    shared by every profile, so it holds jobs fetched for the others too.
 
     Up to `max_parallel` LLM requests run at once in worker threads. Budget checks,
     usage records and rankings are written here on the calling thread, because the
     store's SQLite connection must not be shared between threads.
     """
     report = RankReport()
-    open_jobs = list(store.iter_jobs())
+    open_jobs = [job for job in store.iter_jobs() if wanted is None or wanted(job)]
     selected = select_for_ranking(open_jobs, config)
     report.skipped_prefilter = len(open_jobs) - len(selected)
     report.candidates = len(selected)

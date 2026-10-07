@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from jobsearcher.config import DEFAULT_PROFILE
 from jobsearcher.models import Application, ApplicationState, Contact, Job, JobStatus
 
 log = logging.getLogger(__name__)
@@ -39,20 +40,23 @@ CREATE TABLE IF NOT EXISTS runs (
     last_run    TEXT NOT NULL
 );
 
--- Filled by later milestones (M2 ranking, M4 drafting, tracking).
+-- Jobs are shared; rankings, drafts, applications and signals belong to one profile
+-- (one candidate, docs/m10-multi-user.md).
 CREATE TABLE IF NOT EXISTS rankings (
+    profile        TEXT NOT NULL,
     job_id         TEXT NOT NULL REFERENCES jobs(id),
     input_hash     TEXT NOT NULL,
     data           TEXT NOT NULL,
     created_at     TEXT NOT NULL,
-    PRIMARY KEY (job_id, input_hash)
+    PRIMARY KEY (profile, job_id, input_hash)
 );
 CREATE TABLE IF NOT EXISTS drafts (
-    job_id         TEXT NOT NULL REFERENCES jobs(id),
+    profile        TEXT NOT NULL,
+    job_id         TEXT NOT NULL,   -- a job id, or "company:<slug>"
     input_hash     TEXT NOT NULL,
     data           TEXT NOT NULL,
     created_at     TEXT NOT NULL,
-    PRIMARY KEY (job_id, input_hash)
+    PRIMARY KEY (profile, job_id, input_hash)
 );
 CREATE TABLE IF NOT EXISTS llm_usage (
     ts             TEXT NOT NULL,
@@ -62,16 +66,19 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     output_tokens  INTEGER NOT NULL,
     cost_usd       REAL NOT NULL,
     cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
-    cache_write_tokens  INTEGER NOT NULL DEFAULT 0
+    cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+    profile        TEXT
 );
 CREATE INDEX IF NOT EXISTS llm_usage_ts ON llm_usage(ts);
 
 -- Application tracking from the web UI. A job without a row is "new".
 CREATE TABLE IF NOT EXISTS applications (
-    job_id      TEXT PRIMARY KEY REFERENCES jobs(id),
+    profile     TEXT NOT NULL,
+    job_id      TEXT NOT NULL REFERENCES jobs(id),
     state       TEXT NOT NULL,  -- shortlisted|applied|interview|rejected|ignored (or new + notes)
     notes       TEXT NOT NULL DEFAULT '',
-    updated_at  TEXT NOT NULL
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (profile, job_id)
 );
 
 -- Where each target company (companies.yaml, by slug) posts its jobs, as detected.
@@ -114,15 +121,25 @@ CREATE TABLE IF NOT EXISTS news_items (
 );
 CREATE INDEX IF NOT EXISTS news_items_company ON news_items(company);
 CREATE TABLE IF NOT EXISTS signals (
-    item_id         TEXT PRIMARY KEY REFERENCES news_items(id),
+    profile         TEXT NOT NULL,
+    item_id         TEXT NOT NULL REFERENCES news_items(id),
     kind            TEXT NOT NULL,
     relevance       INTEGER NOT NULL,
     summary         TEXT NOT NULL,
     model           TEXT NOT NULL,
     prompt_version  TEXT NOT NULL,
-    created_at      TEXT NOT NULL
+    created_at      TEXT NOT NULL,
+    PRIMARY KEY (profile, item_id)
 );
 """
+
+
+PROFILE_TABLES = ("rankings", "drafts", "applications", "signals")
+
+
+def _table_ddl(table: str) -> str:
+    start = SCHEMA.index(f"CREATE TABLE IF NOT EXISTS {table} (")
+    return SCHEMA[start : SCHEMA.index(");", start) + 1]
 
 
 def _now() -> datetime:
@@ -166,14 +183,19 @@ class Store:
         readonly: bool = False,
         check_same_thread: bool = True,
         init_schema: bool = True,
+        profile: str = DEFAULT_PROFILE,
     ):
         """Open the database.
+
+        Rankings, drafts, applications, signals and LLM usage are read and written for
+        `profile` only (one candidate); jobs and everything else are shared.
 
         `readonly` opens the file with `mode=ro` and skips schema setup, so a reader
         can never write. `check_same_thread=False` is for callers that hand one
         connection between threads but use it serially (the web app). `init_schema`
         is skipped by short-lived writers once the schema is known to exist.
         """
+        self.profile = profile
         path = Path(path)
         in_memory = str(path) == ":memory:"
         if readonly:
@@ -203,13 +225,40 @@ class Store:
         except sqlite3.OperationalError as exc:
             log.debug("Could not switch to WAL yet: %s", exc)
 
+    def _columns(self, table: str) -> set[str]:
+        return {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+
     def _migrate(self) -> None:
-        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(llm_usage)")}
+        columns = self._columns("llm_usage")
         for column in ("cache_read_tokens", "cache_write_tokens"):
             if column not in columns:
                 self.conn.execute(
                     f"ALTER TABLE llm_usage ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
                 )
+        if "profile" not in columns:
+            with self.conn:
+                self.conn.execute("ALTER TABLE llm_usage ADD COLUMN profile TEXT")
+                self.conn.execute("UPDATE llm_usage SET profile = ?", (DEFAULT_PROFILE,))
+        # Before profiles, these tables had no profile column: their rows belong to the
+        # one profile there was. The key changes, so each table is rebuilt.
+        for table in PROFILE_TABLES:
+            old = self._columns(table)
+            if "profile" in old:
+                continue
+            cols = ", ".join(sorted(old))
+            self.conn.executescript(
+                f"BEGIN; ALTER TABLE {table} RENAME TO {table}_old; {_table_ddl(table)};"
+                f" INSERT INTO {table} (profile, {cols})"
+                f" SELECT '{DEFAULT_PROFILE}', {cols} FROM {table}_old;"
+                f" DROP TABLE {table}_old; COMMIT;"
+            )
+            log.info("Added profiles to the %s table", table)
+
+    def rename_profile(self, old: str, new: str) -> None:
+        """Move every row of profile `old` to `new` (jobsearcher migrate-profiles)."""
+        with self.conn:
+            for table in (*PROFILE_TABLES, "llm_usage"):
+                self.conn.execute(f"UPDATE {table} SET profile = ? WHERE profile = ?", (new, old))
 
     def close(self) -> None:
         self.conn.close()
@@ -393,46 +442,51 @@ class Store:
 
     def get_ranking(self, job_id: str, input_hash: str) -> str | None:
         row = self.conn.execute(
-            "SELECT data FROM rankings WHERE job_id = ? AND input_hash = ?", (job_id, input_hash)
+            "SELECT data FROM rankings WHERE profile = ? AND job_id = ? AND input_hash = ?",
+            (self.profile, job_id, input_hash),
         ).fetchone()
         return row["data"] if row else None
 
     def save_ranking(self, job_id: str, input_hash: str, data: str) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT OR REPLACE INTO rankings (job_id, input_hash, data, created_at)"
-                " VALUES (?, ?, ?, ?)",
-                (job_id, input_hash, data, _now().isoformat()),
+                "INSERT OR REPLACE INTO rankings (profile, job_id, input_hash, data, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (self.profile, job_id, input_hash, data, _now().isoformat()),
             )
 
     def latest_rankings(self, status: JobStatus | None = JobStatus.OPEN) -> dict[str, str]:
         """Most recent ranking per job, as {job_id: ranking JSON}."""
         rows = self.conn.execute(
             "SELECT r.job_id, r.data FROM rankings r JOIN jobs j ON j.id = r.job_id"
-            " WHERE (? IS NULL OR j.status = ?) ORDER BY r.created_at",
-            (status, status),
+            " WHERE r.profile = ? AND (? IS NULL OR j.status = ?) ORDER BY r.created_at",
+            (self.profile, status, status),
         )
         return {row["job_id"]: row["data"] for row in rows}
 
     def latest_ranking(self, job_id: str) -> tuple[str, datetime] | None:
         """(ranking JSON, created_at) of a job's most recent ranking."""
         row = self.conn.execute(
-            "SELECT data, created_at FROM rankings WHERE job_id = ?"
+            "SELECT data, created_at FROM rankings WHERE profile = ? AND job_id = ?"
             " ORDER BY created_at DESC LIMIT 1",
-            (job_id,),
+            (self.profile, job_id),
         ).fetchone()
         return (row["data"], datetime.fromisoformat(row["created_at"])) if row else None
 
     # --- application tracking --------------------------------------------
 
     def applications(self) -> dict[str, Application]:
-        rows = self.conn.execute("SELECT job_id, state, notes, updated_at FROM applications")
+        rows = self.conn.execute(
+            "SELECT job_id, state, notes, updated_at FROM applications WHERE profile = ?",
+            (self.profile,),
+        )
         return {row["job_id"]: Application(**dict(row)) for row in rows}
 
     def get_application(self, job_id: str) -> Application | None:
         row = self.conn.execute(
-            "SELECT job_id, state, notes, updated_at FROM applications WHERE job_id = ?",
-            (job_id,),
+            "SELECT job_id, state, notes, updated_at FROM applications"
+            " WHERE profile = ? AND job_id = ?",
+            (self.profile, job_id),
         ).fetchone()
         return Application(**dict(row)) if row else None
 
@@ -443,13 +497,16 @@ class Store:
         the row, so the job counts as untracked again."""
         with self.conn:
             if state == ApplicationState.NEW and not notes.strip():
-                self.conn.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))
+                self.conn.execute(
+                    "DELETE FROM applications WHERE profile = ? AND job_id = ?",
+                    (self.profile, job_id),
+                )
                 return None
             app = Application(job_id=job_id, state=state, notes=notes, updated_at=now or _now())
             self.conn.execute(
-                "INSERT OR REPLACE INTO applications (job_id, state, notes, updated_at)"
-                " VALUES (?, ?, ?, ?)",
-                (job_id, app.state, app.notes, app.updated_at.isoformat()),
+                "INSERT OR REPLACE INTO applications"
+                " (profile, job_id, state, notes, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (self.profile, job_id, app.state, app.notes, app.updated_at.isoformat()),
             )
         return app
 
@@ -457,7 +514,9 @@ class Store:
         """Every job with a tracking row, open or expired, most recently seen first."""
         rows = self.conn.execute(
             "SELECT data, first_seen, last_seen FROM jobs"
-            " WHERE id IN (SELECT job_id FROM applications) ORDER BY last_seen DESC"
+            " WHERE id IN (SELECT job_id FROM applications WHERE profile = ?)"
+            " ORDER BY last_seen DESC",
+            (self.profile,),
         )
         return [JobRecord.from_row(row) for row in rows]
 
@@ -477,8 +536,8 @@ class Store:
         with self.conn:
             self.conn.execute(
                 "INSERT INTO llm_usage (ts, model, purpose, input_tokens, output_tokens,"
-                " cache_read_tokens, cache_write_tokens, cost_usd)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " cache_read_tokens, cache_write_tokens, cost_usd, profile)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     when.isoformat(),
                     model,
@@ -488,6 +547,7 @@ class Store:
                     cache_read_tokens,
                     cache_write_tokens,
                     cost_usd,
+                    self.profile,
                 ),
             )
 
@@ -597,33 +657,37 @@ class Store:
     def save_draft(self, key: str, input_hash: str, data: str) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT OR REPLACE INTO drafts (job_id, input_hash, data, created_at)"
-                " VALUES (?, ?, ?, ?)",
-                (key, input_hash, data, _now().isoformat()),
+                "INSERT OR REPLACE INTO drafts (profile, job_id, input_hash, data, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (self.profile, key, input_hash, data, _now().isoformat()),
             )
 
     def get_draft(self, key: str, input_hash: str) -> sqlite3.Row | None:
         return self.conn.execute(
-            "SELECT * FROM drafts WHERE job_id = ? AND input_hash = ?", (key, input_hash)
+            "SELECT * FROM drafts WHERE profile = ? AND job_id = ? AND input_hash = ?",
+            (self.profile, key, input_hash),
         ).fetchone()
 
     def list_drafts(self, key: str) -> list[sqlite3.Row]:
         """All versions of a job's (or company's) draft, newest first."""
         return self.conn.execute(
-            "SELECT * FROM drafts WHERE job_id = ? ORDER BY created_at DESC", (key,)
+            "SELECT * FROM drafts WHERE profile = ? AND job_id = ? ORDER BY created_at DESC",
+            (self.profile, key),
         ).fetchall()
 
     def latest_drafts(self) -> dict[str, sqlite3.Row]:
         """The newest draft per job/company key."""
-        rows = self.conn.execute("SELECT * FROM drafts ORDER BY created_at")
+        rows = self.conn.execute(
+            "SELECT * FROM drafts WHERE profile = ? ORDER BY created_at", (self.profile,)
+        )
         return {row["job_id"]: row for row in rows}
 
     def auto_drafts_since(self, since: datetime) -> int:
         """Drafts started by shortlisting (not by a click) since `since`."""
         row = self.conn.execute(
-            "SELECT COUNT(*) FROM drafts WHERE created_at >= ?"
+            "SELECT COUNT(*) FROM drafts WHERE profile = ? AND created_at >= ?"
             " AND json_extract(data, '$.trigger') = 'shortlist'",
-            (since.isoformat(),),
+            (self.profile, since.isoformat()),
         ).fetchone()
         return int(row[0])
 
@@ -644,10 +708,11 @@ class Store:
     def unclassified_news(self, prompt_version: str) -> list[sqlite3.Row]:
         """News items with no signal for the current prompt version, oldest first."""
         return self.conn.execute(
-            "SELECT n.* FROM news_items n LEFT JOIN signals s ON s.item_id = n.id"
+            "SELECT n.* FROM news_items n"
+            " LEFT JOIN signals s ON s.item_id = n.id AND s.profile = ?"
             " WHERE s.item_id IS NULL OR s.prompt_version != ?"
             " ORDER BY n.company, n.published_at",
-            (prompt_version,),
+            (self.profile, prompt_version),
         ).fetchall()
 
     def save_signal(
@@ -661,10 +726,18 @@ class Store:
     ) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT OR REPLACE INTO signals"
-                " (item_id, kind, relevance, summary, model, prompt_version, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (item_id, kind, relevance, summary, model, prompt_version, _now().isoformat()),
+                "INSERT OR REPLACE INTO signals (profile, item_id, kind, relevance, summary,"
+                " model, prompt_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    self.profile,
+                    item_id,
+                    kind,
+                    relevance,
+                    summary,
+                    model,
+                    prompt_version,
+                    _now().isoformat(),
+                ),
             )
 
     def signals_since(self, since: datetime) -> list[sqlite3.Row]:
@@ -673,8 +746,9 @@ class Store:
             "SELECT n.company, n.title, n.url, n.domain, n.published_at,"
             " s.kind, s.relevance, s.summary"
             " FROM signals s JOIN news_items n ON n.id = s.item_id"
-            " WHERE n.published_at >= ? ORDER BY s.relevance DESC, n.published_at DESC",
-            (since.isoformat(),),
+            " WHERE s.profile = ? AND n.published_at >= ?"
+            " ORDER BY s.relevance DESC, n.published_at DESC",
+            (self.profile, since.isoformat()),
         ).fetchall()
 
     # --- run bookkeeping --------------------------------------------------

@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from jobsearcher.companies.config import Company
+from jobsearcher.config import DEFAULT_PROFILE
 from jobsearcher.signals.news import fetch_google_news, fetch_news
 from jobsearcher.sources.ats.common import AtsClient
 from jobsearcher.store import Store
@@ -17,6 +18,11 @@ from jobsearcher.store import Store
 log = logging.getLogger(__name__)
 
 RUN_KEY = "signals"  # in the store's runs table
+
+
+def run_key(store: Store) -> str:
+    """When this profile's news was last fetched (each profile has its own companies)."""
+    return RUN_KEY if store.profile == DEFAULT_PROFILE else f"{RUN_KEY}:{store.profile}"
 
 
 @dataclass
@@ -44,7 +50,7 @@ def fetch_all_news(
 
 
 def due(store: Store, every_days: int, now: datetime | None = None) -> bool:
-    last = store.last_run(RUN_KEY)
+    last = store.last_run(run_key(store))
     return last is None or (now or datetime.now(UTC)) - last >= timedelta(days=every_days)
 
 

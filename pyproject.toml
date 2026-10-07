@@ -37,6 +37,7 @@ jobsearcher = "jobsearcher.cli:main"
 "config.example.yaml" = "jobsearcher/examples/config.example.yaml"
 "ranking.example.yaml" = "jobsearcher/examples/ranking.example.yaml"
 "companies.example.yaml" = "jobsearcher/examples/companies.example.yaml"
+"profile.example.yaml" = "jobsearcher/examples/profile.example.yaml"
 
 [tool.ruff]
 line-length = 100

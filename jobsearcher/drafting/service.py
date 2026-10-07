@@ -10,7 +10,7 @@ from typing import Literal
 
 from jobsearcher import cvs as cv_files
 from jobsearcher.companies.config import Company
-from jobsearcher.config import Config
+from jobsearcher.config import DEFAULT_PROFILE, Config
 from jobsearcher.drafting import prompts
 from jobsearcher.drafting.core import Draft, Renderer, Request, _safe, generate_draft
 from jobsearcher.drafting.render import render_files
@@ -48,7 +48,10 @@ def make_llms(config: Config, store: Store) -> Llms:
 
 
 def drafts_dir(config: Config) -> Path:
-    return config.data_dir / "drafts"
+    """Where this profile's draft files go (data/drafts/<profile>/ once there are
+    profiles; data/drafts/ for a setup without them)."""
+    drafts = config.data_dir / "drafts"
+    return drafts if config.profile == DEFAULT_PROFILE else drafts / config.profile
 
 
 def _safe_key(key: str) -> str:

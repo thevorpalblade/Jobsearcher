@@ -18,7 +18,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from jobsearcher.companies.config import CompaniesConfig
-from jobsearcher.config import Config
+from jobsearcher.config import Config, ProfileSettings
 from jobsearcher.ranking.config import RankingConfig
 
 PACKAGE = Path(__file__).resolve().parent
@@ -31,7 +31,8 @@ class ConfigFile:
     description: str
     model: type[BaseModel]
     example: str  # file name of the committed example, next to the package
-    path: Callable[[Config, Path], Path]  # (config, config.yaml path) -> this file
+    # (config, config.yaml path) -> this file; None when the setup has no such file
+    path: Callable[[Config, Path], Path | None]
 
 
 FILES: dict[str, ConfigFile] = {
@@ -40,11 +41,20 @@ FILES: dict[str, ConfigFile] = {
         ConfigFile(
             "config",
             "config.yaml",
-            "Search locations and keywords, sources, LLM providers and models, budget, "
-            "schedule, company crawling. API keys stay in .env and aren't editable here.",
+            "Sources, LLM providers and models, budget, schedule, company crawling, and "
+            "(without profiles) search locations and keywords. API keys stay in .env and "
+            "aren't editable here.",
             Config,
             "config.example.yaml",
             lambda config, config_path: config_path,
+        ),
+        ConfigFile(
+            "profile",
+            "profile.yaml",
+            "This candidate's name and search: keywords, excluded words, locations.",
+            ProfileSettings,
+            "profile.example.yaml",
+            lambda config, config_path: config.profile_file,
         ),
         ConfigFile(
             "ranking",
@@ -65,6 +75,16 @@ FILES: dict[str, ConfigFile] = {
         ),
     )
 }
+
+
+def available(config: Config, config_path: Path) -> list[tuple[ConfigFile, Path]]:
+    """The files this setup has, with their paths."""
+    out = []
+    for file in FILES.values():
+        path = file.path(config, config_path)
+        if path is not None:
+            out.append((file, path))
+    return out
 
 
 def example_text(file: ConfigFile) -> str:
@@ -124,6 +144,12 @@ def effects(file: ConfigFile, old_text: str, new: BaseModel) -> list[str]:
             notes.append("data_dir or web settings changed: restart `jobsearcher web`.")
         if new.search != old.search or new.sources != old.sources:
             notes.append("Search settings changed: they apply from the next search.")
+    if isinstance(new, ProfileSettings) and isinstance(old, ProfileSettings):
+        if new.search != old.search:
+            notes.append(
+                "Search settings changed: new keywords and places apply from the next "
+                "search; ranking picks jobs with the new filters on its next run."
+            )
     if isinstance(new, CompaniesConfig) and isinstance(old, CompaniesConfig):
         added = {c.slug for c in new.companies} - {c.slug for c in old.companies}
         if added:

@@ -18,7 +18,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
-| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Planned 2026-10-07 |
+| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phase 1 (profiles) built 2026-10-07; logins next |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -207,6 +207,13 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       own profile (CVs, roles, rankings, drafts, applications); admin + regular users;
       HTTPS via Caddy. Phases: profiles, auth, per-profile UI, exposure, onboarding.
       Decisions recorded 2026-10-07 (the user's domain, own keys and models, chat local only).
+      - [x] Phase 1, profiles in files, DB and pipeline: built 2026-10-07 on branch
+            `m10-profiles`. The live setup moves over with `jobsearcher migrate-profiles
+            jenny` (steps in the plan, "Phase 1 as built").
+      - [ ] Phase 2: users, sessions, login (LAN only).
+      - [ ] Phase 3: per-profile UI, models, keys and budget; admin pages; TOTP.
+      - [ ] Phase 4: Caddy and hardening, then open the port.
+      - [ ] Phase 5: onboard the second candidate.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others
       as "more facts about the same candidate", exact copies skipped) and gives one score.

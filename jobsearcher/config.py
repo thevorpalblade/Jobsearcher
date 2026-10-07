@@ -216,6 +216,27 @@ class ChatConfig(BaseModel):
     workdir: Path | None = None
 
 
+# The profile of a setup without a `profiles/` folder: its CVs, ranking.yaml,
+# companies.yaml and search settings are the paths and section in config.yaml.
+DEFAULT_PROFILE = "default"
+PROFILE_FILE = "profile.yaml"
+
+
+class ProfileSettings(BaseModel):
+    """profiles/<slug>/profile.yaml: one candidate's own settings."""
+
+    # Who the dashboard greets; falls back to web.user_name.
+    name: str = ""
+    # Their keywords, excluded words and region. expire_after_days stays global
+    # (config.yaml), since the job pool is shared.
+    search: SearchConfig = Field(default_factory=SearchConfig)
+
+
+def load_profile_settings(path: Path) -> ProfileSettings:
+    raw = yaml.safe_load(path.read_text()) if path.is_file() else {}
+    return ProfileSettings.model_validate(raw or {})
+
+
 class Config(BaseModel):
     search: SearchConfig = Field(default_factory=SearchConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
@@ -230,6 +251,52 @@ class Config(BaseModel):
     cv_path: Path = Path("cvs/master.md")
     companies_config: Path = Path("companies.yaml")
     companies: CompaniesSettings = Field(default_factory=CompaniesSettings)
+    # One folder per candidate (docs/m10-multi-user.md); load_config defaults it to
+    # profiles/ next to config.yaml. Without it, the setup has one profile,
+    # DEFAULT_PROFILE, made of the paths above.
+    profiles_dir: Path | None = None
+    # Which profile this config is for: set by for_profile(), not in config.yaml.
+    profile: str = DEFAULT_PROFILE
+
+    def profile_slugs(self) -> list[str]:
+        """Every profile: the folders in profiles/ with a profile.yaml, by name."""
+        if self.profiles_dir is None or not self.profiles_dir.is_dir():
+            return [DEFAULT_PROFILE]
+        slugs = sorted(d.name for d in self.profiles_dir.iterdir() if (d / PROFILE_FILE).is_file())
+        return slugs or [DEFAULT_PROFILE]
+
+    def for_profile(self, slug: str | None = None) -> Config:
+        """This config with one profile's files and search settings (default: the first
+        profile). Everything else, e.g. llm, sources and schedule, stays global."""
+        slugs = self.profile_slugs()
+        slug = slug or slugs[0]
+        if slug not in slugs:
+            raise ValueError(f"No profile {slug!r} (profiles: {', '.join(slugs)})")
+        if slug == DEFAULT_PROFILE or self.profiles_dir is None:
+            return self.model_copy(update={"profile": slug})
+        folder = self.profiles_dir / slug
+        settings = load_profile_settings(folder / PROFILE_FILE)
+        search = settings.search.model_copy(
+            update={"expire_after_days": self.search.expire_after_days}
+        )
+        web = self.web.model_copy(update={"user_name": settings.name or self.web.user_name})
+        return self.model_copy(
+            update={
+                "profile": slug,
+                "search": search,
+                "web": web,
+                "cv_path": folder / "cvs" / "master.md",
+                "ranking_config": folder / "ranking.yaml",
+                "companies_config": folder / "companies.yaml",
+            }
+        )
+
+    @property
+    def profile_file(self) -> Path | None:
+        """This profile's profile.yaml (None for DEFAULT_PROFILE)."""
+        if self.profile == DEFAULT_PROFILE or self.profiles_dir is None:
+            return None
+        return self.profiles_dir / self.profile / PROFILE_FILE
 
     @property
     def news_source(self) -> str:
@@ -271,8 +338,9 @@ def load_config(path: str | Path | None = None) -> Config:
         ("ranking_config", "JOBSEARCHER_RANKING_CONFIG"),
         ("cv_path", "JOBSEARCHER_CV"),
         ("companies_config", "JOBSEARCHER_COMPANIES"),
+        ("profiles_dir", "JOBSEARCHER_PROFILES"),
     ):
-        value = Path(os.environ.get(env) or getattr(config, field))
+        value = Path(os.environ.get(env) or getattr(config, field) or "profiles")
         setattr(config, field, value if value.is_absolute() else base / value)
     workdir = config.chat.workdir or Path()
     config.chat.workdir = workdir if workdir.is_absolute() else (base / workdir).resolve()

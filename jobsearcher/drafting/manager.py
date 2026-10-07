@@ -75,9 +75,10 @@ class DraftManager:
                 continue
             status = self._status[key]
             status.state = "running"
-            store = Store(self._db_path)
+            config = self._get_config()
+            store = Store(self._db_path, profile=config.profile)
             try:
-                task(self._get_config(), store)
+                task(config, store)
                 status.state = "done"
             except Exception as exc:  # shown to the user; the worker must carry on
                 log.warning("Draft for %s failed: %s", key, exc)

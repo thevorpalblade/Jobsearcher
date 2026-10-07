@@ -239,13 +239,50 @@ user the same as the first.
 
 | # | Phase | Result | Size |
 |---|---|---|---|
-| 1 | Profiles in files, DB and pipeline; migration; one profile | Same app, data now per profile | Large: touches store, cli, ranking, drafting, signals, web settings |
+| 1 | Profiles in files, DB and pipeline; migration; one profile | Same app, data now per profile | **Built 2026-10-07** (branch `m10-profiles`); see "Phase 1 as built" |
 | 2 | Users, sessions, login/logout, middleware, CLI user commands, roles | Login required, still LAN only | Medium |
 | 3 | Per-profile web UI, per-profile models and keys, admin user page, profile switcher, `/account`, admin TOTP | Two candidates usable | Medium to large |
 | 4 | Caddy, headers, Origin checks, throttling, chat lockdown, security review, outside tests | On the internet | Small to medium |
 | 5 | Onboard the second user: profile, CV upload, roles form, first ranking run | Second candidate live | Small |
 
 Phases 1–3 can be built and tested on the LAN; the port opens only after phase 4.
+
+## Phase 1 as built (2026-10-07)
+
+- **Config:** `Config.profiles_dir` (default `profiles/` next to config.yaml),
+  `profile_slugs()`, `for_profile(slug)`. Without a profiles folder there is one
+  profile, `default`, made of config.yaml's paths, so other setups and the tests are
+  unchanged. `profile.yaml` holds the name and search settings
+  (`profile.example.yaml`).
+- **Store:** `Store(path, profile=...)`. The migration rebuilds the four per-profile
+  tables with a `profile` column (old rows become `default`) and adds
+  `llm_usage.profile`. It runs once, on the first open. `rename_profile()` is used by
+  the migration command.
+- **Pipeline:**
+  - `search` fetches once with every profile's keywords and companies, and keeps a
+    job if it's in any profile's region.
+  - `rank` and `signals` run per profile. `rank` applies the profile's own region and
+    excluded words (`run_ranking(wanted=...)`).
+  - Each profile has its own news-fetch timestamp (`signals:<slug>`).
+  - The daemon and `run` loop over every profile. `--profile` picks one for the
+    per-profile commands.
+- **Drafts** go to `data/drafts/<slug>/`.
+- **Web:** shows the first profile, or `jobsearcher web --profile <slug>`. The
+  Settings page edits that profile's `profile.yaml`.
+- **Moving the live setup over:**
+  1. Stop the services.
+  2. Back up `data/jobsearcher.db`.
+  3. Run `jobsearcher migrate-profiles jenny`. It moves `ranking.yaml`,
+     `companies.yaml`, `cvs/` and the search section into `profiles/jenny/`, assigns
+     the database rows to `jenny`, and moves the drafts.
+  4. Restart the services.
+
+  A rehearsal on a copy of the live data kept all 575 current rankings (nothing
+  re-ranks), the 7 tracked applications and the drafts. Every page and a draft
+  download worked.
+- **Not yet:** a per-profile LLM budget (phase 3; usage is already recorded per
+  profile, but the $20 limit is still shared), and per-profile backups (still
+  `data/backups/`).
 
 ## Still open
 

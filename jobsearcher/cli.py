@@ -12,25 +12,28 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from jobsearcher.config import Config, config_file_path, load_config
+from jobsearcher.config import DEFAULT_PROFILE, Config, config_file_path, load_config
 from jobsearcher.cvs import ranking_cv
 from jobsearcher.models import JobStatus
-from jobsearcher.pipeline import run_search, search_keywords
+from jobsearcher.pipeline import all_profiles, matches_filters, profiles_keywords, run_search
 from jobsearcher.store import Store
 
 log = logging.getLogger("jobsearcher")
 
 
 def cmd_search(config: Config, args: argparse.Namespace) -> int:
-    keywords = search_keywords(config)
+    """One search for every profile: the job pool is shared."""
+    profiles = all_profiles(config)
+    keywords = profiles_keywords(profiles)
     if not keywords:
         print(
-            "No keywords: set search.keywords in config.yaml or target_roles in ranking.yaml",
+            "No keywords: set search.keywords (config.yaml or a profile.yaml) or "
+            "target_roles in ranking.yaml",
             file=sys.stderr,
         )
         return 2
-    store = Store(config.db_path)
-    report = run_search(config, store, keywords=keywords)
+    store = Store(config.db_path, profile=config.profile)
+    report = run_search(config, store, keywords=keywords, profiles=profiles)
     print(
         f"search: {len(keywords)} keywords, fetched={report.fetched} "
         f"filtered_out={report.filtered_out} new={report.new} updated={report.updated} "
@@ -58,7 +61,7 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
     if not config.ranking_config.exists():
         print(f"Ranking config not found at {config.ranking_config}", file=sys.stderr)
         return 2
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     ranking_config = load_ranking_config(config.ranking_config)
     try:
         llm = make_llm(config, "ranking", BudgetTracker(store, config.llm))
@@ -71,9 +74,11 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
         ranking_config,
         cv,
         max_parallel=config.llm.ranking.max_parallel,
+        wanted=lambda job: matches_filters(job, config.search),
     )
     print(
-        f"rank: candidates={report.candidates} (prefilter dropped {report.skipped_prefilter}) "
+        f"rank{_profile_label(config)}: candidates={report.candidates} "
+        f"(prefilter dropped {report.skipped_prefilter}) "
         f"ranked={report.ranked} cached={report.cached} failed={report.failed} "
         f"deferred={report.deferred}"
     )
@@ -84,26 +89,45 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
     return 1 if report.failed and not report.ranked else 0
 
 
+def _profile_label(config: Config) -> str:
+    return "" if config.profile == DEFAULT_PROFILE else f" [{config.profile}]"
+
+
+def _profiles(config: Config, args: argparse.Namespace) -> list[Config]:
+    """The profiles a run covers: --profile, else every one."""
+    if getattr(args, "profile", None):
+        return [config.for_profile(args.profile)]
+    return all_profiles(config)
+
+
 def run_pipeline(config: Config, args: argparse.Namespace) -> tuple[int, bool]:
-    """One full pass: search, rank, then news signals (fetched weekly; leftovers are
-    classified every pass). Returns (exit status, retry): retry is True when ranking or
-    news classification stopped because the provider kept failing."""
+    """One full pass: search (once, for every profile), then for each profile rank and
+    news signals (fetched weekly; leftovers are classified every pass). Returns (exit
+    status, retry): retry is True when ranking or news classification stopped for any
+    profile because the provider kept failing."""
     from jobsearcher.signals.run import due
 
     search_status = cmd_search(config, args)
     if search_status == 2:
         return search_status, False
-    rank_status = cmd_rank(config, args)
-    retry = rank_status == RETRY
-    status = max(search_status, 0 if retry else rank_status)
-    if config.sources.companies and config.companies_config.is_file():
-        fetch = due(Store(config.db_path), config.companies.signals_every_days)
-        signals_args = argparse.Namespace(
-            digest_only=False, days=None, min_relevance=40, limit=10 if fetch else 0, fetch=fetch
-        )
-        signals_status = cmd_signals(config, signals_args)
-        retry = retry or signals_status == RETRY
-        status = max(status, 0 if signals_status == RETRY else signals_status)
+    status, retry = search_status, False
+    for profile in _profiles(config, args):
+        rank_status = cmd_rank(profile, args)
+        retry = retry or rank_status == RETRY
+        status = max(status, 0 if rank_status == RETRY else rank_status)
+        if config.sources.companies and profile.companies_config.is_file():
+            store = Store(profile.db_path, profile=profile.profile)
+            fetch = due(store, config.companies.signals_every_days)
+            signals_args = argparse.Namespace(
+                digest_only=False,
+                days=None,
+                min_relevance=40,
+                limit=10 if fetch else 0,
+                fetch=fetch,
+            )
+            signals_status = cmd_signals(profile, signals_args)
+            retry = retry or signals_status == RETRY
+            status = max(status, 0 if signals_status == RETRY else signals_status)
     return status, retry
 
 
@@ -115,7 +139,7 @@ def cmd_run(config: Config, args: argparse.Namespace) -> int:
 def cmd_list(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.ranking import load_ranking_config, ranked_jobs
 
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     ranking_config = load_ranking_config(config.ranking_config)
     scores = {job.id: score for job, _, score in ranked_jobs(store, ranking_config)}
     status = None if args.all else JobStatus.OPEN
@@ -135,7 +159,7 @@ def cmd_list(config: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_show(config: Config, args: argparse.Namespace) -> int:
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     job = store.get_job(args.job_id)
     if job is None:
         print(f"No job {args.job_id}", file=sys.stderr)
@@ -159,7 +183,7 @@ def cmd_occupations(config: Config, args: argparse.Namespace) -> int:
     ranking_config = load_ranking_config(config.ranking_config)
     roles = {role.name: role for role in ranking_config.target_roles}
     counts: dict[str, Counter[tuple[str | None, str | None]]] = {n: Counter() for n in roles}
-    for job in Store(config.db_path).iter_jobs():
+    for job in Store(config.db_path, profile=config.profile).iter_jobs():
         for name in matched_roles(job, ranking_config, apply_occupation_filters=False)[0]:
             counts[name][(job.occupation_field, job.occupation_group)] += 1
 
@@ -194,7 +218,7 @@ def cmd_companies(config: Config, args: argparse.Namespace) -> int:
         print(f"No company list at {config.companies_config}", file=sys.stderr)
         return 2
     companies = load_companies(config.companies_config)
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     if args.detect:
         client = PoliteClient.from_config(config)
         _, detected = resolve_feeds(
@@ -235,13 +259,13 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.ranking import load_ranking_config
     from jobsearcher.ranking.ranker import build_context
     from jobsearcher.signals.classify import classify_news
-    from jobsearcher.signals.run import RUN_KEY, digest, fetch_all_news
+    from jobsearcher.signals.run import digest, fetch_all_news, run_key
 
     if not config.companies_config.is_file():
         print(f"No company list at {config.companies_config}", file=sys.stderr)
         return 2
     companies = load_companies(config.companies_config)
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     days = args.days or config.companies.news_days
     status = 0
     if not args.digest_only and not getattr(args, "fetch", True):
@@ -260,7 +284,7 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
                 + (f", failed: {', '.join(fetched.failed)}" if fetched.failed else ""),
                 file=sys.stderr,
             )
-            store.set_last_run(RUN_KEY, datetime.now(UTC))
+            store.set_last_run(run_key(store), datetime.now(UTC))
         cv = ranking_cv(config.cv_path)
         if cv is None:
             print(f"Master CV not found at {config.cv_path}", file=sys.stderr)
@@ -301,7 +325,7 @@ def cmd_draft(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.drafting.service import DraftError, draft_company, draft_job, drafts_dir
     from jobsearcher.llm import LLMError
 
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     try:
         if args.company:
             wanted = slugify(args.company)
@@ -344,7 +368,7 @@ def cmd_drafts(config: Config, args: argparse.Namespace) -> int:
     """List stored drafts, newest first."""
     from jobsearcher.drafting.core import Draft
 
-    store = Store(config.db_path)
+    store = Store(config.db_path, profile=config.profile)
     rows = sorted(store.latest_drafts().values(), key=lambda r: r["created_at"], reverse=True)
     for row in rows:
         draft = Draft.model_validate_json(row["data"])
@@ -364,7 +388,7 @@ def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
     class Pong(BaseModel):
         reply: str
 
-    tracker = BudgetTracker(Store(config.db_path), config.llm)
+    tracker = BudgetTracker(Store(config.db_path, profile=config.profile), config.llm)
     status = 0
     for role in ("ranking", "drafting"):
         spec = getattr(config.llm, role)
@@ -393,7 +417,7 @@ def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
 def cmd_budget(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.llm import BudgetTracker
 
-    tracker = BudgetTracker(Store(config.db_path), config.llm)
+    tracker = BudgetTracker(Store(config.db_path, profile=config.profile), config.llm)
     spent = tracker.month_to_date()
     print(
         f"LLM spend this month: ${spent:.2f} of ${config.llm.monthly_budget_usd:.2f} "
@@ -442,14 +466,17 @@ def seconds_until(daily_at: str, tz: ZoneInfo, now: datetime | None = None) -> f
 
 
 def retry_stalled(config: Config, args: argparse.Namespace) -> bool:
-    """Ranking and news classification again, after a provider failure streak stopped
-    them. Never searches or fetches news again. True if they are still stalled."""
-    stalled = cmd_rank(config, args) == RETRY
-    if config.sources.companies and config.companies_config.is_file():
-        signals_args = argparse.Namespace(
-            digest_only=False, days=None, min_relevance=40, limit=0, fetch=False
-        )
-        stalled = cmd_signals(config, signals_args) == RETRY or stalled
+    """Ranking and news classification again (every profile), after a provider failure
+    streak stopped them. Never searches or fetches news again. True if they are still
+    stalled for any profile."""
+    stalled = False
+    for profile in _profiles(config, args):
+        stalled = cmd_rank(profile, args) == RETRY or stalled
+        if config.sources.companies and profile.companies_config.is_file():
+            signals_args = argparse.Namespace(
+                digest_only=False, days=None, min_relevance=40, limit=0, fetch=False
+            )
+            stalled = cmd_signals(profile, signals_args) == RETRY or stalled
     return stalled
 
 
@@ -483,6 +510,65 @@ def daemon_cycle(
             break
 
 
+def cmd_migrate_profiles(config: Config, args: argparse.Namespace) -> int:
+    """Move a setup without profiles into profiles/<slug>/: ranking.yaml,
+    companies.yaml, the CVs and config.yaml's search section, plus the database rows
+    and drafts. Run it once, with the daemon and web UI stopped."""
+    import shutil
+
+    import yaml
+
+    from jobsearcher.companies.config import slugify
+    from jobsearcher.config import PROFILE_FILE
+
+    slug = slugify(args.slug)
+    if not slug or slug != args.slug or slug == DEFAULT_PROFILE:
+        print(f"Pick a plain lowercase name, not {args.slug!r}", file=sys.stderr)
+        return 2
+    if config.profile_slugs() != [DEFAULT_PROFILE]:
+        print(f"Profiles already exist in {config.profiles_dir}", file=sys.stderr)
+        return 2
+    folder = config.profiles_dir / slug
+    moves = [
+        (config.ranking_config, folder / "ranking.yaml"),
+        (config.companies_config, folder / "companies.yaml"),
+        (config.cv_path.parent, folder / "cvs"),
+    ]
+    if config.cv_path.name != "master.md":
+        print(f"The master CV must be named master.md, not {config.cv_path.name}", file=sys.stderr)
+        return 2
+    store = Store(config.db_path)  # migrates the schema first, if needed
+    folder.mkdir(parents=True)
+    for source, target in moves:
+        if source.exists():
+            shutil.move(source, target)
+            print(f"moved {source} -> {target}")
+    search = config.search.model_dump(mode="json", exclude={"expire_after_days"})
+    settings = {"name": config.web.user_name, "search": search}
+    (folder / PROFILE_FILE).write_text(
+        "# This candidate's own settings (docs/m10-multi-user.md). search: replaces\n"
+        "# config.yaml's search section, except expire_after_days.\n"
+        + yaml.safe_dump(settings, allow_unicode=True, sort_keys=False)
+    )
+    print(f"wrote {folder / PROFILE_FILE}")
+    store.rename_profile(DEFAULT_PROFILE, slug)
+    print(f"database rows now belong to {slug!r}")
+    drafts = config.data_dir / "drafts"
+    if drafts.is_dir() and any(drafts.iterdir()):
+        target = drafts / slug
+        target.mkdir()
+        for entry in list(drafts.iterdir()):
+            if entry != target:
+                shutil.move(entry, target / entry.name)
+        print(f"moved drafts into {target}")
+    print(
+        "Done. config.yaml's search section now only sets expire_after_days (edit the rest "
+        "in the profile.yaml), and its cv_path, ranking_config and companies_config are "
+        "no longer used. Restart the daemon and the web UI."
+    )
+    return 0
+
+
 def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
     """Run the pipeline once at startup (unless --no-initial-run), then daily."""
     tz = ZoneInfo(config.schedule.timezone)
@@ -499,10 +585,15 @@ def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
             log.exception("Scheduled run failed")
 
 
+# Commands that work on every profile (or none) rather than one.
+SHARED_COMMANDS = {"search", "run", "daemon", "migrate-profiles", "budget"}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jobsearcher")
     parser.add_argument("--config", help="path to config.yaml")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--profile", help="which candidate's profile (default: the first)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("search", help="fetch jobs from all enabled sources")
@@ -559,6 +650,11 @@ def main(argv: list[str] | None = None) -> int:
     p_web.add_argument("--port", type=int, help="port (default: web.port in config.yaml)")
     p_web.add_argument("--reload", action="store_true", help="restart on code changes (dev)")
 
+    p_migrate = sub.add_parser(
+        "migrate-profiles", help="move this setup's files and data into profiles/<slug>/"
+    )
+    p_migrate.add_argument("slug", help="the candidate's profile name, e.g. their first name")
+
     p_daemon = sub.add_parser("daemon", help="run the pipeline on the configured daily schedule")
     p_daemon.add_argument("--no-initial-run", action="store_true")
 
@@ -572,6 +668,12 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = load_config(args.config)
+    if args.command not in SHARED_COMMANDS:
+        try:
+            config = config.for_profile(args.profile)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
     handler = {
         "search": cmd_search,
         "rank": cmd_rank,
@@ -587,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         "budget": cmd_budget,
         "daemon": cmd_daemon,
         "web": cmd_web,
+        "migrate-profiles": cmd_migrate_profiles,
     }
     return handler[args.command](config, args)
 

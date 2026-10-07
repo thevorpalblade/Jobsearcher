@@ -55,6 +55,28 @@ def search_keywords(config: Config) -> list[str]:
     return unique_casefold(keywords)
 
 
+def all_profiles(config: Config) -> list[Config]:
+    """The config of every profile (one candidate each)."""
+    return [config.for_profile(slug) for slug in config.profile_slugs()]
+
+
+def profiles_keywords(profiles: list[Config]) -> list[str]:
+    """Every profile's search keywords: the job pool is fetched once for all of them."""
+    from jobsearcher.ranking.config import unique_casefold
+
+    return unique_casefold([k for p in profiles for k in search_keywords(p)])
+
+
+def profiles_companies(profiles: list[Config]) -> list[Company]:
+    """Every profile's target companies, each once (by slug, first profile wins)."""
+    seen: dict[str, Company] = {}
+    for p in profiles:
+        if p.companies_config.is_file():
+            for company in load_companies(p.companies_config):
+                seen.setdefault(company.slug, company)
+    return list(seen.values())
+
+
 def run_search(
     config: Config,
     store: Store,
@@ -62,19 +84,26 @@ def run_search(
     keywords: list[str] | None = None,
     companies: list[Company] | None = None,
     company_client: PoliteClient | None = None,
+    profiles: list[Config] | None = None,
 ) -> SearchReport:
     """Fetch every currently open ad matching the keywords from each source, then
-    every open job on the target companies' own feeds."""
+    every open job on the target companies' own feeds. One pass serves every profile:
+    a job is kept if it is in any profile's region (`profiles`, default: `config`
+    alone); each profile's own filters pick its jobs later, at ranking."""
+    profiles = profiles or [config]
     sources = enabled_sources(config) if sources is None else sources
-    keywords = search_keywords(config) if keywords is None else keywords
+    keywords = profiles_keywords(profiles) if keywords is None else keywords
     if companies is None:
-        companies = load_companies(config.companies_config) if config.sources.companies else []
+        companies = profiles_companies(profiles) if config.sources.companies else []
     report = SearchReport()
     started = datetime.now(UTC)
 
+    def wanted(job: Job) -> bool:
+        return any(matches_filters(job, p.search) for p in profiles)
+
     def keep(job: Job) -> bool:
         report.fetched += 1
-        if not matches_filters(job, config.search):
+        if not wanted(job):
             report.filtered_out += 1
             return False
         return True
@@ -108,9 +137,8 @@ def run_search(
         report.companies = crawl = CompanyCrawlReport(companies=len(companies))
         client = company_client or PoliteClient.from_config(config)
         feeds, crawl.detected = resolve_feeds(companies, store, client, config.companies, started)
-        # matches_filters only, not keep(): this is a cheap pre-check before an
-        # adapter fetches a full ad, and the job is counted when it's yielded.
-        wanted = lambda job: matches_filters(job, config.search)  # noqa: E731
+        # wanted only, not keep(): this is a cheap pre-check before an adapter
+        # fetches a full ad, and the job is counted when it's yielded.
         for job in crawl_feeds(feeds, client, wanted, crawl):
             if keep(job):
                 save(job)

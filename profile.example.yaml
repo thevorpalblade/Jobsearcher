@@ -1,0 +1,24 @@
+# One candidate's own settings: profiles/<name>/profile.yaml, next to their
+# ranking.yaml, companies.yaml and cvs/ (docs/m10-multi-user.md). Everything else,
+# e.g. sources, models and the schedule, is in config.yaml and shared.
+# `jobsearcher migrate-profiles <name>` turns a setup without profiles into one.
+
+# Who the dashboard greets.
+name: ""
+
+# Replaces config.yaml's search section for this candidate (except
+# expire_after_days, which stays in config.yaml: the job pool is shared).
+search:
+  # The target roles (and their aliases) in ranking.yaml are searched automatically.
+  # Add any extra free-text queries here.
+  use_target_roles: true
+  keywords: []
+  # Ads whose title or text contain any of these are left out of this candidate's list.
+  exclude_keywords: []
+  # This candidate's region, matched (case-insensitive substring) against the ad's
+  # municipality, city and region. "Stockholm" also matches "Stockholms län".
+  # Empty = all of Sweden. Jobs fetched for another candidate show up here too when
+  # they match.
+  locations:
+    - "Stockholm"
+  include_remote: true

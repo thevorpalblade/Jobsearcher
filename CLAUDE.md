@@ -26,7 +26,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
 
 - `jobsearcher/sources/`: one adapter per job board, returning normalised `models.Job`
 - `jobsearcher/store.py`: SQLite store (jobs, job_sources, rankings, drafts, llm_usage,
-  applications); WAL mode, so the web UI can read while the daemon writes
+  applications); WAL mode, so the web UI can read while the daemon writes. Per-profile
+  tables carry a `profile` column; `Store(..., profile=)` scopes every query to it
 - `jobsearcher/llm/`: provider-neutral `complete(system, context, prompt, schema)`.
   Every call goes through `BudgetedLLM`, which records cost and enforces the budget.
 - `jobsearcher/ranking/`: `ranking.yaml` config, prefilter, scoring, `final_score`
@@ -64,7 +65,11 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
 ## Rules
 
 - **Personal data never goes into git:** `config.yaml`, `ranking.yaml`, `companies.yaml`,
-  `.env`, `cvs/`, `data/` are gitignored. Only `*.example.*` files are committed.
+  `.env`, `cvs/`, `profiles/`, `data/` are gitignored. Only `*.example.*` files are committed.
+- **Profiles (one per candidate, docs/m10-multi-user.md):** `config.for_profile(slug)` gives
+  a `Config` with that profile's CVs, ranking.yaml, companies.yaml and search settings;
+  open the store with `Store(path, profile=config.profile)`. Jobs, news and company ATS
+  are shared; rankings, drafts, applications, signals and LLM usage are per profile.
 - **The LLM must never invent experience or contacts.** Drafts are grounded in
   `cvs/master.md`, and contacts always carry a `provenance`.
 - **Avoid paying twice:** cache LLM results by a hash of their inputs, as

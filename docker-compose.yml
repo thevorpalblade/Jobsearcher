@@ -15,6 +15,8 @@ services:
       # create an empty directory here, which is treated as "no companies").
       - ./companies.yaml:/config/companies.yaml:ro
       - ./cvs:/cvs:ro
+      # One folder per candidate, once `jobsearcher migrate-profiles` has made them.
+      - ./profiles:/config/profiles:ro
       - ./data:/data
 
   # Local web UI on port 8080. It needs no secrets, so there is no env_file. The config
@@ -36,6 +38,7 @@ services:
       - ./ranking.yaml:/config/ranking.yaml
       - ./companies.yaml:/config/companies.yaml
       - ./cvs:/cvs
+      - ./profiles:/config/profiles
       - ./data:/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]

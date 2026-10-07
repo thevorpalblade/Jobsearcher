@@ -71,8 +71,11 @@ class WebState:
     memo: views.PrefilterMemo
 
     def reload_config(self) -> None:
-        """Pick up a saved config.yaml (paths to ranking.yaml and the CV may change)."""
-        self.config = load_config(self.config_path)
+        """Pick up a saved config.yaml or profile.yaml (paths to ranking.yaml and the
+        CV may change). The UI keeps showing the same profile."""
+        base = load_config(self.config_path)
+        slug = self.config.profile
+        self.config = base.for_profile(slug if slug in base.profile_slugs() else None)
         self.chat.config = self.config.chat
         self.chat.user_name = self.config.web.user_name
         self.ranking = views.ranking_config_cache(self.config.ranking_config)
@@ -103,7 +106,12 @@ def get_store(state: State) -> Iterator[Store]:
     """A read-only connection for one request. check_same_thread=False because FastAPI
     may run this dependency's setup, the endpoint and the teardown on different
     threadpool threads; the request still uses the connection serially."""
-    store = Store(state.config.db_path, readonly=True, check_same_thread=False)
+    store = Store(
+        state.config.db_path,
+        readonly=True,
+        check_same_thread=False,
+        profile=state.config.profile,
+    )
     try:
         yield store
     finally:
@@ -112,7 +120,12 @@ def get_store(state: State) -> Iterator[Store]:
 
 def get_writable_store(state: State) -> Iterator[Store]:
     """A writable connection for one POST; the schema already exists (see lifespan)."""
-    store = Store(state.config.db_path, check_same_thread=False, init_schema=False)
+    store = Store(
+        state.config.db_path,
+        check_same_thread=False,
+        init_schema=False,
+        profile=state.config.profile,
+    )
     try:
         yield store
     finally:
@@ -445,7 +458,7 @@ def _result(
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
     master = state.config.cv_path
-    files = [(f, f.path(state.config, state.config_path)) for f in settings.FILES.values()]
+    files = settings.available(state.config, state.config_path)
     return render(
         request,
         state,
@@ -528,17 +541,17 @@ def delete_cv(request: Request, name: str, state: State) -> Response:
     return htmx_redirect("/settings")
 
 
-def _config_file(key: str) -> settings.ConfigFile:
+def _config_file(state: WebState, key: str) -> tuple[settings.ConfigFile, Path]:
     file = settings.FILES.get(key)
-    if file is None:
+    path = file.path(state.config, state.config_path) if file else None
+    if file is None or path is None:
         raise HTTPException(404)
-    return file
+    return file, path
 
 
 @router.get("/settings/files/{key}", response_class=HTMLResponse)
 def config_file_page(request: Request, key: str, state: State, store: ReadStore) -> HTMLResponse:
-    file = _config_file(key)
-    path = file.path(state.config, state.config_path)
+    file, path = _config_file(state, key)
     exists = path.is_file()
     return render(
         request,
@@ -554,8 +567,7 @@ def config_file_page(request: Request, key: str, state: State, store: ReadStore)
 
 
 def _check(request: Request, state: WebState, key: str, text: str, write: bool) -> HTMLResponse:
-    file = _config_file(key)
-    path = file.path(state.config, state.config_path)
+    file, path = _config_file(state, key)
     model, errors = settings.parse(file, text)
     if model is None:
         return _result(
@@ -568,7 +580,7 @@ def _check(request: Request, state: WebState, key: str, text: str, write: bool) 
             request, state, True, "Valid. Saving it would:" if notes else "Valid.", notes
         )
     backup = settings.save(path, text, state.backup_dir)
-    if key == "config":
+    if key in ("config", "profile"):
         state.reload_config()
     if backup is not None:
         notes.append(f"The previous version is in {backup}.")
@@ -824,8 +836,7 @@ def chat_delete(chat_id: str, state: State, store: WriteStore) -> Response:
 
 
 def _file_data(state: WebState, key: str) -> tuple[settings.ConfigFile, Path, str]:
-    file = settings.FILES[key]
-    path = file.path(state.config, state.config_path)
+    file, path = _config_file(state, key)
     return file, path, path.read_text() if path.is_file() else ""
 
 
@@ -941,6 +952,9 @@ async def check_companies_form(request: Request) -> HTMLResponse:
 
 
 def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
+    if config.profile not in config.profile_slugs():
+        config = config.for_profile()  # the first profile (phase 1: the UI shows one)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # One normal open at startup creates the DB and schema on a fresh install,
@@ -977,4 +991,4 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
 
 def create_app_from_env() -> FastAPI:
     """Factory for `uvicorn --reload`, which needs an import string."""
-    return create_app(load_config(), config_file_path())
+    return create_app(load_config().for_profile(), config_file_path())

@@ -13,4 +13,5 @@ companies.yaml
 .env
 data/
 cvs/
+profiles/
 *.whl
