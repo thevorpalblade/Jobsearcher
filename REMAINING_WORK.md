@@ -206,7 +206,7 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       [docs/m10-multi-user.md](docs/m10-multi-user.md). A second job seeker gets their
       own profile (CVs, roles, rankings, drafts, applications); admin + regular users;
       HTTPS via Caddy. Phases: profiles, auth, per-profile UI, exposure, onboarding.
-      Open questions are listed at the end of the plan.
+      Decisions recorded 2026-10-07 (the user's domain, own keys and models, chat local only).
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others
       as "more facts about the same candidate", exact copies skipped) and gives one score.
