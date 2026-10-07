@@ -9,8 +9,10 @@ from conftest import make_assessment, make_job
 from fastapi.testclient import TestClient
 from test_pipeline import FakeSource
 from test_ranking import FakeLLM
+from test_web import log_in
 
 from jobsearcher import cli
+from jobsearcher.auth import USER
 from jobsearcher.config import DEFAULT_PROFILE, Config, LLMConfig, SearchConfig, load_config
 from jobsearcher.llm import BudgetedLLM, BudgetTracker
 from jobsearcher.models import ApplicationState
@@ -193,7 +195,8 @@ def test_web_shows_one_profile_and_its_settings_file(two, tmp_path):
     ranking = Ranking(job_id=job.id, input_hash="h", model="m", assessment=make_assessment())
     bo.save_ranking(job.id, "h", ranking.model_dump_json())  # Bo's, not Anna's
     with TestClient(create_app(two, tmp_path / "config.yaml")) as client:
-        assert client.app.state.web.config.profile == "anna"
+        log_in(client, two.db_path, "anna", USER, "anna")
+        assert client.app.state.web.state_for("anna").config.profile == "anna"
         assert "Welcome, Anna" in client.get("/").text
         settings = client.get("/settings").text
         assert "profile.yaml" in settings

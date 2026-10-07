@@ -18,7 +18,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
-| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phase 1 (profiles) built 2026-10-07; logins next |
+| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1 (profiles) and 2 (logins) built 2026-10-07 |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -106,7 +106,7 @@ PLAN.md §6; implementation notes and decisions in
 on, counts) with a chat panel that runs Claude Code in this checkout
 (`chat.enabled`, off by default). The job list moved to `/jobs`.
 
-- [ ] **Security:** the user chose no login and full access, so anyone who can open
+- [x] Logins since M10 phase 2 (the chat is admin only). Before that: the user chose no login and full access, so anyone who can open
       the page can run Claude Code on this machine. Mitigations: off by default, the
       HX-Request header on writes, a Host-header check against DNS rebinding
       (`web.allowed_hosts`). A shared password (`WEB_PASSWORD`) would be the next step.
@@ -126,7 +126,8 @@ everything") and backups in `data/backups/`.
 
 - [x] Drafting and (since 2026-10-07) ranking read the reference CVs as extra facts,
       still grounded: nothing outside the CVs may be claimed.
-- [ ] No login: the page writes personal files, so keep the UI on the LAN/Tailscale.
+- [x] Logins since M10 phase 2: each candidate edits only their own CVs and files;
+      config.yaml is admin only.
 - [ ] PDF conversion is plain text (no headings); scanned PDFs need OCR first.
 
 ## 3. Drafting (M4): built 2026-10-05, on demand
@@ -210,7 +211,8 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       - [x] Phase 1, profiles in files, DB and pipeline: built 2026-10-07 on branch
             `m10-profiles`. The live setup moves over with `jobsearcher migrate-profiles
             jenny` (steps in the plan, "Phase 1 as built").
-      - [ ] Phase 2: users, sessions, login (LAN only).
+      - [x] Phase 2: users, sessions, login (LAN only): built 2026-10-07 on branch
+            `m10-auth` (see the plan, "Phase 2 as built").
       - [ ] Phase 3: per-profile UI, models, keys and budget; admin pages; TOTP.
       - [ ] Phase 4: Caddy and hardening, then open the port.
       - [ ] Phase 5: onboard the second candidate.

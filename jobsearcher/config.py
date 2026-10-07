@@ -197,7 +197,7 @@ class WebConfig(BaseModel):
     user_name: str = ""
     # Host names (besides IP addresses, localhost and one-word or .local/.lan names)
     # the chat accepts requests for; "*" turns the check off. Guards the chat against
-    # DNS rebinding, since the UI has no login.
+    # DNS rebinding (on top of the login).
     allowed_hosts: list[str] = Field(default_factory=list)
 
 

@@ -240,7 +240,7 @@ user the same as the first.
 | # | Phase | Result | Size |
 |---|---|---|---|
 | 1 | Profiles in files, DB and pipeline; migration; one profile | Same app, data now per profile | **Built 2026-10-07** (branch `m10-profiles`); see "Phase 1 as built" |
-| 2 | Users, sessions, login/logout, middleware, CLI user commands, roles | Login required, still LAN only | Medium |
+| 2 | Users, sessions, login/logout, middleware, CLI user commands, roles | Login required, still LAN only | **Built 2026-10-07** (branch `m10-auth`); see "Phase 2 as built" |
 | 3 | Per-profile web UI, per-profile models and keys, admin user page, profile switcher, `/account`, admin TOTP | Two candidates usable | Medium to large |
 | 4 | Caddy, headers, Origin checks, throttling, chat lockdown, security review, outside tests | On the internet | Small to medium |
 | 5 | Onboard the second user: profile, CV upload, roles form, first ranking run | Second candidate live | Small |
@@ -283,6 +283,32 @@ Phases 1–3 can be built and tested on the LAN; the port opens only after phase
 - **Not yet:** a per-profile LLM budget (phase 3; usage is already recorded per
   profile, but the $20 limit is still shared), and per-profile backups (still
   `data/backups/`).
+
+## Phase 2 as built (2026-10-07)
+
+- **`jobsearcher/auth.py`:**
+  - scrypt password hashes.
+  - Users, one-time invite links (24 h), server-side sessions (14 days idle, 30 days
+    at most). Tokens are stored as SHA-256.
+  - Login throttling: 5 failures per username or 20 per address in 15 minutes.
+  - An audit log of logins, failed logins, password changes and account changes.
+  - New tables: `users`, `sessions`, `login_failures`, `audit_log`.
+- **Web:**
+  - A middleware sends anyone without a session to `/login`. HTMX requests get a 401
+    with `HX-Redirect`. Only `/login`, `/invite/*`, `/static/*` and `/healthz` are open.
+  - A second middleware refuses cross-site writes (`Origin`, `Sec-Fetch-Site`).
+  - The session cookie is HttpOnly and SameSite=Lax, and Secure once the request comes
+    over HTTPS (phase 4).
+  - Pages: `/login`, `/logout`, `/invite/<token>`, `/account` (change password, which
+    logs out other devices).
+- **Profiles per user:** the app keeps one state per profile (`Shared.state_for`), and
+  each request gets its user's profile, so every page, form, draft and file is that
+  candidate's. The draft queue is shared, one draft at a time, but each profile has
+  its own keys.
+- **Admin only** (404 for others): the chat, the status page and `config.yaml`. The
+  admin sees the profile set on their account (a switcher comes in phase 3).
+- **CLI:** `jobsearcher users add <name> [--admin] [--profile <slug>] [--url ...]`,
+  `invite <name>` (a new link, e.g. a forgotten password), `disable`, `enable`, `list`.
 
 ## Still open
 

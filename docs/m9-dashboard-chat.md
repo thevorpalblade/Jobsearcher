@@ -5,7 +5,7 @@ wants to ask for features, drafts and explanations herself.
 
 ## Decisions (user)
 
-- **No login:** the UI stays open on the network; trusted network only.
+- **No login** (until M10, 2026-10-07: now logins, and the chat is admin only).
 - **Full access to the repo:** the chat's Claude Code runs in this checkout with
   `--permission-mode bypassPermissions`, can edit `main` and run commands. This is
   remote code execution for anyone who can reach the page; the user accepted that.

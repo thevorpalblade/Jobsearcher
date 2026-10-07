@@ -25,7 +25,6 @@ def content(**kwargs):
 @pytest.fixture
 def drafts(web, monkeypatch):  # noqa: F811
     """The web app with fake draft/check models and a fast renderer (no LibreOffice)."""
-    state = web.client.app.state.web
     monkeypatch.setattr("jobsearcher.drafting.render.docx_to_pdf", lambda path: None)
     made = {"drafter": [], "checker": []}
 
@@ -39,7 +38,7 @@ def drafts(web, monkeypatch):  # noqa: F811
         return service.Llms(drafter, checker)
 
     monkeypatch.setattr(service, "make_llms", fake_llms)
-    web.state, web.made = state, made
+    web.made = made
     return web
 
 

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Log in · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Log in</h1>
+{% if error %}<div class="result error">{{ error }}</div>{% endif %}
+<form class="auth" method="post" action="/login">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>Username
+    <input name="username" value="{{ username or '' }}" autocomplete="username" autofocus required>
+  </label>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password" required>
+  </label>
+  <button type="submit" class="primary">Log in</button>
+</form>
+<p class="muted small">No account, or forgot the password? Ask the admin for a link.</p>
+{% endblock %}

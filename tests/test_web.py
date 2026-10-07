@@ -11,6 +11,7 @@ from conftest import make_assessment, make_job
 from fastapi.testclient import TestClient
 
 from jobsearcher import cli
+from jobsearcher.auth import ADMIN, Auth
 from jobsearcher.config import Config
 from jobsearcher.models import ApplicationState, Contact, Job, SourceRef
 from jobsearcher.ranking import load_ranking_config
@@ -19,6 +20,7 @@ from jobsearcher.ranking.prefilter import matched_roles
 from jobsearcher.ranking.ranker import JobAssessment, Ranking, input_hash
 from jobsearcher.store import JobRecord, Store
 from jobsearcher.web import create_app
+from jobsearcher.web.app import SESSION_COOKIE
 from jobsearcher.web.views import PrefilterMemo
 
 ROOT = Path(__file__).parent.parent
@@ -36,11 +38,26 @@ drafting: {min_score: 70}
 """
 
 
+def log_in(client, db_path, username="admin", role=ADMIN, profile=None):
+    """Make a user and give the client a session (no password: scrypt is slow)."""
+    store = Store(db_path)
+    auth = Auth(store.conn)
+    user, _ = auth.create_user(username, role, profile)
+    client.cookies.set(SESSION_COOKIE, auth.create_session(user))
+    store.close()
+    return user
+
+
 @dataclass
 class Web:
     client: TestClient
     store: Store
     config: Config
+
+    @property
+    def state(self):
+        """The web state of the profile the logged-in admin sees."""
+        return self.client.app.state.web.state_for(None)
 
     def add(self, job: Job, assessment: JobAssessment | None = None, seen=None, **ranking) -> Job:
         """Store a job (first seen at `seen`) and, optionally, a current ranking for it."""
@@ -65,6 +82,7 @@ def web(tmp_path):
         cv_path=tmp_path / "master.md",
     )
     with TestClient(create_app(config)) as client:
+        log_in(client, config.db_path)
         store = Store(config.db_path)
         yield Web(client, store, config)
         store.close()

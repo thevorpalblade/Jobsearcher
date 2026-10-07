@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -34,21 +36,31 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher import chat as chat_module
 from jobsearcher import cvs, settings
+from jobsearcher.auth import (
+    MIN_PASSWORD,
+    SESSION_MAX,
+    Auth,
+    AuthError,
+    User,
+    check_new_password,
+)
 from jobsearcher.companies.config import Company, load_companies
 from jobsearcher.config import Config, config_file_path, load_config
 from jobsearcher.contacts import is_generic_email
 from jobsearcher.drafting import service as draft_service
 from jobsearcher.drafting.core import Draft
-from jobsearcher.drafting.manager import DraftManager
+from jobsearcher.drafting.manager import DraftManager, ProfileDrafts
 from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
 from jobsearcher.ranking.ranker import job_details
@@ -59,27 +71,78 @@ WEB_DIR = Path(__file__).parent
 
 
 @dataclass
-class WebState:
-    config: Config  # config.yaml: read at startup and after it's saved on /settings
+class Shared:
+    """What every profile's pages share: config.yaml, templates, the chat (admin only)
+    and the draft queue. Each profile gets its own WebState, made on first use."""
+
+    base: Config  # config.yaml: read at startup and after it's saved on /settings
     config_path: Path
     templates: Jinja2Templates
     tz: ZoneInfo
     chat: chat_module.ChatManager
-    drafts: DraftManager
-    ranking: views.MtimeCache[RankingConfig]  # ranking.yaml, reloaded when edited
-    cv: views.MtimeCache[str | None]
-    memo: views.PrefilterMemo
+    draft_manager: DraftManager
+    states: dict[str, WebState] = field(default_factory=dict)
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def state_for(self, slug: str | None) -> WebState:
+        """A profile's state (an unknown or missing profile: the first one)."""
+        slugs = self.base.profile_slugs()
+        slug = slug if slug in slugs else slugs[0]
+        with self.lock:
+            state = self.states.get(slug)
+            if state is None:
+                state = self.states[slug] = WebState(self, self.base.for_profile(slug))
+            return state
+
+    def reload(self) -> None:
+        """Pick up a saved config.yaml or profile.yaml (paths to ranking.yaml and the CVs
+        may change) for every profile."""
+        self.base = load_config(self.config_path)
+        self.chat.config = self.base.chat
+        self.chat.user_name = self.base.web.user_name
+        slugs = self.base.profile_slugs()
+        with self.lock:
+            for slug, state in list(self.states.items()):
+                if slug in slugs:
+                    state.use_config(self.base.for_profile(slug))
+                else:
+                    del self.states[slug]
+
+
+class WebState:
+    """One profile's view of the app: its config and its cached ranking.yaml and CVs."""
+
+    def __init__(self, shared: Shared, config: Config):
+        self.shared = shared
+        self.memo = views.PrefilterMemo()
+        self.drafts = ProfileDrafts(shared.draft_manager, lambda: self.config)
+        self.use_config(config)
+
+    def use_config(self, config: Config) -> None:
+        self.config = config
+        self.ranking: views.MtimeCache[RankingConfig] = views.ranking_config_cache(
+            config.ranking_config
+        )
+        self.cv: views.MtimeCache[str | None] = views.cv_cache(config.cv_path)
+
+    @property
+    def config_path(self) -> Path:
+        return self.shared.config_path
+
+    @property
+    def templates(self) -> Jinja2Templates:
+        return self.shared.templates
+
+    @property
+    def tz(self) -> ZoneInfo:
+        return self.shared.tz
+
+    @property
+    def chat(self) -> chat_module.ChatManager:
+        return self.shared.chat
 
     def reload_config(self) -> None:
-        """Pick up a saved config.yaml or profile.yaml (paths to ranking.yaml and the
-        CV may change). The UI keeps showing the same profile."""
-        base = load_config(self.config_path)
-        slug = self.config.profile
-        self.config = base.for_profile(slug if slug in base.profile_slugs() else None)
-        self.chat.config = self.config.chat
-        self.chat.user_name = self.config.web.user_name
-        self.ranking = views.ranking_config_cache(self.config.ranking_config)
-        self.cv = views.cv_cache(self.config.cv_path)
+        self.shared.reload()
 
     @property
     def backup_dir(self) -> Path:
@@ -95,8 +158,24 @@ class WebState:
         )
 
 
+def current_user(request: Request) -> User | None:
+    """The logged-in user (set by the login middleware; None on public pages)."""
+    return getattr(request.state, "user", None)
+
+
 def _state(request: Request) -> WebState:
-    return request.app.state.web
+    """The state of the profile the logged-in user sees."""
+    user = current_user(request)
+    shared: Shared = request.app.state.web
+    if user is not None and not user.is_admin and user.profile not in shared.base.profile_slugs():
+        raise HTTPException(403, "Your account has no candidate profile yet; ask the admin.")
+    return shared.state_for(user.profile if user else None)
+
+
+def require_admin(request: Request) -> None:
+    user = current_user(request)
+    if user is None or not user.is_admin:
+        raise HTTPException(404)  # don't reveal admin pages to others
 
 
 State = Annotated[WebState, Depends(_state)]
@@ -178,9 +257,8 @@ def render(
     """Render a template. Pass the store for full pages: their header shows the budget."""
     if store is not None:
         context["budget"] = views.budget_info(store, state.config.llm)
-    return state.templates.TemplateResponse(
-        request, name, {"config": state.config, **context}, status_code=status_code
-    )
+    context = {"config": state.config, "user": current_user(request), **context}
+    return state.templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
 def is_htmx(request: Request) -> bool:
@@ -202,7 +280,7 @@ def _draft_chips(state: WebState, store: Store) -> dict[str, str]:
     chips: dict[str, str] = {}
     for key, row in store.latest_drafts().items():
         chips[key] = "review" if Draft.model_validate_json(row["data"]).needs_review else "ready"
-    for key, status in state.drafts._status.items():
+    for key, status in state.drafts.items():
         if status.active:
             chips[key] = "working"
     return chips
@@ -224,10 +302,12 @@ def dashboard(
 ) -> HTMLResponse:
     ctx = state.row_context()
     rows = views.load_rows(store, ctx, "all")
-    chats = store.list_chats()
+    user = current_user(request)
+    # The chat runs Claude Code with full permissions on this machine: admin only.
+    chats = store.list_chats() if user and user.is_admin else []
     current = None
-    if chat != "new":
-        current = store.get_chat(chat) if chat else (chats[0] if chats else None)
+    if chat != "new" and chats:
+        current = store.get_chat(chat) if chat else chats[0]
     run = state.chat.run_for(current["id"]) if current else None
     # Read the event count first: anything emitted after it is streamed, anything
     # before it is already in the stored messages (each is saved before it's emitted).
@@ -312,7 +392,7 @@ def budget_partial(request: Request, state: State, store: ReadStore) -> HTMLResp
     return render(request, state, "_budget.html", store)
 
 
-@router.get("/status", response_class=HTMLResponse)
+@router.get("/status", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def status_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
     ctx = state.row_context()
     rows = views.load_rows(store, ctx, "all")
@@ -366,7 +446,7 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
 
 
 def require_htmx(request: Request) -> None:
-    """Writes must come from HTMX. Without a login, this is the CSRF guard: a custom
+    """Writes must come from HTMX, one of two CSRF guards (with _same_origin_writes): a custom
     header makes a cross-site request need a CORS preflight, which this app never
     allows, so plain cross-site form posts are refused."""
     if "HX-Request" not in request.headers:
@@ -458,7 +538,12 @@ def _result(
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
     master = state.config.cv_path
-    files = settings.available(state.config, state.config_path)
+    user = current_user(request)
+    files = [
+        (f, p)
+        for f, p in settings.available(state.config, state.config_path)
+        if f.key not in ADMIN_FILES or (user and user.is_admin)
+    ]
     return render(
         request,
         state,
@@ -541,17 +626,23 @@ def delete_cv(request: Request, name: str, state: State) -> Response:
     return htmx_redirect("/settings")
 
 
-def _config_file(state: WebState, key: str) -> tuple[settings.ConfigFile, Path]:
+# config.yaml is the whole system's (sources, models, schedule): the admin's to edit.
+ADMIN_FILES = {"config"}
+
+
+def _config_file(
+    state: WebState, key: str, user: User | None = None
+) -> tuple[settings.ConfigFile, Path]:
     file = settings.FILES.get(key)
     path = file.path(state.config, state.config_path) if file else None
-    if file is None or path is None:
+    if file is None or path is None or (key in ADMIN_FILES and not (user and user.is_admin)):
         raise HTTPException(404)
     return file, path
 
 
 @router.get("/settings/files/{key}", response_class=HTMLResponse)
 def config_file_page(request: Request, key: str, state: State, store: ReadStore) -> HTMLResponse:
-    file, path = _config_file(state, key)
+    file, path = _config_file(state, key, current_user(request))
     exists = path.is_file()
     return render(
         request,
@@ -567,7 +658,7 @@ def config_file_page(request: Request, key: str, state: State, store: ReadStore)
 
 
 def _check(request: Request, state: WebState, key: str, text: str, write: bool) -> HTMLResponse:
-    file, path = _config_file(state, key)
+    file, path = _config_file(state, key, current_user(request))
     model, errors = settings.parse(file, text)
     if model is None:
         return _result(
@@ -767,7 +858,7 @@ def require_chat_host(request: Request) -> None:
         )
 
 
-ChatGuards = [Depends(require_htmx), Depends(require_chat_host)]
+ChatGuards = [Depends(require_admin), Depends(require_htmx), Depends(require_chat_host)]
 
 
 @router.post("/chat/send", dependencies=ChatGuards)
@@ -787,7 +878,9 @@ def chat_send(
     return JSONResponse({"chat_id": new_id})
 
 
-@router.get("/chat/{chat_id}/stream", dependencies=[Depends(require_chat_host)])
+@router.get(
+    "/chat/{chat_id}/stream", dependencies=[Depends(require_admin), Depends(require_chat_host)]
+)
 def chat_stream(chat_id: str, state: State, after: int = 0) -> StreamingResponse:
     """Server-Sent Events for the chat's current run, from event number `after`."""
     run = state.chat.run_for(chat_id)
@@ -951,9 +1044,211 @@ async def check_companies_form(request: Request) -> HTMLResponse:
     return await _submit_form(request, "companies", write=False)
 
 
+# --- logging in (jobsearcher/auth.py) -------------------------------------------------
+
+SESSION_COOKIE = "jobsearcher_session"
+PUBLIC_PATHS = {"/login", "/healthz"}
+PUBLIC_PREFIXES = ("/static/", "/invite/")
+
+
+@contextmanager
+def _auth(request: Request) -> Iterator[Auth]:
+    """Account tables on a connection of their own (request stores may be read-only)."""
+    store = Store(request.app.state.web.base.db_path, check_same_thread=False, init_schema=False)
+    try:
+        yield Auth(store.conn)
+    finally:
+        store.close()
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+def _session_user(request: Request, token: str) -> User | None:
+    with _auth(request) as auth:
+        return auth.session_user(token)
+
+
+async def _login_required(request: Request, call_next: Any) -> Response:
+    """Every page needs a logged-in user, except the login and invite pages, static
+    files and the health check. Deny by default: a new route is private."""
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
+        return await call_next(request)
+    token = request.cookies.get(SESSION_COOKIE, "")
+    user = await run_in_threadpool(_session_user, request, token) if token else None
+    if user is None:
+        here = path + (f"?{request.url.query}" if request.url.query else "")
+        target = "/login?" + urlencode({"next": here})
+        if "HX-Request" in request.headers:
+            return Response(status_code=401, headers={"HX-Redirect": target})
+        if request.method in ("GET", "HEAD"):
+            return RedirectResponse(target, status_code=303)
+        return PlainTextResponse("Log in first.", status_code=401)
+    request.state.user = user
+    return await call_next(request)
+
+
+async def _same_origin_writes(request: Request, call_next: Any) -> Response:
+    """Refuse writes another site's page sends: browsers set Origin (and Sec-Fetch-Site)
+    on every POST. With a session cookie, the HX-Request check alone isn't enough."""
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin is not None and urlsplit(origin).netloc != request.headers.get("host"):
+            return PlainTextResponse("Cross-site request refused.", status_code=403)
+        if request.headers.get("sec-fetch-site") == "cross-site":
+            return PlainTextResponse("Cross-site request refused.", status_code=403)
+    return await call_next(request)
+
+
+def _safe_next(target: str | None) -> str:
+    """Only redirect within this site after logging in."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return "/"
+
+
+def _start_session(request: Request, response: Response, auth: Auth, user: User) -> None:
+    token = auth.create_session(user, _client_ip(request), request.headers.get("user-agent", ""))
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=int(SESSION_MAX.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+
+def _public_state(request: Request) -> WebState:
+    return request.app.state.web.state_for(None)
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/") -> HTMLResponse:
+    return render(request, _public_state(request), "login.html", next=_safe_next(next))
+
+
+@router.post("/login", response_class=HTMLResponse)
+def login(
+    request: Request,
+    username: Annotated[str, Form()] = "",
+    password: Annotated[str, Form()] = "",
+    next: Annotated[str, Form()] = "/",
+) -> Response:
+    with _auth(request) as auth:
+        try:
+            user = auth.authenticate(username, password, _client_ip(request))
+        except AuthError as exc:
+            return render(
+                request,
+                _public_state(request),
+                "login.html",
+                status_code=401,
+                error=str(exc),
+                username=username,
+                next=_safe_next(next),
+            )
+        response = RedirectResponse(_safe_next(next), status_code=303)
+        _start_session(request, response, auth, user)
+    return response
+
+
+@router.post("/logout")
+def logout(request: Request) -> Response:
+    with _auth(request) as auth:
+        auth.end_session(request.cookies.get(SESSION_COOKIE, ""))
+        user = current_user(request)
+        auth.audit("logout", user.username if user else "", ip=_client_ip(request))
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+@router.get("/invite/{token}", response_class=HTMLResponse)
+def invite_page(request: Request, token: str) -> HTMLResponse:
+    with _auth(request) as auth:
+        invitee = auth.user_by_invite(token)
+    return render(
+        request,
+        _public_state(request),
+        "invite.html",
+        status_code=200 if invitee else 404,
+        invitee=invitee,
+        token=token,
+        min_length=MIN_PASSWORD,
+    )
+
+
+@router.post("/invite/{token}", response_class=HTMLResponse)
+def invite_set_password(
+    request: Request,
+    token: str,
+    password: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+) -> Response:
+    with _auth(request) as auth:
+        invitee = auth.user_by_invite(token)
+        try:
+            if invitee is None:
+                raise AuthError("This link has expired or has already been used.")
+            check_new_password(password, confirm)
+            auth.set_password(invitee, password, _client_ip(request))
+        except AuthError as exc:
+            return render(
+                request,
+                _public_state(request),
+                "invite.html",
+                status_code=400,
+                invitee=invitee,
+                token=token,
+                error=str(exc),
+                min_length=MIN_PASSWORD,
+            )
+        response = RedirectResponse("/", status_code=303)
+        _start_session(request, response, auth, invitee)
+    return response
+
+
+@router.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, state: State, changed: bool = False) -> HTMLResponse:
+    return render(request, state, "account.html", changed=changed, min_length=MIN_PASSWORD)
+
+
+@router.post("/account/password", response_class=HTMLResponse)
+def change_password(
+    request: Request,
+    state: State,
+    current: Annotated[str, Form()] = "",
+    password: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+) -> Response:
+    user = current_user(request)
+    assert user is not None  # the middleware let the request through
+    with _auth(request) as auth:
+        try:
+            check_new_password(password, confirm)
+            auth.change_password(user, current, password, _client_ip(request))
+        except AuthError as exc:
+            return render(
+                request,
+                state,
+                "account.html",
+                status_code=400,
+                error=str(exc),
+                min_length=MIN_PASSWORD,
+            )
+        # Changing the password ended every session, this one too: start a new one.
+        response = RedirectResponse("/account?changed=1", status_code=303)
+        _start_session(request, response, auth, user)
+    return response
+
+
 def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
-    if config.profile not in config.profile_slugs():
-        config = config.for_profile()  # the first profile (phase 1: the UI shows one)
+    """The web UI for `config` (config.yaml as loaded, not one profile's): each logged-in
+    user sees their own profile."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -966,18 +1261,17 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
         title="Jobsearcher", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
     tz = ZoneInfo(config.schedule.timezone)
-    app.state.web = WebState(
-        config=config,
+    shared = app.state.web = Shared(
+        base=config,
         config_path=config_path or config_file_path(),
         chat=chat_module.ChatManager(config.chat, config.db_path, config.web.user_name),
-        drafts=DraftManager(lambda: app.state.web.config, config.db_path),
+        draft_manager=DraftManager(lambda: shared.state_for(None).config, config.db_path),
         templates=_make_templates(tz),
         tz=tz,
-        ranking=views.ranking_config_cache(config.ranking_config),
-        cv=views.cv_cache(config.cv_path),
-        memo=views.PrefilterMemo(),
     )
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
+    app.middleware("http")(_login_required)
+    app.middleware("http")(_same_origin_writes)  # runs first: added last
 
     @app.exception_handler(StarletteHTTPException)
     def http_error(request: Request, exc: StarletteHTTPException) -> Response:
@@ -991,4 +1285,4 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
 
 def create_app_from_env() -> FastAPI:
     """Factory for `uvicorn --reload`, which needs an import string."""
-    return create_app(load_config().for_profile(), config_file_path())
+    return create_app(load_config(), config_file_path())

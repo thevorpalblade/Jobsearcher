@@ -1,7 +1,7 @@
 import io
 
 import pytest
-from test_web import RANKING_YAML, web  # noqa: F401  (the `web` fixture)
+from test_web import RANKING_YAML, log_in, web  # noqa: F401  (the `web` fixture)
 
 from jobsearcher import cvs, settings
 from jobsearcher.config import Config
@@ -220,12 +220,13 @@ def test_saving_config_yaml_reloads_the_app(tmp_path):
     (tmp_path / "cvs" / "master.md").write_text("# CV\n")
     config = Config(data_dir=tmp_path / "data", cv_path=tmp_path / "cvs" / "master.md")
     with TestClient(create_app(config, config_path)) as client:
+        log_in(client, config.db_path)
         text = "data_dir: data\ncv_path: cvs/master.md\nllm:\n  monthly_budget_usd: 7\n"
         assert (
             "Saved config.yaml"
             in client.post("/settings/files/config", data={"text": text}, headers=HX).text
         )
-        assert client.app.state.web.config.llm.monthly_budget_usd == 7
+        assert client.app.state.web.base.llm.monthly_budget_usd == 7
         assert "$7.00" in client.get("/settings").text  # budget widget uses the new config
 
 

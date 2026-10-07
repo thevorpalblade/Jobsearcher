@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Set your password · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Set your password</h1>
+{% if invitee %}
+<p>Welcome, <b>{{ invitee.username }}</b>. Pick a password of at least {{ min_length }} characters;
+  a few unrelated words work well. This link works once.</p>
+{% if error %}<div class="result error">{{ error }}</div>{% endif %}
+<form class="auth" method="post" action="/invite/{{ token }}">
+  <input name="username" value="{{ invitee.username }}" autocomplete="username" hidden>
+  <label>New password
+    <input name="password" type="password" autocomplete="new-password" minlength="{{ min_length }}" required autofocus>
+  </label>
+  <label>Again
+    <input name="confirm" type="password" autocomplete="new-password" minlength="{{ min_length }}" required>
+  </label>
+  <button type="submit" class="primary">Set password and log in</button>
+</form>
+{% else %}
+<div class="result error">This link has expired or has already been used. Ask the admin for a new one.</div>
+<p><a href="/login">Log in</a></p>
+{% endif %}
+{% endblock %}

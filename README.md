@@ -46,7 +46,9 @@ rejected or ignored and keep notes; `Tracked` lists those jobs, expired ones
 included, and ignored jobs drop out of the main list. Edits to `ranking.yaml` weights and adjustments show up on the next page
 load, with no re-ranking.
 
-There is no login: keep it on your LAN and use Tailscale or WireGuard from
+It needs a login: make accounts with `jobsearcher users add <name> --admin` (or
+`--profile <slug>` for a candidate), which prints a one-time link to set the password.
+Until the HTTPS setup (docs/m10-multi-user.md, phase 4) is done, keep it on your LAN and use Tailscale or WireGuard from
 outside. **Docker's published ports bypass ufw and firewalld**, so on a server
 with a public IP, set `WEB_BIND` in `.env` to a LAN or Tailscale address
 (e.g. `WEB_BIND=192.168.1.10`) instead of the default `0.0.0.0`.

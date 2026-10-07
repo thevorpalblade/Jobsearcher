@@ -131,6 +131,41 @@ CREATE TABLE IF NOT EXISTS signals (
     created_at      TEXT NOT NULL,
     PRIMARY KEY (profile, item_id)
 );
+
+-- Web UI accounts and sessions (jobsearcher/auth.py). Tokens are stored as SHA-256.
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    role            TEXT NOT NULL,          -- admin | user
+    profile         TEXT,                   -- the candidate profile they see
+    password_hash   TEXT,                   -- NULL until the invite link is used
+    invite_hash     TEXT,
+    invite_expires  TEXT,
+    totp_secret     TEXT,                   -- two-factor codes (phase 3)
+    disabled        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    created_at  TEXT NOT NULL,
+    last_seen   TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    ip          TEXT NOT NULL DEFAULT '',
+    user_agent  TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS login_failures (
+    key  TEXT NOT NULL,                     -- "user:<name>" or "ip:<address>"
+    ts   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS login_failures_key ON login_failures(key, ts);
+CREATE TABLE IF NOT EXISTS audit_log (
+    ts        TEXT NOT NULL,
+    event     TEXT NOT NULL,
+    username  TEXT NOT NULL DEFAULT '',
+    detail    TEXT NOT NULL DEFAULT '',
+    ip        TEXT NOT NULL DEFAULT ''
+);
 """
 
 

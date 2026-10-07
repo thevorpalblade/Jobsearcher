@@ -256,7 +256,7 @@ def enable_chat(web, tmp_path, *procs):  # noqa: F811
 
 
 def test_dashboard_greets_and_lists_the_top_five(web):  # noqa: F811
-    web.client.app.state.web.config.web.user_name = "Jenny"
+    web.state.config.web.user_name = "Jenny"
     now = datetime.now(UTC)
     scores = [(1, 90), (2, 85), (3, 80), (4, 75), (5, 70), (6, 65), (7, 95)]
     for n, fit in scores:
@@ -335,7 +335,7 @@ def test_send_errors_busy_and_host_guard(web, tmp_path):  # noqa: F811
     assert (
         web.client.get("/chat/abc/stream", headers={"Host": "evil.example.com"}).status_code == 403
     )
-    allowed = web.client.app.state.web.config.web
+    allowed = web.state.config.web
     allowed.allowed_hosts = ["evil.example.com"]
     assert (
         web.client.get("/chat/abc/stream", headers={"Host": "evil.example.com"}).status_code == 200
@@ -352,7 +352,7 @@ def test_delete_a_conversation(web, tmp_path):  # noqa: F811
 
 
 def test_chat_settings_reload_with_config(web):  # noqa: F811
-    state = web.client.app.state.web
+    state = web.client.app.state.web  # shared: the chat isn't per profile
     text = "web:\n  user_name: Jenny\nchat:\n  enabled: true\n  model: sonnet\n"
     web.client.post("/settings/files/config", data={"text": text}, headers=HX)
     assert (state.chat.user_name, state.chat.config.model) == ("Jenny", "sonnet")

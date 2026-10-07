@@ -41,7 +41,7 @@ class DraftManager:
         self._db_path = db_path
         self._lock = threading.Lock()
         self._status: dict[str, Status] = {}
-        self._queue: queue.Queue[tuple[str, Task]] = queue.Queue()
+        self._queue: queue.Queue[tuple[str, Task, Callable[[], Config]]] = queue.Queue()
         self._worker: threading.Thread | None = None
 
     def status(self, key: str) -> Status | None:
@@ -50,14 +50,20 @@ class DraftManager:
     def pending(self) -> int:
         return sum(s.active for s in self._status.values())
 
-    def submit(self, key: str, task: Task) -> Status:
-        """Queue a draft for `key`; if one is already queued or running, return it."""
+    def items(self) -> list[tuple[str, Status]]:
+        return list(self._status.items())
+
+    def submit(
+        self, key: str, task: Task, get_config: Callable[[], Config] | None = None
+    ) -> Status:
+        """Queue a draft for `key`; if one is already queued or running, return it. The
+        task runs with `get_config()` (default: the manager's) and that profile's store."""
         with self._lock:
             current = self._status.get(key)
             if current is not None and current.active:
                 return current
             status = self._status[key] = Status("queued", queued_at=datetime.now(UTC))
-            self._queue.put((key, task))
+            self._queue.put((key, task, get_config or self._get_config))
             if self._worker is None:
                 self._worker = threading.Thread(target=self._work, name="drafts", daemon=True)
                 self._worker.start()
@@ -66,7 +72,7 @@ class DraftManager:
     def _work(self) -> None:
         while True:
             try:
-                key, task = self._queue.get(timeout=30)
+                key, task, get_config = self._queue.get(timeout=30)
             except queue.Empty:
                 with self._lock:  # a submit can't slip in between this check and exiting
                     if self._queue.empty():
@@ -75,7 +81,7 @@ class DraftManager:
                 continue
             status = self._status[key]
             status.state = "running"
-            config = self._get_config()
+            config = get_config()
             store = Store(self._db_path, profile=config.profile)
             try:
                 task(config, store)
@@ -85,3 +91,30 @@ class DraftManager:
                 status.state, status.error = "failed", str(exc) or type(exc).__name__
             finally:
                 store.close()
+
+
+class ProfileDrafts:
+    """One profile's view of the shared queue (drafts still run one at a time). Keys
+    are the profile's own: two candidates can both draft for the same job."""
+
+    def __init__(self, manager: DraftManager, get_config: Callable[[], Config]):
+        self.manager = manager
+        self._get_config = get_config
+
+    def _prefix(self) -> str:
+        return f"{self._get_config().profile}\x1f"
+
+    def status(self, key: str) -> Status | None:
+        return self.manager.status(self._prefix() + key)
+
+    def items(self) -> list[tuple[str, Status]]:
+        prefix = self._prefix()
+        return [
+            (k.removeprefix(prefix), s) for k, s in self.manager.items() if k.startswith(prefix)
+        ]
+
+    def pending(self) -> int:
+        return sum(s.active for _, s in self.items())
+
+    def submit(self, key: str, task: Task) -> Status:
+        return self.manager.submit(self._prefix() + key, task, self._get_config)

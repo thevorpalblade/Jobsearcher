@@ -69,9 +69,11 @@
 </section>
 {% endif %}
 
+{% if user and user.is_admin %}
 <section>
   <h2>Ask Claude</h2>
   {% include "_chat.html" %}
 </section>
 <script src="{{ static('chat.js') }}" defer></script>
+{% endif %}
 {% endblock %}

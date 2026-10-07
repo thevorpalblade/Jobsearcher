@@ -12,13 +12,21 @@
   <header class="top">
     <nav>
       <a href="/" class="brand">Jobsearcher</a>
+      {% if user %}
       <a href="/jobs">Jobs</a>
       <a href="/jobs?view=tracked">Tracked</a>
       <a href="/prefilter">Prefilter</a>
-      <a href="/status">Status</a>
+      {% if user.is_admin %}<a href="/status">Status</a>{% endif %}
       <a href="/settings">Settings</a>
+      {% endif %}
     </nav>
     {% if budget %}{% include "_budget.html" %}{% endif %}
+    {% if user %}
+    <form class="account" method="post" action="/logout">
+      <a href="/account">{{ user.username }}</a>
+      <button type="submit" class="link">Log out</button>
+    </form>
+    {% endif %}
   </header>
   <main>
     {% block content %}{% endblock %}

@@ -22,7 +22,8 @@ services:
   # Local web UI on port 8080. It needs no secrets, so there is no env_file. The config
   # files and cvs/ are read-write so the Settings page can edit them (each save is
   # backed up to data/backups/); data/ is read-write for SQLite's WAL files and
-  # application tracking. There is no login: Docker's published ports bypass ufw and
+  # application tracking. It needs a login (jobsearcher users add), but has no HTTPS of
+  # its own: Docker's published ports bypass ufw and
   # firewalld, so on a server with a public IP set WEB_BIND to a LAN or Tailscale address.
   web:
     image: jobsearcher:local

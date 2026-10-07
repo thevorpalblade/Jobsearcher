@@ -323,7 +323,7 @@ _PRIVATE_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".ts.net")
 def host_allowed(host_header: str, allowed: list[str]) -> bool:
     """Whether the chat accepts a request addressed to `host_header`. Guards against
     DNS rebinding (a web page making the browser reach this server under the
-    attacker's own name), which matters because the UI has no login."""
+    attacker's own name); a defence on top of the login."""
     if "*" in allowed:
         return True
     host = host_header.strip().lower()

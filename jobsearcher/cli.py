@@ -569,6 +569,65 @@ def cmd_migrate_profiles(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_users(config: Config, args: argparse.Namespace) -> int:
+    """Web UI accounts: add, invite (a new set-password link), disable, enable, list."""
+    from jobsearcher.auth import ADMIN, USER, Auth, AuthError
+
+    store = Store(config.db_path)
+    auth = Auth(store.conn)
+    host = config.web.host if config.web.host not in ("0.0.0.0", "::") else "localhost"
+    base_url = (args.url or f"http://{host}:{config.web.port}").rstrip("/")
+
+    def link(token: str) -> None:
+        print(f"Set-password link (works once, for 24 hours): {base_url}/invite/{token}")
+
+    if args.action == "list":
+        for row in auth.users():
+            state = (
+                "disabled" if row["disabled"] else ("active" if row["has_password"] else "invited")
+            )
+            seen = (row["last_seen"] or "never")[:16]
+            print(
+                f"{row['username']:20} {row['role']:6} {row['profile'] or '-':12} {state:9} "
+                f"last seen {seen}"
+            )
+        return 0
+    if not args.name:
+        print("Give a username", file=sys.stderr)
+        return 2
+    try:
+        if args.action == "add":
+            slugs = config.profile_slugs()
+            profile = args.user_profile or (slugs[0] if args.admin else None)
+            if profile not in slugs:
+                print(
+                    f"Pick the candidate profile with --profile (one of: {', '.join(slugs)})",
+                    file=sys.stderr,
+                )
+                return 2
+            _, token = auth.create_user(args.name, ADMIN if args.admin else USER, profile)
+            print(f"Added {args.name} ({'admin' if args.admin else 'user'}, profile {profile}).")
+            link(token)
+            return 0
+        user = auth.user_by_name(args.name)
+        if user is None:
+            print(f"No user {args.name!r}", file=sys.stderr)
+            return 1
+        if args.action == "invite":
+            link(auth.new_invite(user))
+        else:
+            disable = args.action == "disable"
+            auth.set_disabled(user, disable)
+            print(
+                f"{user.username} "
+                + ("disabled (logged out everywhere)." if disable else "enabled.")
+            )
+    except AuthError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
     """Run the pipeline once at startup (unless --no-initial-run), then daily."""
     tz = ZoneInfo(config.schedule.timezone)
@@ -586,7 +645,7 @@ def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
 
 
 # Commands that work on every profile (or none) rather than one.
-SHARED_COMMANDS = {"search", "run", "daemon", "migrate-profiles", "budget"}
+SHARED_COMMANDS = {"search", "run", "daemon", "web", "users", "migrate-profiles", "budget"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -650,6 +709,20 @@ def main(argv: list[str] | None = None) -> int:
     p_web.add_argument("--port", type=int, help="port (default: web.port in config.yaml)")
     p_web.add_argument("--reload", action="store_true", help="restart on code changes (dev)")
 
+    p_users = sub.add_parser("users", help="web UI accounts: add, invite, disable, enable, list")
+    p_users.add_argument("action", choices=["add", "invite", "disable", "enable", "list"])
+    p_users.add_argument("name", nargs="?", help="username")
+    p_users.add_argument("--admin", action="store_true", help="with add: an admin account")
+    p_users.add_argument(
+        "--profile",
+        dest="user_profile",
+        metavar="SLUG",
+        help="with add: the candidate profile they see",
+    )
+    p_users.add_argument(
+        "--url", help="the web UI's address, for the link (default: http://<web.host>:<web.port>)"
+    )
+
     p_migrate = sub.add_parser(
         "migrate-profiles", help="move this setup's files and data into profiles/<slug>/"
     )
@@ -690,6 +763,7 @@ def main(argv: list[str] | None = None) -> int:
         "daemon": cmd_daemon,
         "web": cmd_web,
         "migrate-profiles": cmd_migrate_profiles,
+        "users": cmd_users,
     }
     return handler[args.command](config, args)
 

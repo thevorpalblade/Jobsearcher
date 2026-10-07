@@ -214,3 +214,8 @@ details.preview > summary { cursor: pointer; padding: 8px 12px; font-weight: 600
 .draft-form textarea { width: 100%; font-weight: 400; }
 .draft-form select { max-width: 22rem; font-weight: 400; }
 .top5-draft { margin-left: auto; padding-left: 12px; white-space: nowrap; align-self: center; }
+
+/* Account: the nav's user menu, and the login / password pages */
+form.account { display: flex; gap: 8px; align-items: baseline; font-size: 0.9em; }
+form.auth { display: flex; flex-direction: column; gap: 12px; max-width: 22em; margin-top: 16px; }
+form.auth label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; color: var(--muted); }

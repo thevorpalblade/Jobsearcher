@@ -52,10 +52,18 @@
       <strong>Target companies</strong>
       <span>The companies whose careers sites are crawled and whose news is watched: add, remove, turn off, fix ATS detection.</span>
     </a>
+    {% if config.profile_file %}
+    <a class="card link-card" href="/settings/files/profile">
+      <strong>Search (profile.yaml)</strong>
+      <span>Your name, extra search keywords, excluded words and region. Edited as YAML.</span>
+    </a>
+    {% endif %}
+    {% if user and user.is_admin %}
     <a class="card link-card" href="/settings/files/config">
       <strong>General (config.yaml)</strong>
-      <span>Search locations and keywords, sources, LLM providers and models, budget, schedule. Edited as YAML; API keys stay in .env.</span>
+      <span>For everyone: sources, LLM providers and models, budget, schedule{% if not config.profile_file %}, search locations and keywords{% endif %}. Edited as YAML; API keys stay in .env.</span>
     </a>
+    {% endif %}
   </div>
   <p class="muted small">Advanced: edit the raw YAML of
     {% for f, path in files %}<a href="/settings/files/{{ f.key }}">{{ f.title }}</a>{{ ", " if not loop.last }}{% endfor %}.</p>

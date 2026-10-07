@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Account · Jobsearcher{% endblock %}
+{% block content %}
+<h1>{{ user.username }}</h1>
+<p class="muted">{{ "Admin" if user.is_admin else "User" }}{% if user.profile %} · candidate profile <b>{{ user.profile }}</b>{% endif %}</p>
+
+<h2>Change password</h2>
+{% if error %}<div class="result error">{{ error }}</div>{% endif %}
+{% if changed %}<div class="result ok">Password changed. Other devices are logged out.</div>{% endif %}
+<form class="auth" method="post" action="/account/password">
+  <input name="username" value="{{ user.username }}" autocomplete="username" hidden>
+  <label>Current password
+    <input name="current" type="password" autocomplete="current-password" required>
+  </label>
+  <label>New password (at least {{ min_length }} characters)
+    <input name="password" type="password" autocomplete="new-password" minlength="{{ min_length }}" required>
+  </label>
+  <label>Again
+    <input name="confirm" type="password" autocomplete="new-password" minlength="{{ min_length }}" required>
+  </label>
+  <button type="submit">Change password</button>
+</form>
+{% endblock %}

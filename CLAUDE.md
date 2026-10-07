@@ -49,7 +49,7 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   drafts one at a time. Shortlisting a job starts one (`drafting.auto_on_shortlist`). Never invent experience.
 - `jobsearcher/chat.py`: the dashboard's chat; runs headless `claude -p` (stream-json, resumed per
   conversation) in this checkout with full permissions, one run at a time, off unless `chat.enabled`.
-  The UI has no login, so chat routes need the HX-Request header and a non-public Host header.
+  The chat is admin only, and its routes also need the HX-Request header and a non-public Host header.
 - `jobsearcher/companies/`: target companies (`companies.yaml`), ATS detection, polite crawling;
   `jobsearcher/sources/ats/`: one adapter per ATS feed (Teamtailor, Varbi, Lever, Greenhouse,
   SmartRecruiters, Workday, SuccessFactors, ReachMee, Jobylon) plus `jsonld.py`, a generic
@@ -87,4 +87,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   that explain why.
 - **Web UI:** ad text, titles and URLs are untrusted. Keep Jinja autoescaping on,
   only turn `http(s)` URLs into links (`views.safe_url`), and require the
-  `HX-Request` header on every POST (a cheap CSRF guard, since there's no login).
+  `HX-Request` header on every POST; a middleware also refuses cross-site writes (Origin).
+- **Logins (`jobsearcher/auth.py`):** every route needs a session except `/login`, `/invite/*`,
+  `/static/*` and `/healthz` (deny by default: a new route is private). A route gets the
+  user's own profile through `State`; never take a profile from the URL. Admin-only routes
+  use `Depends(require_admin)` (404 for others). Accounts: `jobsearcher users add|invite|...`.
