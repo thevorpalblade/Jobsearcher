@@ -227,6 +227,19 @@ def test_make_llm_nvidia(monkeypatch):
     assert llm.client.label == "NVIDIA"
 
 
+def test_make_llm_zai(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import make_llm
+
+    monkeypatch.setenv("ZAI_API_KEY", "test-key")
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.ZAI, model="glm-5.3-flash")
+    llm = make_llm(config, "ranking", tracker=None)
+    assert str(llm.client.client.base_url).startswith("https://api.z.ai/api/paas/v4")
+    assert llm.client.label == "Z.ai" and llm.client.billed
+    assert config.llm.price_for("glm-5.3-flash").output == 0.50
+
+
 def test_make_llm_ollama_needs_no_key(monkeypatch):
     from jobsearcher.config import Config, ModelRole, Provider
     from jobsearcher.llm import make_llm

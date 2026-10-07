@@ -1,4 +1,4 @@
-"""LLM providers (Kimi, NVIDIA-hosted models, Claude) behind one interface, plus budgets."""
+"""LLM providers (Kimi, GLM, local Ollama models, Claude) behind one interface, plus budgets."""
 
 from __future__ import annotations
 
@@ -60,6 +60,21 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
             limiter=limiter_for("nvidia", config.llm.nvidia_requests_per_minute),
+        )
+    elif spec.provider == Provider.ZAI:
+        from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(
+            spec.model,
+            base_url=config.llm.zai_base_url,
+            api_key_env="ZAI_API_KEY",
+            label="Z.ai",
+            max_tokens=spec.max_tokens,
+            extra_body=spec.extra_body,
+            enforce_schema=spec.enforce_schema,
+            timeout_s=spec.timeout_s,
+            max_retries=spec.max_retries,
+            limiter=limiter_for("zai", config.llm.zai_requests_per_minute),
         )
     elif spec.provider == Provider.OLLAMA:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM

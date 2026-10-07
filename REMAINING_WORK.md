@@ -199,6 +199,31 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
 - [ ] Dedupe can't merge the same ad under different titles across sources
       (e.g. "HR Business Partner" vs "Human Resources Business Partner").
 
+## 7. Requested next (2026-10-07)
+
+- [ ] **HTTPS and a login, so the UI can be reached from the internet.** This replaces
+      PLAN.md's "Tailscale/WireGuard, never an open port". Everything must sit behind the
+      login: the chat runs Claude Code with full permissions on this machine, `/settings`
+      writes personal files, and the pages show her CV-derived data. Likely shape:
+      - TLS from a reverse proxy (Caddy: automatic Let's Encrypt), with the app bound to
+        127.0.0.1; needs a domain or dynamic DNS name, and ports 80/443 forwarded.
+      - App-level login: one or a few users, hashed password in `.env` or `data/`,
+        a signed session cookie (Secure, HttpOnly, SameSite=Strict), rate limits on
+        login attempts. Optionally TOTP. Keep the HX-Request and Host checks.
+      - Decide whether the chat stays on when exposed (or needs a second factor).
+      - Review: every route (including static files and downloads) requires the session;
+        test that logged-out requests get 401/redirects.
+- [ ] **Several CVs, all used in ranking.** Today ranking scores against `cvs/master.md`
+      only; the reference CVs in `cvs/` are unused (drafting doesn't read them yet either,
+      see 2b). Open questions before building:
+      - Is it one candidate with several CVs (different angles on the same experience),
+        or several candidates? This affects the scores, the UI and the dashboard.
+      - Rank against all CVs in one call (merged facts, one score), or per CV (a score
+        each, the job shown with the best one and which CV fits)? Per CV multiplies the
+        cost by the number of CVs.
+      - `input_hash` must cover every CV used, and changing any CV re-ranks (as now).
+      - Drafting then picks the best-fitting CV as its base, still grounded in all of them.
+
 ## NVIDIA free-tier limits (researched 2026-10-05)
 
 Ranking, news classification and draft checks run on GLM through NVIDIA's free hosted API
@@ -259,6 +284,9 @@ overheating; the 2026-10-07 run went under a watchdog that cancels at 80 C (it p
 Qwen's run used a newer CV; that can't explain a 40-point gap. One run per model, 40 jobs:
 treat differences under ~0.05 as noise.
 
+- [ ] Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`, ~$0.0007 a job, about
+      3 cents for the set) and Z.ai's free GLM-4.7-Flash, once there's a `ZAI_API_KEY`.
+      Re-run the Opus reference first: the CV changed after the other runs.
 - [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
       them predate the current CV, so they aren't comparable).
 

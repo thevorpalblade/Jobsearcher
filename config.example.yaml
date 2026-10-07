@@ -58,6 +58,7 @@ llm:
   #   moonshot    - Kimi, pay per token (MOONSHOT_API_KEY)
   #   anthropic   - Claude API, pay per token (ANTHROPIC_API_KEY)
   #   nvidia      - models on NVIDIA's serverless endpoints, e.g. GLM (NVIDIA_API_KEY)
+  #   zai         - GLM from Z.ai, its maker; pay per token, cheap (ZAI_API_KEY)
   #   ollama      - a model on this machine through Ollama (no key; `ollama pull <model>`)
   #   claude_code - Claude via the Claude Code CLI on your Claude Pro/Max subscription
   #                 (CLAUDE_CODE_OAUTH_TOKEN); counts against the subscription's usage
@@ -83,6 +84,11 @@ llm:
   #   extra_body: {thinking: {type: disabled}}   # skip reasoning; the JSON is enough
   #   enforce_schema: true      # server enforces the JSON schema (response_format json_schema)
   #   max_parallel: 4           # concurrent requests; the free tier queues each one
+  # ranking:                    # the same GLM, paid: ~$0.0007 a job, no free-tier queue
+  #   provider: zai
+  #   model: glm-5.3-flash
+  #   extra_body: {thinking: {type: disabled}}
+  #   max_parallel: 4
   # ranking:                    # local; Qwen3 8B fits a 10 GB GPU but scored loosely
   #   provider: ollama
   #   model: qwen3:8b
@@ -103,6 +109,7 @@ llm:
   nvidia_requests_per_minute: 30
   # Moonshot's limit depends on the account's tier: a new account gets 3 requests a minute.
   # moonshot_requests_per_minute: 3   # 0 (default) = no limiter
+  # zai_requests_per_minute: 0        # Z.ai doesn't publish its paid limits
 
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%

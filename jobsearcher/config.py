@@ -90,6 +90,7 @@ class Provider(StrEnum):
     MOONSHOT = "moonshot"  # Kimi models, OpenAI-compatible API
     ANTHROPIC = "anthropic"  # Claude models, pay-per-token API key
     NVIDIA = "nvidia"  # models on NVIDIA's serverless endpoints (e.g. GLM), OpenAI-compatible API
+    ZAI = "zai"  # GLM models from Z.ai (their maker), pay per token, OpenAI-compatible API
     OLLAMA = "ollama"  # a model on this machine through Ollama's OpenAI-compatible API
     CLAUDE_CODE = "claude_code"  # Claude via the Claude Code CLI on a Claude subscription
 
@@ -130,6 +131,10 @@ class ModelPrice(BaseModel):
 DEFAULT_PRICES: dict[str, ModelPrice] = {
     "kimi-k2.6": ModelPrice(input=0.95, output=4.00, cache_read=0.16),
     "kimi-k3": ModelPrice(input=3.00, output=15.00, cache_read=0.30),
+    # Z.ai's own API (the NVIDIA-hosted GLM is free; its price is set in config.yaml).
+    "glm-5.3-flash": ModelPrice(input=0.15, output=0.50, cache_read=0.03),
+    "glm-4.7-flash": ModelPrice(input=0, output=0, cache_read=0),
+    "glm-4.5-flash": ModelPrice(input=0, output=0, cache_read=0),
     "claude-haiku-4-5": ModelPrice(input=1.00, output=5.00, cache_read=0.10, cache_write=1.25),
     "claude-sonnet-5-5": ModelPrice(input=2.00, output=10.00, cache_read=0.20, cache_write=2.50),
     "claude-opus-5-5": ModelPrice(input=4.00, output=20.00, cache_read=0.20, cache_write=5.00),
@@ -153,6 +158,7 @@ class LLMConfig(BaseModel):
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     ollama_base_url: str = "http://localhost:11434/v1"
+    zai_base_url: str = "https://api.z.ai/api/paas/v4"
     # NVIDIA's free hosted API allows about 40 requests a minute per key, shared by every
     # model, and answers 429 beyond it. Every NVIDIA request (retries included, from
     # ranking, news classification and draft checks alike) is spaced to stay under this;
@@ -161,6 +167,8 @@ class LLMConfig(BaseModel):
     # Moonshot's request limit depends on the account's tier (3 a minute for a new account);
     # 0 = no limiter.
     moonshot_requests_per_minute: int = 0
+    # Z.ai doesn't publish its paid limits; 0 = no limiter (a 429 still pauses and retries).
+    zai_requests_per_minute: int = 0
     monthly_budget_usd: float = 20.0
     # Drafting pauses once this share of the monthly budget is spent; ranking at 100%.
     drafting_budget_share: float = 0.8

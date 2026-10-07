@@ -347,7 +347,9 @@ def test_a_slow_primary_check_falls_back_to_the_next_model():
     good = content(letter="Dear Hiring Manager,\n\nI led the rollout of 3 new warehouses.\n\nAlex")
     drafter = FakeLLM("opus", bad, good)
     primary = FakeLLM("glm", LLMError("504 gateway timeout"))  # GLM is queued behind other work
-    fallback = FakeLLM("haiku", verdict(("Holds a PMP", False)), verdict(("Led 3 warehouses", True)))
+    fallback = FakeLLM(
+        "haiku", verdict(("Holds a PMP", False)), verdict(("Led 3 warehouses", True))
+    )
     draft = run(store, drafter, primary, fallback_llm=fallback)
     assert draft.check_model == "haiku" and draft.check_error is None
     assert draft.repaired and not draft.needs_review  # the fallback's verdict drove the repair

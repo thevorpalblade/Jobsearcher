@@ -168,7 +168,8 @@ reports how well the model's ranking agrees.
 ## 6. Module 4: Web UI (local) ✅ (M3 implemented; see docs/m3-web-ui.md)
 
 Served by a FastAPI container on the LAN (`http://<server>:8080`). For
-access from outside, use Tailscale or WireGuard rather than exposing a port.
+access from outside, use Tailscale or WireGuard rather than exposing a port
+(2026-10-07: the user wants HTTPS plus a login instead; see REMAINING_WORK.md §7).
 
 - Ranked list with filters (score, source, location, remote, deadline).
 - Job page: ad text, scores and rationale, matched/missing requirements,
