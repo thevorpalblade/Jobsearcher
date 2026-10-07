@@ -170,6 +170,13 @@ def test_stale_ranking_is_flagged(web):
     assert "stale" in rows["Projektledare Old"]
 
 
+def test_a_new_reference_cv_makes_rankings_stale(web):
+    web.add(make_job(1, "Projektledare Current"), make_assessment())
+    assert "stale" not in web.client.get("/jobs").text
+    (web.config.cv_path.parent / "older.md").write_text("# Anna Andersson\nPayroll, 2015.")
+    assert "stale" in _row_html(web.client.get("/jobs").text)["Projektledare Current"]
+
+
 def test_prefilter_memo_reuses_results_until_the_filters_change():
     config = RankingConfig(target_roles=[TargetRole(name="Project manager")])
     record = JobRecord(make_job(1, "Project manager"), datetime.now(UTC), datetime.now(UTC))

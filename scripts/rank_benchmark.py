@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from jobsearcher.config import Config, ModelRole, Provider, load_config
+from jobsearcher.cvs import ranking_cv
 from jobsearcher.llm import BudgetTracker, LLMError, make_llm
 from jobsearcher.models import Job
 from jobsearcher.ranking.config import RankingConfig, load_ranking_config
@@ -60,11 +61,17 @@ def private_dir(config: Config) -> Path:
     return Path(config.data_dir) / "benchmark" / "ranking"
 
 
+def cv_text(config: Config) -> str:
+    cv = ranking_cv(Path(config.cv_path))
+    if cv is None:
+        sys.exit(f"Master CV not found at {config.cv_path}")
+    return cv
+
+
 def inputs(config: Config, rc: RankingConfig) -> dict[str, str]:
-    cv = Path(config.cv_path).read_bytes()
     return {
         "prompt_version": PROMPT_VERSION,
-        "cv_sha": hashlib.sha256(cv).hexdigest()[:12],
+        "cv_sha": hashlib.sha256(cv_text(config).encode()).hexdigest()[:12],
         "ranking_sha": rc.fingerprint()[:12],
     }
 
@@ -183,7 +190,7 @@ def reference_rankings(config: Config, model: str) -> dict[str, tuple[bool, JobA
     with today's CV, ranking.yaml and prompt."""
     store = Store(config.db_path)
     rc = load_ranking_config(config.ranking_config)
-    cv = Path(config.cv_path).read_text()
+    cv = cv_text(config)
     found: dict[str, tuple[bool, JobAssessment]] = {}
     rows = store.conn.execute("SELECT job_id, input_hash, data FROM rankings ORDER BY created_at")
     for row in rows:
@@ -221,7 +228,7 @@ def cmd_import(config: Config, args: argparse.Namespace) -> None:
 def cmd_run(config: Config, args: argparse.Namespace) -> None:
     jobs = load_set(config)
     rc = load_ranking_config(config.ranking_config)
-    cv = Path(config.cv_path).read_text()
+    cv = cv_text(config)
     extra = json.loads(args.extra) if args.extra else {}
     config.llm.ranking = ModelRole(
         provider=Provider(args.provider),

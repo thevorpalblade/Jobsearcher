@@ -1,7 +1,7 @@
 # Jobsearcher: notes for Claude
 
 A personal job-search pipeline: search Swedish job boards, rank ads against
-the user's master CV with an LLM, draft tailored applications, and show them
+the candidate's CVs (`cvs/*.md`, master first; one person) with an LLM, draft tailored applications, and show them
 in a local web UI. It runs in Docker on the user's Arch Linux home server.
 
 - **Design and decisions:** [PLAN.md](PLAN.md). Don't re-open settled decisions

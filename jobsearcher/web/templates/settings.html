@@ -8,8 +8,10 @@
 
 <section>
   <h2>CVs</h2>
-  <p class="muted small">The <b>master</b> CV is what ranking scores jobs against. The others are reference CVs
-    (older or role-specific versions) kept for drafting. Files live in <code>{{ master.parent }}</code>.</p>
+  <p class="muted small">All CVs are about the same person: ranking and drafting read every one. The <b>master</b>
+    is the main CV and the base for drafts; the others (older or role-specific versions) add facts.
+    Adding, editing or deleting any CV re-ranks every open job on the next run.
+    Files live in <code>{{ master.parent }}</code>.</p>
   {% if cvs %}
   <table class="jobs">
     <thead><tr><th>CV</th><th></th><th>Size</th><th>Changed</th></tr></thead>

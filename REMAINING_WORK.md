@@ -123,8 +123,8 @@ into `cv_path`, old master backed up), and edit `config.yaml`, `ranking.yaml`
 and `companies.yaml` as YAML with validation, change effects ("re-ranks
 everything") and backups in `data/backups/`.
 
-- [ ] Drafting (M4) should read the reference CVs (`cvs/*.md` other than the master)
-      as extra facts, still grounded: nothing outside the CVs may be claimed.
+- [x] Drafting and (since 2026-10-07) ranking read the reference CVs as extra facts,
+      still grounded: nothing outside the CVs may be claimed.
 - [ ] No login: the page writes personal files, so keep the UI on the LAN/Tailscale.
 - [ ] PDF conversion is plain text (no headings); scanned PDFs need OCR first.
 
@@ -213,16 +213,12 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       - Decide whether the chat stays on when exposed (or needs a second factor).
       - Review: every route (including static files and downloads) requires the session;
         test that logged-out requests get 401/redirects.
-- [ ] **Several CVs, all used in ranking.** Today ranking scores against `cvs/master.md`
-      only; the reference CVs in `cvs/` are unused (drafting doesn't read them yet either,
-      see 2b). Open questions before building:
-      - Is it one candidate with several CVs (different angles on the same experience),
-        or several candidates? This affects the scores, the UI and the dashboard.
-      - Rank against all CVs in one call (merged facts, one score), or per CV (a score
-        each, the job shown with the best one and which CV fits)? Per CV multiplies the
-        cost by the number of CVs.
-      - `input_hash` must cover every CV used, and changing any CV re-ranks (as now).
-      - Drafting then picks the best-fitting CV as its base, still grounded in all of them.
+- [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
+      sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others
+      as "more facts about the same candidate", exact copies skipped) and gives one score.
+      Adding, editing or deleting any CV re-ranks everything (the CV text is in
+      `input_hash`; the web UI's stale flag watches the whole folder); prompt version 3.
+      Each extra CV adds its length to every ranking call's input.
 
 ## NVIDIA free-tier limits (researched 2026-10-05)
 
@@ -284,9 +280,12 @@ overheating; the 2026-10-07 run went under a watchdog that cancels at 80 C (it p
 Qwen's run used a newer CV; that can't explain a 40-point gap. One run per model, 40 jobs:
 treat differences under ~0.05 as noise.
 
-- [ ] Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`, ~$0.0007 a job, about
-      3 cents for the set) and Z.ai's free GLM-4.7-Flash, once there's a `ZAI_API_KEY`.
-      Re-run the Opus reference first: the CV changed after the other runs.
+- [ ] Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`) and Z.ai's free
+      GLM-4.7-Flash. Key is in `.env` (2026-10-07) but the account has no balance yet.
+      On Z.ai GLM 5.3 Flash can't turn thinking off (400: "use low, high, or max"); use
+      `extra_body: {reasoning_effort: low}`, so it costs more than the ~$0.0007 a job
+      estimated without reasoning. GLM-4.7-Flash (free) took 49 s for a tiny test call.
+      Re-run the Opus reference first: prompt version 3 and all CVs make the old runs stale.
 - [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
       them predate the current CV, so they aren't comparable).
 

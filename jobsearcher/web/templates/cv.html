@@ -7,9 +7,7 @@
   <div class="result ok"><strong>Converted.</strong> Check the text below: PDFs carry no headings,
     so fix the structure and anything that came out garbled, then save.</div>
 {% endif %}
-{% if is_master %}
-  <p class="muted small">Ranking scores every job against this CV. Saving a change re-ranks every open job on the next run.</p>
-{% endif %}
+<p class="muted small">Ranking reads every CV{% if is_master %}, this one first{% endif %}. Saving a change re-ranks every open job on the next run.</p>
 
 <form class="editor" hx-post="/settings/cvs/{{ cv_name }}" hx-target="#cv-result">
   <textarea name="text" spellcheck="false">{{ text }}</textarea>

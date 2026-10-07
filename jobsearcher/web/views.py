@@ -19,6 +19,7 @@ from urllib.parse import urlencode, urlsplit
 from markupsafe import Markup
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from jobsearcher import cvs
 from jobsearcher.config import LLMConfig
 from jobsearcher.llm.budget import BudgetTracker
 from jobsearcher.models import Application, ApplicationState, Job, JobStatus
@@ -41,17 +42,23 @@ NEW_DAYS = 2
 class MtimeCache(Generic[T]):
     """A file's parsed contents, reloaded when its modification time changes."""
 
-    def __init__(self, path: Path, load: Callable[[Path], T]):
+    def __init__(
+        self,
+        path: Path,
+        load: Callable[[Path], T],
+        stamp: Callable[[Path], object] = lambda p: p.stat().st_mtime_ns,
+    ):
         self.path = path
         self._load = load
+        self._stamp = stamp
         self._lock = threading.Lock()
-        self._mtime: int | None = None
+        self._mtime: object = None
         self._value: T | None = None
         self._loaded = False
 
     def get(self) -> T:
         try:
-            mtime: int | None = self.path.stat().st_mtime_ns
+            mtime: object = self._stamp(self.path)
         except OSError:
             mtime = None
         with self._lock:
@@ -67,7 +74,7 @@ def ranking_config_cache(path: Path) -> MtimeCache[RankingConfig]:
 
 def cv_cache(path: Path) -> MtimeCache[str | None]:
     # Only used to flag stale rankings; without a CV nothing is flagged.
-    return MtimeCache(path, lambda p: p.read_text() if p.is_file() else None)
+    return MtimeCache(path, cvs.ranking_cv, stamp=cvs.cvs_stamp)
 
 
 class PrefilterMemo:

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from jobsearcher.config import Config, config_file_path, load_config
+from jobsearcher.cvs import ranking_cv
 from jobsearcher.models import JobStatus
 from jobsearcher.pipeline import run_search, search_keywords
 from jobsearcher.store import Store
@@ -50,7 +51,8 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.llm import BudgetTracker, LLMError, make_llm
     from jobsearcher.ranking import load_ranking_config, run_ranking
 
-    if not config.cv_path.exists():
+    cv = ranking_cv(config.cv_path)
+    if cv is None:
         print(f"Master CV not found at {config.cv_path}", file=sys.stderr)
         return 2
     if not config.ranking_config.exists():
@@ -67,7 +69,7 @@ def cmd_rank(config: Config, args: argparse.Namespace) -> int:
         store,
         llm,
         ranking_config,
-        config.cv_path.read_text(),
+        cv,
         max_parallel=config.llm.ranking.max_parallel,
     )
     print(
@@ -259,7 +261,8 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             store.set_last_run(RUN_KEY, datetime.now(UTC))
-        if not config.cv_path.exists():
+        cv = ranking_cv(config.cv_path)
+        if cv is None:
             print(f"Master CV not found at {config.cv_path}", file=sys.stderr)
             return 2
         try:
@@ -267,9 +270,7 @@ def cmd_signals(config: Config, args: argparse.Namespace) -> int:
         except LLMError as exc:
             print(f"Can't classify news: {exc}", file=sys.stderr)
             return 2
-        context = build_context(
-            config.cv_path.read_text(), load_ranking_config(config.ranking_config)
-        )
+        context = build_context(cv, load_ranking_config(config.ranking_config))
         report = classify_news(
             store, llm, companies, context, max_parallel=config.llm.ranking.max_parallel
         )

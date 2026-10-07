@@ -14,7 +14,7 @@ For what is still unfinished, see [REMAINING_WORK.md](REMAINING_WORK.md).
 | Budget | **$20 / month**, enforced in code |
 | Hosting | **Local, in Docker on the home server.** GitHub hosts only the code. |
 | Sources (v1) | **Platsbanken** (JobTech JobSearch API) + **JobTech Links**. LinkedIn/Indeed postponed. |
-| CV input | One **master CV in Markdown** |
+| CV input | One **master CV in Markdown**, plus other CVs of the same candidate (2026-10-07: ranking and drafting read them all) |
 | Contact info | **Free sources only** |
 | Application tracking | Minimal: state + notes per job in the web UI (M3) |
 | Target roles | HR Business Partner, change management, operations manager, project manager (in `ranking.yaml`) |
@@ -137,7 +137,7 @@ Flow (`jobsearcher rank`, and daily as part of `jobsearcher run`):
    as a whole word, in the title or the ad text. Title matches and newer ads
    go first.
 2. **One LLM call per job.** The prompt holds the instructions, then the roles,
-   preferences and master CV (the stable, cacheable part), then the ad. The
+   preferences and every CV, master first (the stable, cacheable part), then the ad. The
    answer is structured JSON: `fit_score`, `success_score`, matched role,
    matched and missing requirements, red flags, a rationale, the ad language,
    and **contact persons named in the ad**. Those contacts are merged into the

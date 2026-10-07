@@ -58,7 +58,7 @@ class Pong(BaseModel):
     reply: str
 
 
-def client_with(statuses, lim=None, max_retries=2, retry_after=None):
+def client_with(statuses, lim=None, max_retries=2, retry_after=None, error="x"):
     """An LLM client whose server answers with `statuses` in turn (200 = a valid reply)."""
     sleeps, seen = [], []
     queue = list(statuses)
@@ -75,7 +75,7 @@ def client_with(statuses, lim=None, max_retries=2, retry_after=None):
             }  # fmt: skip
             return httpx.Response(200, json=body)
         headers = {"retry-after": str(retry_after)} if retry_after else {}
-        return httpx.Response(status, json={"error": "x"}, headers=headers)
+        return httpx.Response(status, json={"error": error}, headers=headers)
 
     sdk = openai.OpenAI(
         api_key="k", base_url="https://api.example/v1", max_retries=0,
@@ -108,6 +108,19 @@ def test_persistent_429s_give_up_after_the_retries_and_keep_everyone_cooling():
     assert seen == [429, 429, 429]  # three attempts, no more
     assert clock.sleeps == [pytest.approx(30), pytest.approx(60)]  # growing cooldowns
     assert lim.cooling_down  # the next caller, in any thread, also waits
+
+
+def test_an_empty_account_is_not_retried():
+    """Z.ai answers 429 when the balance is used up; waiting won't help."""
+    lim, clock = limiter(60)
+    error = {
+        "code": "1113",
+        "message": "Insufficient balance or no resource package. Please recharge.",
+    }
+    llm, seen, _ = client_with([429, 200], lim, error=error)
+    with pytest.raises(LLMError, match="Insufficient balance"):
+        ask(llm)
+    assert seen == [429] and clock.sleeps == [] and not lim.cooling_down
 
 
 def test_a_servers_retry_after_is_respected():

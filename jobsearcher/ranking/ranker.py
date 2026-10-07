@@ -1,4 +1,4 @@
-"""LLM scoring of jobs against the master CV."""
+"""LLM scoring of jobs against the candidate's CVs."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from jobsearcher.store import Store, merge_contacts
 log = logging.getLogger(__name__)
 
 # Bump when the prompt or schema changes in a way that should invalidate old rankings.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 
 class ContactPerson(BaseModel):
@@ -104,7 +104,8 @@ def final_score(assessment: JobAssessment, config: RankingConfig) -> int:
 
 
 SYSTEM_PROMPT = """\
-You assess job ads for one candidate. Their master CV and preferences follow.
+You assess job ads for one candidate. Their CVs (the master CV, then any other CVs of \
+the same person) and preferences follow.
 Score each ad honestly: a high score for a poor match wastes the candidate's time.
 
 Scoring rubric:
@@ -114,7 +115,7 @@ with gaps in nice-to-haves; 50 = partial match; below 30 = different profession.
 - success_score: realistic chance of an interview invitation, considering seniority gap, \
 missing must-haves, language requirements, and location. Be conservative.
 - Any dealbreaker from the preferences caps both scores at 10.
-- Only use facts from the CV. Do not assume experience that isn't written there.
+- Only use facts from the CVs. Do not assume experience that isn't written there.
 - contact_persons: only people explicitly named in the ad text. Never invent contacts.
 - language and swedish are facts about the ad; report them accurately. Language \
 preferences are applied separately, so don't also fold them into fit_score.
@@ -144,7 +145,7 @@ def build_context(cv: str, config: RankingConfig) -> str:
         if items:
             lines.append(f"{label}:")
             lines += [f"- {item}" for item in items]
-    lines += ["", "# Master CV", cv.strip()]
+    lines += ["", "# Master CV", cv.strip()]  # cvs.ranking_cv: the other CVs follow it
     return "\n".join(lines)
 
 

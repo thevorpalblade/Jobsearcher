@@ -503,13 +503,11 @@ def cv_page(
 def save_cv(
     request: Request, name: str, state: State, text: Annotated[str, Form()] = ""
 ) -> HTMLResponse:
-    path = _cv_file(state, name)
+    _cv_file(state, name)  # validates the name
     if not text.strip():
         return _result(request, state, False, "The CV is empty; nothing was saved.")
     cvs.save_cv(state.config.cv_path, name, text)
-    details = []
-    if path.resolve() == state.config.cv_path.resolve():
-        details.append("This is the master CV: every open job is re-ranked on the next run.")
+    details = ["Ranking reads every CV: every open job is re-ranked on the next run."]
     return _result(request, state, True, "Saved.", details)
 
 

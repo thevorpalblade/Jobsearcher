@@ -84,10 +84,10 @@ llm:
   #   extra_body: {thinking: {type: disabled}}   # skip reasoning; the JSON is enough
   #   enforce_schema: true      # server enforces the JSON schema (response_format json_schema)
   #   max_parallel: 4           # concurrent requests; the free tier queues each one
-  # ranking:                    # the same GLM, paid: ~$0.0007 a job, no free-tier queue
+  # ranking:                    # the same GLM, paid, no free-tier queue
   #   provider: zai
   #   model: glm-5.3-flash
-  #   extra_body: {thinking: {type: disabled}}
+  #   extra_body: {reasoning_effort: low}   # Z.ai can't turn its thinking off
   #   max_parallel: 4
   # ranking:                    # local; Qwen3 8B fits a 10 GB GPU but scored loosely
   #   provider: ollama

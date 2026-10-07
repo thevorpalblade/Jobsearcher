@@ -90,6 +90,21 @@ def test_cv_files_master_and_backup(tmp_path):
             cvs.cv_path(master, bad)
 
 
+def test_ranking_reads_every_cv(tmp_path):
+    master = tmp_path / "cvs" / "master.md"
+    assert cvs.ranking_cv(master) is None  # no master yet
+    cvs.save_cv(master, "master", "# Anna\nHR partner\n")
+    assert cvs.ranking_cv(master) == "# Anna\nHR partner"
+    stamp = cvs.cvs_stamp(master)
+    cvs.save_cv(master, "older", "# Anna\nPayroll lead, 2015\n")
+    cvs.save_cv(master, "copy", "# Anna\nHR partner\n")  # e.g. the CV made the master
+    assert cvs.ranking_cv(master) == (
+        "# Anna\nHR partner\n\n"
+        "# Other CV: older (more facts about the same candidate)\n# Anna\nPayroll lead, 2015"
+    )
+    assert cvs.cvs_stamp(master) != stamp  # a new CV re-ranks
+
+
 # --- config files ----------------------------------------------------------------
 
 

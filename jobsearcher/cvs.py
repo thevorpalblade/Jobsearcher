@@ -1,10 +1,10 @@
-"""Reference CVs: uploads converted to Markdown, stored next to the master CV.
+"""CVs: uploads converted to Markdown, stored next to the master CV.
 
-The master CV (`config.cv_path`, usually `cvs/master.md`) is what ranking reads. Other
-`*.md` files in the same folder are reference CVs (older or role-specific versions)
-for drafting to draw on. Making a reference CV the master copies its text into the
-master file, after backing the old master up, so the configured path never changes
-(Docker pins it with JOBSEARCHER_CV).
+All CVs describe the same candidate. The master CV (`config.cv_path`, usually
+`cvs/master.md`) is the main one; other `*.md` files in the same folder are reference
+CVs (older or role-specific versions). Ranking and drafting read them all. Making a
+reference CV the master copies its text into the master file, after backing the old
+master up, so the configured path never changes (Docker pins it with JOBSEARCHER_CV).
 """
 
 from __future__ import annotations
@@ -58,6 +58,29 @@ def list_cvs(master: Path) -> list[CvFile]:
         )
     out.sort(key=lambda cv: (not cv.is_master, cv.name))
     return out
+
+
+def ranking_cv(master: Path) -> str | None:
+    """Every CV as one text for ranking: the master, then the others as more facts about
+    the same candidate (exact copies skipped, e.g. the CV that was made the master).
+    None without a master CV."""
+    files = list_cvs(master)
+    if not files or not files[0].is_master:
+        return None
+    seen = {files[0].path.read_text().strip()}
+    parts = [*seen]
+    for cv in files[1:]:
+        text = cv.path.read_text().strip()
+        if text and text not in seen:
+            seen.add(text)
+            parts += ["", f"# Other CV: {cv.name} (more facts about the same candidate)", text]
+    return "\n".join(parts)
+
+
+def cvs_stamp(master: Path) -> tuple[tuple[str, int], ...]:
+    """Changes whenever any CV is added, removed or edited."""
+    folder = cv_dir(master)
+    return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in folder.glob("*.md")))
 
 
 def cv_path(master: Path, name: str) -> Path:

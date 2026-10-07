@@ -148,6 +148,8 @@ class OpenAICompatibleLLM:
                     model=self.model, messages=messages, max_tokens=self.max_tokens, **kwargs
                 )
             except openai.RateLimitError as exc:
+                if _out_of_credit(exc):  # Z.ai and OpenAI answer 429 for this too
+                    raise LLMError(f"{self.label} API error 429: {exc.message}") from exc
                 pause = (
                     self.limiter.too_many_requests(_retry_after(exc))
                     if self.limiter
@@ -195,3 +197,9 @@ def _cached_tokens(usage: Any) -> int:
         if cached is None and getattr(usage, "model_extra", None):
             cached = usage.model_extra.get("cached_tokens")
     return int(cached or 0)
+
+
+def _out_of_credit(exc: openai.APIStatusError) -> bool:
+    """A 429 that waiting won't fix: the account has no balance or quota left."""
+    text = str(exc.message).lower()
+    return any(s in text for s in ("insufficient balance", "insufficient_quota", "recharge"))
