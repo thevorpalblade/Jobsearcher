@@ -18,6 +18,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
+| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Planned 2026-10-07 |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -201,18 +202,11 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
 
 ## 7. Requested next (2026-10-07)
 
-- [ ] **HTTPS and a login, so the UI can be reached from the internet.** This replaces
-      PLAN.md's "Tailscale/WireGuard, never an open port". Everything must sit behind the
-      login: the chat runs Claude Code with full permissions on this machine, `/settings`
-      writes personal files, and the pages show her CV-derived data. Likely shape:
-      - TLS from a reverse proxy (Caddy: automatic Let's Encrypt), with the app bound to
-        127.0.0.1; needs a domain or dynamic DNS name, and ports 80/443 forwarded.
-      - App-level login: one or a few users, hashed password in `.env` or `data/`,
-        a signed session cookie (Secure, HttpOnly, SameSite=Strict), rate limits on
-        login attempts. Optionally TOTP. Keep the HX-Request and Host checks.
-      - Decide whether the chat stays on when exposed (or needs a second factor).
-      - Review: every route (including static files and downloads) requires the session;
-        test that logged-out requests get 401/redirects.
+- [ ] **Several candidates, logins and internet access (M10):** plan in
+      [docs/m10-multi-user.md](docs/m10-multi-user.md). A second job seeker gets their
+      own profile (CVs, roles, rankings, drafts, applications); admin + regular users;
+      HTTPS via Caddy. Phases: profiles, auth, per-profile UI, exposure, onboarding.
+      Open questions are listed at the end of the plan.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others
       as "more facts about the same candidate", exact copies skipped) and gives one score.
