@@ -69,6 +69,7 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             base_url=config.llm.ollama_base_url,
             api_key_env=None,
             label="Ollama",
+            billed=False,
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,

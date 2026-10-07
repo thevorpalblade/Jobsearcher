@@ -248,12 +248,16 @@ Code, effort medium) as the reference:
 | Opus 5.5 | 1.00 | 10 | 24 | 12 | subscription |
 | Sonnet 5.5 (effort medium) | 0.96 | 10 | 22 | 7 | subscription |
 | Haiku 4.5, thinking off | 0.79 | 7 | 36 | 9 | subscription |
+| Qwen3 8B (Ollama, local RTX 3080), no thinking; newer CV (2026-10-07) | 0.65 | 7 | 65 | 5 | 0 |
 
 Sonnet matches Opus almost exactly (mean gap 3.8 points). Haiku through Claude Code thinks for
 3-9k tokens a job (60-90 s) unless `MAX_THINKING_TOKENS=0`; thinking off it takes 9 s but is
-the loosest ranker here. Qwen3 8B on Ollama (local RTX 3080) looked loose in a 3-job smoke test, then the GPU driver
-crashed mid-run (NVRM errors), so it has no full result. One run per model, 40 jobs: treat
-differences under ~0.05 as noise.
+the loosest of the hosted models. Qwen3 8B on Ollama is fast and free but not usable: it scores
+almost everything high (mean 65 against Opus's 24). Its first attempt ended in a GPU crash from
+overheating; the 2026-10-07 run went under a watchdog that cancels at 80 C (it peaked at 73 C,
+~300 W, in 3.5 minutes). The master CV changed on 2026-10-06 17:18, after the other runs, so
+Qwen's run used a newer CV; that can't explain a 40-point gap. One run per model, 40 jobs:
+treat differences under ~0.05 as noise.
 
 - [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
       them predate the current CV, so they aren't comparable).

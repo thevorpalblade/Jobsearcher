@@ -237,6 +237,7 @@ def test_make_llm_ollama_needs_no_key(monkeypatch):
     llm = make_llm(config, "ranking", tracker=None)
     assert str(llm.client.client.base_url).startswith("http://localhost:11434/v1")
     assert llm.client.label == "Ollama" and llm.client.limiter is None
+    assert not llm.client.billed  # local: never counted against the budget
 
 
 def test_moonshot_limiter_is_opt_in(monkeypatch):

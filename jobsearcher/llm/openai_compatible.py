@@ -32,6 +32,7 @@ class OpenAICompatibleLLM:
         timeout_s: float | None = None,
         max_retries: int = 2,
         limiter: RateLimiter | None = None,
+        billed: bool = True,  # False for a local server (Ollama): its tokens cost nothing
         sleep: Callable[[float], None] = time.sleep,
         client: openai.OpenAI | None = None,
     ):
@@ -42,6 +43,7 @@ class OpenAICompatibleLLM:
         # the output to it, instead of plain JSON mode (which only guarantees JSON).
         self.enforce_schema = enforce_schema
         self.label = label  # provider name for error messages
+        self.billed = billed
         # Retries are done here, not by the SDK, so each attempt is rate limited and a 429
         # pauses every caller (see ratelimit.py).
         self.max_retries = max_retries
@@ -83,7 +85,7 @@ class OpenAICompatibleLLM:
             {"role": "user", "content": prompt},
         ]
 
-        usage = LLMUsage(model=self.model, input_tokens=0, output_tokens=0)
+        usage = LLMUsage(model=self.model, input_tokens=0, output_tokens=0, billed=self.billed)
         # JSON mode guarantees valid JSON but not the schema; retry once with the error.
         for attempt in range(2):
             text = self._call(messages, schema, usage=usage)
