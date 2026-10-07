@@ -78,9 +78,24 @@ data/backups/<slug>/...
   into its prefilter, so the second user doesn't see the first user's cities.
 - **Companies:** crawl the union of all `companies.yaml` once. Each profile sees only
   the jobs and signals from its own companies.
-- **Ranking:** loop over profiles, each with its own CVs and `ranking.yaml`, through
-  the same `run_ranking`. The cost roughly doubles with two profiles, minus jobs that
-  only one profile's prefilter passes.
+- **Prefilter per person, over the whole shared DB (decided).** Each profile's
+  keyword filters pick its candidates from every open job in the shared database, not
+  only from what was fetched for it: its target roles and keywords, excluded
+  keywords, its region and occupation filters. Only jobs that pass go to that
+  person's ranking.
+  - The prefilter is free (no LLM), so it runs daily for every profile and whenever
+    the person changes their filters.
+  - A job fetched for one person also reaches the other if it passes their filters.
+- **Personal ranking:** loop over profiles, each with its own CVs, `ranking.yaml`,
+  model and key, through the same `run_ranking`. A job ranked for two people costs
+  two calls, one on each person's key. Rankings are cached per profile, so changing
+  one person's CV or roles re-ranks only their list.
+- **Onboarding and filter changes:**
+  - A new profile's first run covers every open job in the DB that passes its
+    prefilter, not just new ones.
+  - Before ranking, the settings page shows how many jobs pass and the estimated cost
+    with the chosen model, so the person can tighten the filters first.
+  - Their budget limit applies as usual, and ranking stops when it's reached.
 - **News signals:** classified per profile (the prompt holds that profile's CV and
   preferences), only for that profile's companies.
 - **Models and budget are per profile.** See section 3a. Each profile's ranking,
@@ -234,7 +249,8 @@ Phases 1–3 can be built and tested on the LAN; the port opens only after phase
 
 ## Still open
 
-- What to call the first profile (its slug), and whether the admin also has a profile
-  of their own or only manages.
-- Whether the second user's first ranking run should cover the whole backlog (with
-  their key and budget) or only new jobs.
+- **Decided:** the first profile is `jenny`. The new profile's first run ranks
+  everything in the DB that passes its prefilter (section 3).
+- **Assumed, not confirmed:** the admin has no job-seeker profile of their own. They
+  log in as admin and switch into `jenny` or the second profile. Jenny gets her own
+  regular login.
