@@ -337,9 +337,9 @@ def test_send_errors_busy_and_host_guard(web, tmp_path):  # noqa: F811
     )
     allowed = web.state.config.web
     allowed.allowed_hosts = ["evil.example.com"]
-    assert (
-        web.client.get("/chat/abc/stream", headers={"Host": "evil.example.com"}).status_code == 200
-    )
+    stream = f"/chat/{first.json()['chat_id']}/stream"
+    assert web.client.get(stream, headers={"Host": "evil.example.com"}).status_code == 200
+    assert web.client.get("/chat/not-a-chat/stream").status_code == 404
 
 
 def test_delete_a_conversation(web, tmp_path):  # noqa: F811
@@ -356,3 +356,37 @@ def test_chat_settings_reload_with_config(web):  # noqa: F811
     text = "web:\n  user_name: Jenny\nchat:\n  enabled: true\n  model: sonnet\n"
     web.client.post("/settings/files/config", data={"text": text}, headers=HX)
     assert (state.chat.user_name, state.chat.config.model) == ("Jenny", "sonnet")
+
+
+def test_chat_users_get_their_own_private_chats(web, tmp_path):  # noqa: F811
+    """chat.users lets non-admins chat (home network only); each sees only their own."""
+    from fastapi.testclient import TestClient
+    from test_web import log_in
+
+    from jobsearcher.auth import USER
+
+    launcher_procs = [FakeProc([text("hi"), result()]) for _ in range(3)]
+    manager = enable_chat(web, tmp_path, *launcher_procs)
+    admin_chat = web.client.post("/chat/send", data={"message": "from the admin"}, headers=HX).json()
+    wait_done(manager.run_for(admin_chat["chat_id"]))
+
+    jenny = TestClient(web.client.app)
+    log_in(jenny, web.config.db_path, "jenny", USER, "default")
+    assert jenny.post("/chat/send", data={"message": "x"}, headers=HX).status_code == 404
+    assert "Ask Claude" not in jenny.get("/").text
+
+    web.client.app.state.web.base.chat.users = ["Jenny"]  # names ignore case
+    assert "Ask Claude" in jenny.get("/").text
+    mine = jenny.post("/chat/send", data={"message": "from jenny"}, headers=HX).json()
+    wait_done(manager.run_for(mine["chat_id"]))
+    assert "from jenny" in jenny.get("/").text and "from the admin" not in jenny.get("/").text
+    theirs = admin_chat["chat_id"]
+    assert jenny.get(f"/chat/{theirs}/stream").status_code == 404
+    assert jenny.post(f"/chat/{theirs}/delete", headers=HX).status_code == 404
+    continued = jenny.post("/chat/send", data={"message": "y", "chat_id": theirs}, headers=HX)
+    assert continued.status_code == 422  # can't continue someone else's chat
+    assert "from jenny" not in web.client.get("/").text  # the admin doesn't see hers either
+
+    cmd = manager._popen.calls[-1][0]
+    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    assert "logged in as jenny, a user (not an admin)" in prompt

@@ -331,11 +331,14 @@ def dashboard(
     user = current_user(request)
     # The chat runs Claude Code with full permissions on this machine: admin only, and
     # only on the home network.
-    chat_allowed = bool(user and user.is_admin and not is_public(request))
-    chats = store.list_chats() if chat_allowed else []
+    chat_allowed = may_chat(request)
+    chats = []
+    if chat_allowed and user is not None:  # each person sees only their own chats
+        chats = store.list_chats(owner=user.username, with_unowned=user.is_admin)
     current = None
     if chat != "new" and chats:
-        current = store.get_chat(chat) if chat else chats[0]
+        mine = {c["id"]: c for c in chats}
+        current = mine.get(chat) if chat else chats[0]
     run = state.chat.run_for(current["id"]) if current else None
     # Read the event count first: anything emitted after it is streamed, anything
     # before it is already in the stored messages (each is saved before it's emitted).
@@ -887,9 +890,45 @@ def require_chat_host(request: Request) -> None:
         )
 
 
+def may_chat(request: Request) -> bool:
+    """Admins, and the accounts in chat.users, on the home network only."""
+    user = current_user(request)
+    if user is None or is_public(request):
+        return False
+    allowed = {name.casefold() for name in request.app.state.web.base.chat.users}
+    return user.is_admin or user.username.casefold() in allowed
+
+
+def require_chat_user(request: Request) -> None:
+    if not may_chat(request):
+        raise HTTPException(404)
+
+
+def _chat_user(request: Request, state: WebState) -> chat_module.ChatUser:
+    user = current_user(request)
+    assert user is not None
+    return chat_module.ChatUser(
+        username=user.username,
+        name=state.config.web.user_name if not user.is_admin else user.username.title(),
+        profile=user.profile,
+        is_admin=user.is_admin,
+    )
+
+
+def _own_chat(request: Request, state: WebState, chat_id: str) -> None:
+    """404 unless the chat is the logged-in user's (or, for admins, from before logins)."""
+    store = Store(state.config.db_path, readonly=True, check_same_thread=False)
+    try:
+        chat = store.get_chat(chat_id)
+    finally:
+        store.close()
+    if chat is None or not _chat_user(request, state).may_open(chat):
+        raise HTTPException(404)
+
+
 ChatGuards = [
     Depends(require_lan),
-    Depends(require_admin),
+    Depends(require_chat_user),
     Depends(require_htmx),
     Depends(require_chat_host),
 ]
@@ -897,12 +936,13 @@ ChatGuards = [
 
 @router.post("/chat/send", dependencies=ChatGuards)
 def chat_send(
+    request: Request,
     state: State,
     message: Annotated[str, Form()] = "",
     chat_id: Annotated[str, Form()] = "",
 ) -> JSONResponse:
     try:
-        new_id, _ = state.chat.start(chat_id or None, message)
+        new_id, _ = state.chat.start(chat_id or None, message, _chat_user(request, state))
     except chat_module.ChatUnavailable as exc:
         return JSONResponse({"error": str(exc)}, status_code=503)
     except chat_module.ChatBusy as exc:
@@ -914,10 +954,11 @@ def chat_send(
 
 @router.get(
     "/chat/{chat_id}/stream",
-    dependencies=[Depends(require_lan), Depends(require_admin), Depends(require_chat_host)],
+    dependencies=[Depends(require_lan), Depends(require_chat_user), Depends(require_chat_host)],
 )
-def chat_stream(chat_id: str, state: State, after: int = 0) -> StreamingResponse:
+def chat_stream(request: Request, chat_id: str, state: State, after: int = 0) -> StreamingResponse:
     """Server-Sent Events for the chat's current run, from event number `after`."""
+    _own_chat(request, state, chat_id)
     run = state.chat.run_for(chat_id)
 
     def events() -> Iterator[str]:
@@ -947,12 +988,14 @@ def chat_stream(chat_id: str, state: State, after: int = 0) -> StreamingResponse
 
 
 @router.post("/chat/{chat_id}/cancel", dependencies=ChatGuards)
-def chat_cancel(chat_id: str, state: State) -> JSONResponse:
+def chat_cancel(request: Request, chat_id: str, state: State) -> JSONResponse:
+    _own_chat(request, state, chat_id)
     return JSONResponse({"stopped": state.chat.cancel(chat_id)})
 
 
 @router.post("/chat/{chat_id}/delete", dependencies=ChatGuards)
-def chat_delete(chat_id: str, state: State, store: WriteStore) -> Response:
+def chat_delete(request: Request, chat_id: str, state: State, store: WriteStore) -> Response:
+    _own_chat(request, state, chat_id)
     run = state.chat.run_for(chat_id)
     if run is not None and not run.done:
         raise HTTPException(409, "Stop the running reply first.")

@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     id                 TEXT PRIMARY KEY,
     title              TEXT NOT NULL,
     claude_session_id  TEXT NOT NULL,   -- Claude Code's own session, resumed each turn
+    owner              TEXT,            -- the account's username (NULL: from before logins)
     started            INTEGER NOT NULL DEFAULT 0,  -- 1 once Claude Code has seen it
     created_at         TEXT NOT NULL,
     updated_at         TEXT NOT NULL
@@ -274,6 +275,7 @@ class Store:
                     f"ALTER TABLE llm_usage ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
                 )
         for table, column in (
+            ("chat_sessions", "owner"),
             ("sessions", "acting_profile"),
             ("users", "totp_pending"),
             ("users", "totp_last"),
@@ -651,21 +653,38 @@ class Store:
 
     # --- chat ---------------------------------------------------------------
 
-    def create_chat(self, chat_id: str, claude_session_id: str, title: str = "New chat") -> None:
+    def create_chat(
+        self,
+        chat_id: str,
+        claude_session_id: str,
+        title: str = "New chat",
+        owner: str | None = None,
+    ) -> None:
         now = _now().isoformat()
         with self.conn:
             self.conn.execute(
-                "INSERT INTO chat_sessions (id, title, claude_session_id, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (chat_id, title, claude_session_id, now, now),
+                "INSERT INTO chat_sessions"
+                " (id, title, claude_session_id, created_at, updated_at, owner)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (chat_id, title, claude_session_id, now, now, owner),
             )
 
     def get_chat(self, chat_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM chat_sessions WHERE id = ?", (chat_id,)).fetchone()
 
-    def list_chats(self, limit: int = 30) -> list[sqlite3.Row]:
+    def list_chats(
+        self, limit: int = 30, owner: str | None = None, with_unowned: bool = True
+    ) -> list[sqlite3.Row]:
+        """Chats, newest first: all of them, or with `owner`, that user's (plus, with
+        `with_unowned`, the chats from before logins, which only admins see)."""
+        if owner is None:
+            sql, args = "SELECT * FROM chat_sessions", ()
+        else:
+            sql = "SELECT * FROM chat_sessions WHERE owner = ? COLLATE NOCASE"
+            sql += " OR owner IS NULL" if with_unowned else ""
+            args = (owner,)
         return self.conn.execute(
-            "SELECT * FROM chat_sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
+            sql + " ORDER BY updated_at DESC LIMIT ?", (*args, limit)
         ).fetchall()
 
     def mark_chat_started(self, chat_id: str) -> None:

@@ -31,10 +31,10 @@ log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 You are the assistant built into Jobsearcher's web UI, talking with {name}, who is using \
-this personal job-search tool: it finds jobs, ranks them against her CV, and (soon) \
-drafts applications. She isn't necessarily a programmer, so explain things plainly and \
-briefly, and say what you did in terms of what changes for her.
-
+this personal job-search tool: it finds jobs, ranks them against their CVs, and drafts \
+applications. They aren't necessarily a programmer, so explain things plainly and \
+briefly, and say what you did in terms of what changes for them.
+{who}
 What she may ask, and how to handle it:
 - Explanations (how the tool works, why a job scored what it did): read the code, the \
 CLAUDE.md and REMAINING_WORK.md files, and the database at data/jobsearcher.db \
@@ -42,15 +42,16 @@ CLAUDE.md and REMAINING_WORK.md files, and the database at data/jobsearcher.db \
 - Application documents (a tailored CV and cover letter for a job, or a spontaneous \
 application to a company): don't write them yourself. Run `.venv/bin/jobsearcher draft \
 <job id> --instructions "..."` (the job id is in the job page's URL, /jobs/<id>, and in \
-the database) or `... draft --company "Name"`. It writes them in English from her CVs, \
-checks every claim against the CVs, and saves Word and PDF files; then tell her the \
-draft is on that job's page (Application draft) and summarise its notes and any flagged \
-claims. Other writing (notes, emails, explanations): write it into data/drafts/, grounded \
-in cvs/ and never inventing experience, employers, dates or contacts.
+the database) or `... draft --company "Name"`. It writes them in English from their \
+CVs, checks every claim against the CVs, and saves Word and PDF files; then tell them \
+the draft is on that job's page (Application draft) and summarise its notes and any \
+flagged claims. Other writing (notes, emails, explanations): write it into their \
+profile's folder under data/drafts/, grounded in their CVs and never inventing \
+experience, employers, dates or contacts.
 - Features and changes: follow CLAUDE.md, add tests, keep `pytest` and `ruff check .` \
 passing, and commit with git. The daemon and web UI run from this checkout and only pick \
 up code changes when restarted, so say what needs a restart instead of restarting them \
-yourself, unless she asks.
+yourself, unless they ask.
 
 Care: ask before changing config files, deleting data or CVs, or touching the daemon; \
 don't run `jobsearcher rank`, `search` or `daemon` yourself while the daemon is running; \
@@ -161,6 +162,38 @@ def available(workdir: Path, executable: str = "claude") -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class ChatUser:
+    """Who is chatting, so Claude knows whose files are whose."""
+
+    username: str
+    name: str  # how to address them
+    profile: str | None  # their candidate profile, if any
+    is_admin: bool = False
+
+    def may_open(self, chat: Any) -> bool:
+        owner = chat["owner"]
+        if owner is None:
+            return self.is_admin  # chats from before logins
+        return str(owner).casefold() == self.username.casefold()
+
+    def prompt(self) -> str:
+        role = "an admin of this server" if self.is_admin else "a user (not an admin)"
+        if not self.profile:
+            return f"\nThey are logged in as {self.username}, {role}.\n"
+        folder = f"profiles/{self.profile}"
+        return (
+            f"\nThey are logged in as {self.username}, {role}. Their candidate profile is "
+            f"`{self.profile}`: their CVs are in {folder}/cvs/ (master.md first), their "
+            f"settings in {folder}/ (profile.yaml, ranking.yaml, companies.yaml), and their "
+            f"rows in the database have profile = '{self.profile}'. Pass `--profile "
+            f"{self.profile}` to jobsearcher commands (draft, list, show). Other folders in "
+            f"profiles/ are other people's: don't read or change them"
+            + (" unless they ask." if self.is_admin else ".")
+            + "\n"
+        )
+
+
 class ChatManager:
     def __init__(
         self,
@@ -195,7 +228,10 @@ class ChatManager:
         active = self._active
         return active is not None and not active.done
 
-    def command(self, claude_session_id: str, started: bool) -> list[str]:
+    def command(
+        self, claude_session_id: str, started: bool, user: ChatUser | None = None
+    ) -> list[str]:
+        name = (user.name if user else "") or self.user_name or "the user"
         cmd = [
             self.executable,
             "-p",
@@ -204,7 +240,7 @@ class ChatManager:
             "--permission-mode", self.config.permission_mode,
             "--model", self.config.model,
             "--append-system-prompt",
-            SYSTEM_PROMPT.format(name=self.user_name or "the user"),
+            SYSTEM_PROMPT.format(name=name, who=user.prompt() if user else ""),
             "--resume" if started else "--session-id",
             claude_session_id,
         ]  # fmt: skip
@@ -212,8 +248,11 @@ class ChatManager:
             cmd += ["--effort", self.config.effort]
         return cmd
 
-    def start(self, chat_id: str | None, prompt: str) -> tuple[str, Run]:
-        """Send a message (creating the chat if needed) and start Claude Code on it."""
+    def start(
+        self, chat_id: str | None, prompt: str, user: ChatUser | None = None
+    ) -> tuple[str, Run]:
+        """Send a message (creating the chat if needed) and start Claude Code on it. With
+        `user`, a new chat is theirs, and someone else's chat can't be continued."""
         problem = self.unavailable()
         if problem:
             raise ChatUnavailable(problem)
@@ -226,16 +265,19 @@ class ChatManager:
             store = Store(self.db_path)
             try:
                 chat = store.get_chat(chat_id) if chat_id else None
+                if chat is not None and user is not None and not user.may_open(chat):
+                    raise ValueError("That chat isn't yours.")
                 if chat is None:
                     chat_id = uuid.uuid4().hex[:12]
-                    store.create_chat(chat_id, str(uuid.uuid4()), _title(prompt))
+                    owner = user.username if user else None
+                    store.create_chat(chat_id, str(uuid.uuid4()), _title(prompt), owner)
                     chat = store.get_chat(chat_id)
                 assert chat is not None and chat_id is not None
                 store.add_chat_message(chat_id, "user", prompt)
                 run = Run(chat_id)
                 self._runs[chat_id] = run
                 self._active = run
-                cmd = self.command(chat["claude_session_id"], bool(chat["started"]))
+                cmd = self.command(chat["claude_session_id"], bool(chat["started"]), user)
             finally:
                 store.close()
             threading.Thread(

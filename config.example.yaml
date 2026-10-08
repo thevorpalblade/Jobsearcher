@@ -159,6 +159,10 @@ web:
 # the UI by IP address, or list your name under web.allowed_hosts.
 chat:
   enabled: false
+  # Admins can always chat; list other accounts that may too (home network only). Each
+  # person sees only their own chats, but Claude Code can reach everything on this
+  # machine, so list only people you'd give that access.
+  users: []
   model: opus
   effort: medium
   permission_mode: bypassPermissions

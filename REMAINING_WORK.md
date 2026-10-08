@@ -218,6 +218,9 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       - [x] Phase 4, app side: public listener, security headers, admin 2FA from outside,
             Caddyfile (built 2026-10-08; the plan, "Phase 4 as built").
       - [ ] Phase 4, the user's steps: install Caddy, router port forwards, check from outside.
+      - [x] The chat for non-admins too (2026-10-08): `chat.users` in config.yaml, home
+            network only; chats are private to their owner (`chat_sessions.owner`), and
+            Claude is told who's asking and which profile folder is theirs.
       - [ ] Phase 5: onboard the second candidate.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others

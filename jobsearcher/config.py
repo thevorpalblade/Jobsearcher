@@ -216,6 +216,9 @@ class ChatConfig(BaseModel):
     # Off unless asked for: with no login and full access, anyone who can open the
     # page can make Claude Code act on this machine.
     enabled: bool = False
+    # Accounts besides admins that may use the chat (home network only). It runs Claude
+    # Code with full access to this machine: every profile's files, .env, the code.
+    users: list[str] = Field(default_factory=list)
     model: str = "opus"
     effort: str | None = "medium"
     # bypassPermissions: no prompts (there's nobody at the terminal to answer them).
