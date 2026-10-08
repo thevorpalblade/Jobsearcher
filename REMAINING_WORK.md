@@ -18,7 +18,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M5 Contacts from company sites (application tracking was done in M3) | 5a-5d built 2026-10-08 ([docs/m5-contacts.md](docs/m5-contacts.md)); 5e (Bolagsverket) needs API credentials |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
-| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1–3 built 2026-10-07/08 (profiles, logins, own models and keys, 2FA); HTTPS next |
+| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1–4 done 2026-10-08: on the internet over HTTPS; phase 5 (second candidate) next |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -222,7 +222,10 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
             page; two-factor codes. Built 2026-10-08 (the plan, "Phase 3 as built").
       - [x] Phase 4, app side: public listener, security headers, admin 2FA from outside,
             Caddyfile (built 2026-10-08; the plan, "Phase 4 as built").
-      - [ ] Phase 4, the user's steps: install Caddy, router port forwards, check from outside.
+      - [x] Phase 4, the user's steps (2026-10-08): Caddy with a Let's Encrypt certificate,
+            router forwards for 80 and 443, admin two-factor codes. Checked from outside:
+            only the login page answers, :8080 and :8081 are refused, the chat is off on
+            the public side, and the security headers and HSTS are sent.
       - [x] The chat for non-admins too (2026-10-08): `chat.users` in config.yaml, home
             network only; chats are private to their owner (`chat_sessions.owner`), and
             Claude is told who's asking and which profile folder is theirs.
