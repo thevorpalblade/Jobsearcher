@@ -15,7 +15,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done; all ~350 candidates ranked live with GLM on 2026-10-01; `calibrate` command missing |
 | M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | Done 2026-10-05: on demand, checked against the CVs (docs/m4-drafting.md) |
-| M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
+| M5 Contacts from company sites (application tracking was done in M3) | Planned 2026-10-08 ([docs/m5-contacts.md](docs/m5-contacts.md)) |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
 | M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1–3 built 2026-10-07/08 (profiles, logins, own models and keys, 2FA); HTTPS next |
@@ -149,6 +149,9 @@ Word via python-docx, PDF via LibreOffice, a Markdown preview in the browser.
 - [ ] A cover-letter template with her own letterhead / CV styling beyond the plain layout.
 
 ## 4. Contacts and tracking (M5)
+
+Planned 2026-10-08: [docs/m5-contacts.md](docs/m5-contacts.md) (company websites, picking the right
+person per job, search links; phases 5a-5d, three open questions).
 
 - [ ] Fallback contact: a pre-built LinkedIn/Google search link (company + role)
       when no contact person is known (PLAN.md §2, item 5).
