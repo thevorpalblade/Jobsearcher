@@ -875,3 +875,34 @@ def test_workday_multi_location_jobs_use_a_swedish_additional_location():
     # A single string, or a county town outside the city list (Södertälje, Stockholms län).
     one = workday.with_details(base, info("Herford", "Södertälje"))
     assert one.location == "Södertälje" and matches_filters(one, search)
+
+
+def test_the_crawler_refuses_local_and_private_addresses():
+    """Company URLs come from every candidate's companies.yaml: none may reach the
+    router or a service on this machine, also not through a redirect."""
+    from jobsearcher.companies.http import (
+        BlockedAddress,
+        PoliteClient,
+        _guarded,
+        refuse_local_addresses,
+    )
+
+    for url in (
+        "http://127.0.0.1:8080/",
+        "http://192.168.1.1/",
+        "http://10.0.0.5:11434/api",
+        "http://169.254.169.254/latest",
+        "http://[::1]/",
+        "http://localhost/",
+    ):
+        with pytest.raises(BlockedAddress):
+            refuse_local_addresses(httpx.Request("GET", url))
+    refuse_local_addresses(httpx.Request("GET", "https://8.8.8.8/"))  # public: fine
+
+    def handler(request):
+        return httpx.Response(302, headers={"Location": "http://192.168.1.1/admin"})
+
+    client = _guarded(httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True))
+    with pytest.raises(BlockedAddress):
+        client.get("https://8.8.8.8/careers")  # a public site redirecting home
+    assert PoliteClient().client.event_hooks["request"] == [refuse_local_addresses]

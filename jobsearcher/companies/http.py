@@ -4,7 +4,9 @@ interval between requests to the same host, and obeys robots.txt unless the
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -88,6 +90,32 @@ def browser_transport() -> BrowserTransport | None:
         return None
 
 
+class BlockedAddress(httpx.HTTPError):
+    """A URL whose host is on this machine or the home network (never a company site)."""
+
+
+def refuse_local_addresses(request: httpx.Request) -> None:
+    """An httpx request hook: refuse hosts that resolve to a private, loopback,
+    link-local or otherwise non-public address. Company URLs come from every
+    candidate's companies.yaml, so without this a user could point the crawler at the
+    router or at services on this machine. Runs for every redirect hop too."""
+    host = request.url.host
+    port = request.url.port or (443 if request.url.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError):
+        return  # httpx reports the failed lookup itself
+    for info in infos:
+        address = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        if not address.is_global:
+            raise BlockedAddress(f"{host} is a local or private address; not crawled")
+
+
+def _guarded(client: httpx.Client) -> httpx.Client:
+    client.event_hooks = {**client.event_hooks, "request": [refuse_local_addresses]}
+    return client
+
+
 class PoliteClient:
     def __init__(
         self,
@@ -98,12 +126,15 @@ class PoliteClient:
         sleep: Any = time.sleep,
         clock: Any = time.monotonic,
     ):
-        self.client = client or make_client(
-            {
-                "Accept": "application/json, text/html, application/xml;q=0.9, */*;q=0.8",
-                "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
-            },
-            user_agent=user_agent,
+        # Its own clients refuse local addresses; a client passed in (tests) is used as is.
+        self.client = client or _guarded(
+            make_client(
+                {
+                    "Accept": "application/json, text/html, application/xml;q=0.9, */*;q=0.8",
+                    "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+                },
+                user_agent=user_agent,
+            )
         )
         self.user_agent = user_agent
         self.respect_robots = respect_robots
@@ -136,8 +167,10 @@ class PoliteClient:
                 log.info("curl_cffi not installed: sending a Chrome User-Agent header only")
             else:
                 headers = polite.client.headers
-                polite.client = httpx.Client(
-                    transport=transport, headers=headers, timeout=30.0, follow_redirects=True
+                polite.client = _guarded(
+                    httpx.Client(
+                        transport=transport, headers=headers, timeout=30.0, follow_redirects=True
+                    )
                 )
         return polite
 
