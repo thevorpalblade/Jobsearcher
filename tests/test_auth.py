@@ -201,6 +201,32 @@ def test_cross_site_writes_are_refused(setup):
     assert login.status_code == 403
     same = {**HX, "Origin": "http://testserver"}
     assert client.post("/jobs/x/state", data={"state": "applied"}, headers=same).status_code == 404
+    site = {**HX, "Sec-Fetch-Site": "same-site"}  # a sibling subdomain isn't this site
+    assert client.post("/jobs/x/state", data={"state": "applied"}, headers=site).status_code == 403
+
+
+def test_a_browsers_own_form_post_is_accepted(setup):
+    """What a real browser sends for the invite and login forms: Origin "null" (the
+    page's referrer policy hides it) but Sec-Fetch-Site same-origin."""
+    config, client = setup
+    _, token = Auth(Store(config.db_path).conn).create_user("bo", USER, "bo")
+    browser = {"Origin": "null", "Sec-Fetch-Site": "same-origin"}
+    done = client.post(
+        f"/invite/{token}",
+        data={"password": PASSWORD, "confirm": PASSWORD},
+        headers=browser,
+        follow_redirects=False,
+    )
+    assert done.status_code == 303
+    forged = {"Origin": "null", "Sec-Fetch-Site": "cross-site"}
+    assert client.post("/logout", headers=forged).status_code == 403
+    login = client.post(
+        "/login",
+        data={"username": "bo", "password": PASSWORD},
+        headers=browser,
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
 
 
 def test_users_cli(setup, capsys):

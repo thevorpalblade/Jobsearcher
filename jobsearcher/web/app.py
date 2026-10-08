@@ -1277,13 +1277,21 @@ async def _security_headers(request: Request, call_next: Any) -> Response:
 
 
 async def _same_origin_writes(request: Request, call_next: Any) -> Response:
-    """Refuse writes another site's page sends: browsers set Origin (and Sec-Fetch-Site)
-    on every POST. With a session cookie, the HX-Request check alone isn't enough."""
+    """Refuse writes another site's page sends. With a session cookie, the HX-Request
+    check alone isn't enough. Browsers label every request with Sec-Fetch-Site, which
+    pages can't change: only same-origin (or "none", typed by the user) may write.
+    Without it (old browsers), Origin must match the Host. A form post's Origin can be
+    "null" under a no-referrer policy, so Origin alone would refuse real logins."""
     if request.method not in ("GET", "HEAD", "OPTIONS"):
+        site = request.headers.get("sec-fetch-site")
         origin = request.headers.get("origin")
-        if origin is not None and urlsplit(origin).netloc != request.headers.get("host"):
-            return PlainTextResponse("Cross-site request refused.", status_code=403)
-        if request.headers.get("sec-fetch-site") == "cross-site":
+        if site is not None:
+            refused = site not in ("same-origin", "none")
+        else:
+            refused = origin not in (None, "null") and (
+                urlsplit(origin).netloc != request.headers.get("host")
+            )
+        if refused:
             return PlainTextResponse("Cross-site request refused.", status_code=403)
     return await call_next(request)
 
