@@ -180,6 +180,8 @@ def test_migrate_profiles_moves_files_rows_and_drafts(tmp_path, capsys):
 
     config = load_config(tmp_path / "config.yaml").for_profile()
     assert config.profile == "anna" and config.web.user_name == "Anna"
+    assert not config.own_keys  # the existing setup keeps using .env's keys
+    assert "web: {user_name: Anna}" in (tmp_path / "config.yaml").read_text()  # kept
     assert config.search.locations == ["Stockholm"] and config.search.keywords == ["HR"]
     assert len(Store(config.db_path, profile="anna").applications()) == 1
     assert Store(config.db_path).applications() == {}

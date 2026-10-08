@@ -18,8 +18,16 @@
       <a href="/prefilter">Prefilter</a>
       {% if user.is_admin %}<a href="/status">Status</a>{% endif %}
       <a href="/settings">Settings</a>
+      {% if user.is_admin %}<a href="/admin/users">Accounts</a>{% endif %}
       {% endif %}
     </nav>
+    {% if user and user.is_admin and profiles and profiles | length > 1 %}
+    <form class="acting" hx-post="/admin/act-as" hx-trigger="change">
+      <label>Viewing
+        <select name="profile">{% for p in profiles %}<option {{ "selected" if p == config.profile }}>{{ p }}</option>{% endfor %}</select>
+      </label>
+    </form>
+    {% endif %}
     {% if budget %}{% include "_budget.html" %}{% endif %}
     {% if user %}
     <form class="account" method="post" action="/logout">

@@ -25,6 +25,7 @@ class OpenAICompatibleLLM:
         model: str,
         base_url: str = "https://api.moonshot.ai/v1",
         api_key_env: str | None = "MOONSHOT_API_KEY",  # None: the server needs no key (Ollama)
+        api_key: str | None = None,  # given: used instead of reading api_key_env
         label: str = "Moonshot",
         max_tokens: int = 16000,
         extra_body: dict[str, Any] | None = None,
@@ -50,7 +51,8 @@ class OpenAICompatibleLLM:
         self.limiter = limiter
         self._sleep = sleep
         if client is None:
-            api_key = os.environ.get(api_key_env) if api_key_env else "none"
+            if api_key is None:
+                api_key = os.environ.get(api_key_env) if api_key_env else "none"
             if not api_key:
                 raise LLMError(f"{api_key_env} is not set")
             client = openai.OpenAI(

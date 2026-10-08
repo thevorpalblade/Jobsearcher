@@ -53,6 +53,10 @@
       <span>The companies whose careers sites are crawled and whose news is watched: add, remove, turn off, fix ATS detection.</span>
     </a>
     {% if config.profile_file %}
+    <a class="card link-card" href="/settings/models">
+      <strong>Models and keys</strong>
+      <span>Which AI models rank and draft for you, your monthly budget{% if config.own_keys %}, and your API keys{% endif %}.</span>
+    </a>
     <a class="card link-card" href="/settings/files/profile">
       <strong>Search (profile.yaml)</strong>
       <span>Your name, extra search keywords, excluded words and region. Edited as YAML.</span>

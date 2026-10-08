@@ -241,7 +241,7 @@ user the same as the first.
 |---|---|---|---|
 | 1 | Profiles in files, DB and pipeline; migration; one profile | Same app, data now per profile | **Built 2026-10-07** (branch `m10-profiles`); see "Phase 1 as built" |
 | 2 | Users, sessions, login/logout, middleware, CLI user commands, roles | Login required, still LAN only | **Built 2026-10-07** (branch `m10-auth`); see "Phase 2 as built" |
-| 3 | Per-profile web UI, per-profile models and keys, admin user page, profile switcher, `/account`, admin TOTP | Two candidates usable | Medium to large |
+| 3 | Per-profile web UI, per-profile models and keys, admin user page, profile switcher, `/account`, admin TOTP | Two candidates usable | **Built 2026-10-08** (branch `m10-phase3`); see "Phase 3 as built" |
 | 4 | Caddy, headers, Origin checks, throttling, chat lockdown, security review, outside tests | On the internet | Small to medium |
 | 5 | Onboard the second user: profile, CV upload, roles form, first ranking run | Second candidate live | Small |
 
@@ -309,6 +309,40 @@ Phases 1–3 can be built and tested on the LAN; the port opens only after phase
   admin sees the profile set on their account (a switcher comes in phase 3).
 - **CLI:** `jobsearcher users add <name> [--admin] [--profile <slug>] [--url ...]`,
   `invite <name>` (a new link, e.g. a forgotten password), `disable`, `enable`, `list`.
+
+## Phase 3 as built (2026-10-08)
+
+- **Models and budget:** `profile.yaml` has an `llm:` section (ranking, drafting,
+  grounding, grounding_fallback, monthly_budget_usd). Anything it leaves out comes
+  from config.yaml. It's edited on Settings → Models and keys, which also has a "Test
+  both models" button.
+- **Keys:**
+  - `config.yaml` `llm.server_key_profiles` lists the profiles that use `.env` and may
+    use `claude_code` and `ollama`. `migrate-profiles` adds the first profile.
+  - Every other profile keeps its keys in `profiles/<slug>/secrets.env` (mode 0600),
+    set on the same page. The page shows only the last four characters, and setting
+    or removing a key is audited.
+  - `config.api_key(env)` and `config.provider_allowed(provider)` decide, and
+    `make_llm` refuses the admin's providers for others.
+  - Rate limiters are per key.
+- **Budget:** LLM usage and spending are per profile (`Store.llm_cost_since`), so each
+  profile's monthly limit counts only its own calls. `jobsearcher budget` lists every
+  profile.
+- **Admin:**
+  - A "Viewing" switcher in the nav. It's stored on the admin's session
+    (`sessions.acting_profile`) and audited.
+  - `/admin/users`: add accounts, new set-password links, disable or enable. Admins
+    can't disable themselves.
+- **Two-factor codes (TOTP, RFC 6238, stdlib):**
+  - Set up on `/account`: a QR code (`segno`, pure Python), switched on only after a
+    correct code.
+  - A code works once (`users.totp_last`).
+  - Turning it off needs the password and a code. `jobsearcher users reset-2fa <name>`
+    is for a lost phone.
+  - Login has an optional code field. Any wrong part gives the same "Wrong username,
+    password or code."
+- **Deploying:** add the existing profile to `llm.server_key_profiles` in the live
+  config.yaml before restarting. Otherwise it's treated as a new candidate with no keys.
 
 ## Still open
 

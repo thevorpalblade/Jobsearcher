@@ -18,7 +18,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M5 Contacts from company sites (application tracking was done in M3) | **Not started** |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
-| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1 (profiles) and 2 (logins) built 2026-10-07 |
+| M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1–3 built 2026-10-07/08 (profiles, logins, own models and keys, 2FA); HTTPS next |
 | M7/M8 More sources: LinkedIn + Indeed (JobSpy), Workday, JSON-LD, recruiters, Chrome crawling (docs/m8-more-sources.md) | Done 2026-10-05 |
 
 Tests: 137 passing (`pytest`), lint clean (`ruff check .`). All tests run
@@ -213,7 +213,8 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
             jenny` (steps in the plan, "Phase 1 as built").
       - [x] Phase 2: users, sessions, login (LAN only): built 2026-10-07 on branch
             `m10-auth` (see the plan, "Phase 2 as built").
-      - [ ] Phase 3: per-profile UI, models, keys and budget; admin pages; TOTP.
+      - [x] Phase 3: per-profile models, keys and budget; admin switcher and accounts
+            page; two-factor codes. Built 2026-10-08 (the plan, "Phase 3 as built").
       - [ ] Phase 4: Caddy and hardening, then open the port.
       - [ ] Phase 5: onboard the second candidate.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking

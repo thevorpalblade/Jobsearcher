@@ -22,11 +22,12 @@ class AnthropicLLM:
         effort: str | None = None,
         max_tokens: int = 16000,
         client: anthropic.Anthropic | None = None,
+        api_key: str | None = None,  # default: ANTHROPIC_API_KEY from the environment
     ):
         self.model = model
         self.effort = effort
         self.max_tokens = max_tokens
-        self.client = client or anthropic.Anthropic()
+        self.client = client or anthropic.Anthropic(api_key=api_key)
 
     def complete(
         self,

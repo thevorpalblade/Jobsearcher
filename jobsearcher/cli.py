@@ -417,15 +417,18 @@ def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
 def cmd_budget(config: Config, args: argparse.Namespace) -> int:
     from jobsearcher.llm import BudgetTracker
 
-    tracker = BudgetTracker(Store(config.db_path, profile=config.profile), config.llm)
-    spent = tracker.month_to_date()
-    print(
-        f"LLM spend this month: ${spent:.2f} of ${config.llm.monthly_budget_usd:.2f} "
-        f"(drafting pauses at ${tracker.limit_for('drafting'):.2f})"
-    )
-    calls, tokens = tracker.subscription_usage()
-    if calls:
-        print(f"Claude subscription (Claude Code): {calls} calls, {tokens:,} tokens this month")
+    for profile in _profiles(config, args):  # each profile has its own budget
+        store = Store(profile.db_path, profile=profile.profile)
+        tracker = BudgetTracker(store, profile.llm)
+        spent = tracker.month_to_date()
+        print(
+            f"LLM spend this month{_profile_label(profile)}: ${spent:.2f} of "
+            f"${profile.llm.monthly_budget_usd:.2f} "
+            f"(drafting pauses at ${tracker.limit_for('drafting'):.2f})"
+        )
+        calls, tokens = tracker.subscription_usage()
+        if calls:
+            print(f"  Claude subscription (Claude Code): {calls} calls, {tokens:,} tokens")
     return 0
 
 
@@ -553,6 +556,14 @@ def cmd_migrate_profiles(config: Config, args: argparse.Namespace) -> int:
     print(f"wrote {folder / PROFILE_FILE}")
     store.rename_profile(DEFAULT_PROFILE, slug)
     print(f"database rows now belong to {slug!r}")
+    # The existing setup keeps using .env's keys and any provider (e.g. claude_code).
+    from jobsearcher.settings import merge_yaml
+
+    config_path = config_file_path(args.config)
+    text = config_path.read_text() if config_path.is_file() else ""
+    keyed = [*config.llm.server_key_profiles, slug]
+    config_path.write_text(merge_yaml(text, {"llm": {"server_key_profiles": keyed}}))
+    print(f"{config_path.name}: llm.server_key_profiles now includes {slug!r} (uses .env's keys)")
     drafts = config.data_dir / "drafts"
     if drafts.is_dir() and any(drafts.iterdir()):
         target = drafts / slug
@@ -615,6 +626,9 @@ def cmd_users(config: Config, args: argparse.Namespace) -> int:
             return 1
         if args.action == "invite":
             link(auth.new_invite(user))
+        elif args.action == "reset-2fa":
+            auth.reset_totp(user)
+            print(f"Two-factor codes turned off for {user.username}; they can set them up again.")
         else:
             disable = args.action == "disable"
             auth.set_disabled(user, disable)
@@ -710,7 +724,9 @@ def main(argv: list[str] | None = None) -> int:
     p_web.add_argument("--reload", action="store_true", help="restart on code changes (dev)")
 
     p_users = sub.add_parser("users", help="web UI accounts: add, invite, disable, enable, list")
-    p_users.add_argument("action", choices=["add", "invite", "disable", "enable", "list"])
+    p_users.add_argument(
+        "action", choices=["add", "invite", "disable", "enable", "reset-2fa", "list"]
+    )
     p_users.add_argument("name", nargs="?", help="username")
     p_users.add_argument("--admin", action="store_true", help="with add: an admin account")
     p_users.add_argument(

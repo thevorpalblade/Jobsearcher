@@ -11,6 +11,9 @@
   <label>Password
     <input name="password" type="password" autocomplete="current-password" required>
   </label>
+  <label>Two-factor code <span class="small">(if you've set it up)</span>
+    <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7">
+  </label>
   <button type="submit" class="primary">Log in</button>
 </form>
 <p class="muted small">No account, or forgot the password? Ask the admin for a link.</p>

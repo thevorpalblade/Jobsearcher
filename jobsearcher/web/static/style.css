@@ -219,3 +219,11 @@ details.preview > summary { cursor: pointer; padding: 8px 12px; font-weight: 600
 form.account { display: flex; gap: 8px; align-items: baseline; font-size: 0.9em; }
 form.auth { display: flex; flex-direction: column; gap: 12px; max-width: 22em; margin-top: 16px; }
 form.auth label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; color: var(--muted); }
+
+/* Models and keys */
+.settings-form .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0 12px; }
+form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 2px 0; }
+form.inline input[type=password] { width: 16em; max-width: 100%; }
+form.acting label { display: flex; gap: 6px; align-items: center; font-size: 0.85em; color: var(--muted); }
+code.select-all { user-select: all; word-break: break-all; }
+.qr svg { background: #fff; padding: 4px; border-radius: 4px; }

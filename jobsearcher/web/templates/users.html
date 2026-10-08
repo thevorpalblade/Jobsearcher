@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Accounts · Jobsearcher{% endblock %}
+{% block content %}
+<div id="users">
+<h1>Accounts</h1>
+<p class="muted">Who can log in, and which candidate profile each one sees. A new account, or a
+  forgotten password, gets a one-time link (valid 24 hours) where the person sets their own password.</p>
+
+{% if error %}<div class="result error">{{ error }}</div>{% endif %}
+{% if link %}
+<div class="result ok"><strong>Link for {{ link_for }}</strong> (send it to them; it works once):<br>
+  <code class="select-all">{{ link }}</code></div>
+{% endif %}
+
+<table class="jobs">
+  <thead><tr><th>User</th><th>Role</th><th>Profile</th><th>State</th><th>Two-factor</th><th>Last seen</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+  <tr>
+    <td>{{ u.username }}</td>
+    <td>{{ u.role }}</td>
+    <td>{{ u.profile or "–" }}</td>
+    <td>{% if u.disabled %}<span class="chip warn">disabled</span>{% elif u.has_password %}active{% else %}<span class="muted">invited</span>{% endif %}</td>
+    <td>{{ "on" if u.totp_secret else "–" }}</td>
+    <td>{{ (u.last_seen or "never")[:16] | replace("T", " ") }}</td>
+    <td>
+      <form class="inline" hx-post="/admin/users/{{ u.username }}/invite" hx-target="#users" hx-select="#users" hx-swap="outerHTML">
+        <button type="submit" class="link">New link</button>
+      </form>
+      {% if u.disabled %}
+      <form class="inline" hx-post="/admin/users/{{ u.username }}/enable" hx-target="#users" hx-select="#users" hx-swap="outerHTML">
+        <button type="submit" class="link">Enable</button>
+      </form>
+      {% elif not (user and u.id == user.id) %}
+      <form class="inline" hx-post="/admin/users/{{ u.username }}/disable" hx-target="#users" hx-select="#users" hx-swap="outerHTML"
+            hx-confirm="Disable {{ u.username }}? They're logged out everywhere.">
+        <button type="submit" class="link danger">Disable</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add an account</h2>
+<form class="upload" hx-post="/admin/users" hx-target="#users" hx-select="#users" hx-swap="outerHTML">
+  <label>Username <input name="username" required autocomplete="off"></label>
+  <label>Role
+    <select name="role"><option value="user">user</option><option value="admin">admin</option></select>
+  </label>
+  <label>Profile
+    <select name="profile">{% for p in profiles %}<option>{{ p }}</option>{% endfor %}</select>
+  </label>
+  <button type="submit">Add</button>
+</form>
+<p class="muted small">A new candidate needs a profile folder first (profiles/&lt;name&gt;/ with a
+  profile.yaml); the command line can also do all of this: <code>jobsearcher users --help</code>.</p>
+</div>
+{% endblock %}

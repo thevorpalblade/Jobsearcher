@@ -20,4 +20,40 @@
   </label>
   <button type="submit">Change password</button>
 </form>
+
+<h2>Two-factor codes</h2>
+{% set totp_flag = request.query_params.get("totp") %}
+{% if totp_flag == "on" %}<div class="result ok">Two-factor codes are on. You'll need a code from the app each time you log in.</div>{% endif %}
+{% if totp_flag == "off" %}<div class="result ok">Two-factor codes are off.</div>{% endif %}
+{% if totp_error %}<div class="result error">{{ totp_error }}</div>{% endif %}
+
+{% if totp_secret %}
+  <p>Scan this with an authenticator app (Google Authenticator, Aegis, 1Password, …), then type the
+    6-digit code it shows to switch it on.</p>
+  <div class="qr">{{ totp_qr | safe }}</div>
+  <p class="muted small">Can't scan? Enter this key in the app instead: <code class="select-all">{{ totp_secret }}</code></p>
+  <form class="auth" method="post" action="/account/2fa/confirm">
+    <label>Code from the app
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" required autofocus>
+    </label>
+    <button type="submit" class="primary">Switch on</button>
+  </form>
+{% elif user.has_totp %}
+  <p>On: logging in needs a code from your authenticator app. If you lose the phone, the
+    admin can turn it off with <code>jobsearcher users reset-2fa {{ user.username }}</code>.</p>
+  <form class="auth" method="post" action="/account/2fa/disable">
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <label>Code from the app
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" required>
+    </label>
+    <button type="submit" class="danger">Turn off</button>
+  </form>
+{% else %}
+  <p>Off. With two-factor codes, a stolen password alone can't log in: you also need the
+    code from an app on your phone.{% if user.is_admin %} <b>Recommended for admins</b>, and
+    needed before the site goes on the internet.{% endif %}</p>
+  <form method="post" action="/account/2fa/start">
+    <button type="submit">Set up two-factor codes</button>
+  </form>
+{% endif %}
 {% endblock %}

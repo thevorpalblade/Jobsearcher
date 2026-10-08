@@ -94,7 +94,7 @@ def test_login_logout_and_safe_redirects(setup):
     wrong = client.post("/login", data={"username": "bo", "password": "nope nope nope"})
     unknown = client.post("/login", data={"username": "nobody", "password": PASSWORD})
     assert wrong.status_code == unknown.status_code == 401
-    assert "Wrong username or password." in wrong.text and "Wrong username" in unknown.text
+    assert "Wrong username, password or code." in wrong.text and "Wrong username" in unknown.text
     ok = client.post(
         "/login",
         data={"username": "BO", "password": PASSWORD, "next": "//evil.example/x"},

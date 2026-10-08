@@ -13,8 +13,11 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
-from dataclasses import dataclass
+import struct
+import time
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote, urlencode
 
 ADMIN, USER = "admin", "user"
 MIN_PASSWORD, MAX_PASSWORD = 12, 1024  # an upper bound keeps hashing cheap to refuse
@@ -86,6 +89,43 @@ def check_new_password(password: str, confirm: str | None = None) -> None:
         raise AuthError("That password is too long.")
 
 
+# --- two-factor codes (TOTP, RFC 6238: what authenticator apps make) ---------------
+
+TOTP_STEP, TOTP_DIGITS = 30, 6
+ISSUER = "Jobsearcher"
+
+
+def new_totp_secret() -> str:
+    return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+
+
+def totp_code(secret: str, counter: int) -> str:
+    key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    number = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+    return f"{number % 10**TOTP_DIGITS:0{TOTP_DIGITS}d}"
+
+
+def totp_match(secret: str, code: str, after: int = -1, now: float | None = None) -> int | None:
+    """The time step `code` belongs to (now, or one step either side for clock drift),
+    if it's later than `after`, the last one used, so a code can't be used twice."""
+    code = code.replace(" ", "").strip()
+    if len(code) != TOTP_DIGITS or not code.isdigit():
+        return None
+    current = int((time.time() if now is None else now) // TOTP_STEP)
+    for counter in (current - 1, current, current + 1):
+        if counter > after and hmac.compare_digest(totp_code(secret, counter), code):
+            return counter
+    return None
+
+
+def totp_uri(secret: str, username: str) -> str:
+    """The otpauth:// link an authenticator app reads from the QR code."""
+    label = quote(f"{ISSUER}:{username}")
+    return f"otpauth://totp/{label}?" + urlencode({"secret": secret, "issuer": ISSUER})
+
+
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -101,6 +141,7 @@ class User:
     role: str
     profile: str | None
     disabled: bool
+    has_totp: bool = False
 
     @property
     def is_admin(self) -> bool:
@@ -114,6 +155,7 @@ class User:
             role=row["role"],
             profile=row["profile"],
             disabled=bool(row["disabled"]),
+            has_totp=row["totp_secret"] is not None,
         )
 
 
@@ -197,6 +239,52 @@ class Auth:
             raise AuthError("The current password is wrong.")
         self.set_password(user, new, ip)
 
+    def start_totp(self, user: User) -> str:
+        """A new secret, waiting for confirm_totp() with a code from the app."""
+        secret = new_totp_secret()
+        with self.conn:
+            self.conn.execute("UPDATE users SET totp_pending = ? WHERE id = ?", (secret, user.id))
+        return secret
+
+    def pending_totp(self, user: User) -> str | None:
+        row = self.conn.execute(
+            "SELECT totp_pending FROM users WHERE id = ?", (user.id,)
+        ).fetchone()
+        return row["totp_pending"] if row else None
+
+    def confirm_totp(self, user: User, code: str, ip: str = "") -> None:
+        secret = self.pending_totp(user)
+        step = totp_match(secret, code) if secret else None
+        if secret is None or step is None:
+            raise AuthError(
+                "That code doesn't match. Check the phone's clock, and try the next code."
+            )
+        with self.conn:
+            self.conn.execute(
+                "UPDATE users SET totp_secret = ?, totp_pending = NULL, totp_last = ? WHERE id = ?",
+                (secret, str(step), user.id),
+            )
+        self.audit("totp_enabled", user.username, ip=ip)
+
+    def disable_totp(self, user: User, password: str, code: str, ip: str = "") -> None:
+        """Turn two-factor codes off: needs the password and a current code."""
+        row = self.conn.execute("SELECT * FROM users WHERE id = ?", (user.id,)).fetchone()
+        ok = row is not None and verify_password(password, row["password_hash"] or _DUMMY_HASH)
+        if not ok or not row["totp_secret"] or totp_match(row["totp_secret"], code) is None:
+            self.audit("totp_disable_failed", user.username, ip=ip)
+            raise AuthError("Wrong password or code.")
+        self.reset_totp(user, ip)
+
+    def reset_totp(self, user: User, ip: str = "") -> None:
+        """Clear two-factor codes (also `jobsearcher users reset-2fa`, for a lost phone)."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last = NULL"
+                " WHERE id = ?",
+                (user.id,),
+            )
+        self.audit("totp_disabled", user.username, ip=ip)
+
     def set_disabled(self, user: User, disabled: bool) -> None:
         with self.conn:
             self.conn.execute(
@@ -218,9 +306,10 @@ class Auth:
             or count(f"ip:{ip}") >= MAX_FAILURES_IP
         )
 
-    def authenticate(self, username: str, password: str, ip: str) -> User:
-        """The user for a correct username and password. Raises AuthError with the same
-        message for an unknown user, a wrong password or a disabled account."""
+    def authenticate(self, username: str, password: str, ip: str, code: str = "") -> User:
+        """The user for a correct username and password (and two-factor code, once set
+        up). Raises AuthError with the same message for an unknown user, a wrong password
+        or code, or a disabled account."""
         username = username.strip()
         if self.throttled(username, ip):
             self.audit("login_throttled", username, ip=ip)
@@ -230,6 +319,10 @@ class Auth:
         ).fetchone()
         stored = row["password_hash"] if row is not None else None
         ok = verify_password(password[:MAX_PASSWORD], stored or _DUMMY_HASH)
+        step = None
+        if ok and row is not None and row["totp_secret"]:
+            step = totp_match(row["totp_secret"], code, int(row["totp_last"] or -1))
+            ok = step is not None
         if row is None or stored is None or not ok or row["disabled"]:
             now = _now().isoformat()
             with self.conn:
@@ -242,12 +335,16 @@ class Auth:
                     ((_now() - THROTTLE_WINDOW).isoformat(),),
                 )
             self.audit("login_failed", username, ip=ip)
-            raise AuthError("Wrong username or password.")
+            raise AuthError("Wrong username, password or code.")
         user = User.from_row(row)
         with self.conn:
             self.conn.execute(
                 "DELETE FROM login_failures WHERE key = ?", (f"user:{username.casefold()}",)
             )
+            if step is not None:
+                self.conn.execute(
+                    "UPDATE users SET totp_last = ? WHERE id = ?", (str(step), user.id)
+                )
         self.audit("login", user.username, ip=ip)
         return user
 
@@ -277,7 +374,8 @@ class Auth:
         if not token or len(token) > 200:
             return None
         row = self.conn.execute(
-            "SELECT u.*, s.last_seen AS s_last_seen, s.expires_at AS s_expires"
+            "SELECT u.*, s.last_seen AS s_last_seen, s.expires_at AS s_expires,"
+            " s.acting_profile AS s_acting"
             " FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
             (_token_hash(token),),
         ).fetchone()
@@ -294,7 +392,18 @@ class Auth:
                     "UPDATE sessions SET last_seen = ? WHERE token_hash = ?",
                     (now.isoformat(), _token_hash(token)),
                 )
-        return User.from_row(row)
+        user = User.from_row(row)
+        if user.is_admin and row["s_acting"]:
+            user = replace(user, profile=row["s_acting"])  # viewing another profile
+        return user
+
+    def act_as(self, token: str, profile: str) -> None:
+        """An admin's session shows `profile` from now on (the others' accounts don't)."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE sessions SET acting_profile = ? WHERE token_hash = ?",
+                (profile, _token_hash(token)),
+            )
 
     def end_session(self, token: str) -> None:
         with self.conn:

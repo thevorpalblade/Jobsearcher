@@ -54,9 +54,18 @@ from jobsearcher.auth import (
     AuthError,
     User,
     check_new_password,
+    totp_uri,
 )
 from jobsearcher.companies.config import Company, load_companies
-from jobsearcher.config import Config, config_file_path, load_config
+from jobsearcher.config import (
+    KEY_ENV,
+    Config,
+    Provider,
+    config_file_path,
+    load_config,
+    load_profile_settings,
+    save_secret,
+)
 from jobsearcher.contacts import is_generic_email
 from jobsearcher.drafting import service as draft_service
 from jobsearcher.drafting.core import Draft
@@ -257,7 +266,10 @@ def render(
     """Render a template. Pass the store for full pages: their header shows the budget."""
     if store is not None:
         context["budget"] = views.budget_info(store, state.config.llm)
-    context = {"config": state.config, "user": current_user(request), **context}
+    user = current_user(request)
+    if user is not None and user.is_admin:  # the nav's profile switcher
+        context.setdefault("profiles", request.app.state.web.base.profile_slugs())
+    context = {"config": state.config, "user": user, **context}
     return state.templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
@@ -1024,6 +1036,124 @@ async def _submit_form(request: Request, key: str, write: bool) -> HTMLResponse:
     return _result(request, state, True, f"Saved {path.name}.", notes)
 
 
+# --- models and API keys (each profile's own; docs/m10-multi-user.md section 3a) ------
+
+
+def _allowed_providers(config: Config) -> list[str]:
+    return [p.value for p in Provider if config.provider_allowed(p)]
+
+
+def _key_rows(config: Config) -> list[dict[str, Any]]:
+    """Each provider's key: set or not, and its last 4 characters (never the key)."""
+    rows = []
+    for provider, env in KEY_ENV.items():
+        key = config.api_keys.get(env)
+        rows.append({"provider": provider.value, "env": env, "hint": key[-4:] if key else None})
+    return rows
+
+
+@router.get("/settings/models", response_class=HTMLResponse)
+def models_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    path = state.config.profile_file
+    own = load_profile_settings(path).llm if path is not None else None
+    return render(
+        request,
+        state,
+        "models.html",
+        store,
+        own=own,
+        effective=state.config.llm,
+        base=state.shared.base.llm,
+        providers=_allowed_providers(state.config),
+        keys=_key_rows(state.config) if state.config.own_keys else None,
+    )
+
+
+@router.post("/settings/models", response_class=HTMLResponse)
+async def save_models(request: Request) -> HTMLResponse:
+    require_htmx(request)
+    state = _state(request)
+    path = state.config.profile_file
+    if path is None:
+        raise HTTPException(404)  # no profiles: models are in config.yaml
+    form = await request.form()
+    old_text = path.read_text() if path.is_file() else ""
+    try:
+        data = forms.models_data(form, set(_allowed_providers(state.config)))
+    except forms.FormErrors as exc:
+        return _result(request, state, False, "Not saved: fix these first.", exc.errors)
+    new_text = settings.merge_yaml(old_text, data)
+    file = settings.FILES["profile"]
+    model, errors = settings.parse(file, new_text)
+    if model is None:
+        return _result(request, state, False, "Not saved: fix these first.", errors)
+    if new_text == old_text:
+        return _result(request, state, True, "No changes.")
+    notes = settings.effects(file, old_text, model)
+    backup = settings.save(path, new_text, state.backup_dir)
+    state.reload_config()
+    if backup is not None:
+        notes.append(f"The previous version is in {backup}.")
+    return _result(request, state, True, "Saved.", notes)
+
+
+@router.post("/settings/keys", dependencies=[Depends(require_htmx)])
+def save_key(
+    request: Request,
+    state: State,
+    env: Annotated[str, Form()] = "",
+    key: Annotated[str, Form()] = "",
+    remove: Annotated[str, Form()] = "",
+) -> Response:
+    path = state.config.secrets_file
+    if path is None:
+        raise HTTPException(404)  # this profile uses the server's keys
+    try:
+        save_secret(path, env, None if remove else key)
+    except ValueError as exc:
+        return _result(request, state, False, str(exc))
+    user = current_user(request)
+    with _auth(request) as auth:
+        action = "removed" if remove else "set"
+        auth.audit(
+            "api_key_" + action, user.username if user else "", f"{state.config.profile} {env}"
+        )
+    state.reload_config()
+    return htmx_redirect("/settings/models")
+
+
+@router.post(
+    "/settings/models/test", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def test_models(request: Request, state: State, store: WriteStore) -> HTMLResponse:
+    """One tiny request to each model, like `jobsearcher llm-check` (a fraction of a cent)."""
+    from pydantic import BaseModel
+
+    from jobsearcher.llm import BudgetTracker, LLMError, make_llm
+
+    class Pong(BaseModel):
+        reply: str
+
+    tracker = BudgetTracker(store, state.config.llm)
+    lines, ok = [], True
+    for role in forms.MODEL_ROLES:
+        spec = getattr(state.config.llm, role)
+        try:
+            result = make_llm(state.config, role, tracker).complete(  # type: ignore[arg-type]
+                system="You are a connectivity check.",
+                prompt='Reply with {"reply": "pong"}.',
+                schema=Pong,
+            )
+        except LLMError as exc:
+            ok = False
+            lines.append(f"{role} ({spec.provider} / {spec.model}): failed: {exc}")
+            continue
+        usage = result.usage
+        cost = f"${tracker.cost(usage):.5f}" if usage.billed else "subscription"
+        lines.append(f"{role} ({spec.provider} / {spec.model}): works ({cost})")
+    return _result(request, state, ok, "Both models work." if ok else "A model failed:", lines)
+
+
 @router.post("/settings/ranking", response_class=HTMLResponse)
 async def save_ranking_form(request: Request) -> HTMLResponse:
     return await _submit_form(request, "ranking", write=True)
@@ -1136,11 +1266,12 @@ def login(
     request: Request,
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
+    code: Annotated[str, Form()] = "",
     next: Annotated[str, Form()] = "/",
 ) -> Response:
     with _auth(request) as auth:
         try:
-            user = auth.authenticate(username, password, _client_ip(request))
+            user = auth.authenticate(username, password, _client_ip(request), code)
         except AuthError as exc:
             return render(
                 request,
@@ -1212,9 +1343,59 @@ def invite_set_password(
     return response
 
 
+def _account(
+    request: Request, state: WebState, status_code: int = 200, **context: Any
+) -> HTMLResponse:
+    return render(
+        request, state, "account.html", status_code=status_code, min_length=MIN_PASSWORD, **context
+    )
+
+
 @router.get("/account", response_class=HTMLResponse)
 def account_page(request: Request, state: State, changed: bool = False) -> HTMLResponse:
-    return render(request, state, "account.html", changed=changed, min_length=MIN_PASSWORD)
+    return _account(request, state, changed=changed)
+
+
+@router.post("/account/2fa/start", response_class=HTMLResponse)
+def totp_start(request: Request, state: State) -> HTMLResponse:
+    """A new secret, shown as a QR code; it's switched on once a code from it is entered."""
+    import segno
+
+    user = current_user(request)
+    assert user is not None
+    with _auth(request) as auth:
+        secret = auth.start_totp(user)
+    qr = segno.make(totp_uri(secret, user.username), error="m")
+    return _account(request, state, totp_secret=secret, totp_qr=qr.svg_inline(scale=5, border=2))
+
+
+@router.post("/account/2fa/confirm", response_class=HTMLResponse)
+def totp_confirm(request: Request, state: State, code: Annotated[str, Form()] = "") -> Response:
+    user = current_user(request)
+    assert user is not None
+    with _auth(request) as auth:
+        try:
+            auth.confirm_totp(user, code, _client_ip(request))
+        except AuthError as exc:
+            return _account(request, state, 400, totp_error=str(exc))
+    return RedirectResponse("/account?totp=on", status_code=303)
+
+
+@router.post("/account/2fa/disable", response_class=HTMLResponse)
+def totp_disable(
+    request: Request,
+    state: State,
+    password: Annotated[str, Form()] = "",
+    code: Annotated[str, Form()] = "",
+) -> Response:
+    user = current_user(request)
+    assert user is not None
+    with _auth(request) as auth:
+        try:
+            auth.disable_totp(user, password, code, _client_ip(request))
+        except AuthError as exc:
+            return _account(request, state, 400, totp_error=str(exc))
+    return RedirectResponse("/account?totp=off", status_code=303)
 
 
 @router.post("/account/password", response_class=HTMLResponse)
@@ -1232,18 +1413,90 @@ def change_password(
             check_new_password(password, confirm)
             auth.change_password(user, current, password, _client_ip(request))
         except AuthError as exc:
-            return render(
-                request,
-                state,
-                "account.html",
-                status_code=400,
-                error=str(exc),
-                min_length=MIN_PASSWORD,
-            )
+            return _account(request, state, 400, error=str(exc))
         # Changing the password ended every session, this one too: start a new one.
         response = RedirectResponse("/account?changed=1", status_code=303)
         _start_session(request, response, auth, user)
     return response
+
+
+# --- admin: profile switcher and accounts ----------------------------------------------
+
+
+@router.post("/admin/act-as", dependencies=[Depends(require_admin), Depends(require_htmx)])
+def act_as(request: Request, profile: Annotated[str, Form()] = "") -> Response:
+    """Show another candidate's profile in this admin session (to help them)."""
+    if profile not in request.app.state.web.base.profile_slugs():
+        raise HTTPException(400, f"No profile {profile!r}")
+    with _auth(request) as auth:
+        auth.act_as(request.cookies.get(SESSION_COOKIE, ""), profile)
+        user = current_user(request)
+        auth.audit("act_as", user.username if user else "", profile, _client_ip(request))
+    return htmx_redirect("/")
+
+
+def _users_page(request: Request, state: WebState, **context: Any) -> HTMLResponse:
+    with _auth(request) as auth:
+        users = auth.users()
+    return render(
+        request,
+        state,
+        "users.html",
+        users=users,
+        profiles=state.shared.base.profile_slugs(),
+        **context,
+    )
+
+
+def _invite_url(request: Request, token: str) -> str:
+    return f"{str(request.base_url).rstrip('/')}/invite/{token}"
+
+
+@router.get("/admin/users", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def users_page(request: Request, state: State) -> HTMLResponse:
+    return _users_page(request, state)
+
+
+@router.post(
+    "/admin/users",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_admin), Depends(require_htmx)],
+)
+def add_user(
+    request: Request,
+    state: State,
+    username: Annotated[str, Form()] = "",
+    role: Annotated[str, Form()] = "user",
+    profile: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    if profile not in state.shared.base.profile_slugs():
+        return _users_page(request, state, error="Pick the candidate profile they'll see.")
+    with _auth(request) as auth:
+        try:
+            _, token = auth.create_user(username, role, profile)
+        except AuthError as exc:
+            return _users_page(request, state, error=str(exc))
+    return _users_page(request, state, link=_invite_url(request, token), link_for=username.strip())
+
+
+@router.post(
+    "/admin/users/{name}/{action}",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_admin), Depends(require_htmx)],
+)
+def user_action(request: Request, name: str, action: str, state: State) -> HTMLResponse:
+    with _auth(request) as auth:
+        target = auth.user_by_name(name)
+        if target is None or action not in ("invite", "disable", "enable"):
+            raise HTTPException(404)
+        me = current_user(request)
+        if action == "disable" and me is not None and target.id == me.id:
+            return _users_page(request, state, error="You can't disable your own account.")
+        if action == "invite":
+            link = _invite_url(request, auth.new_invite(target))
+            return _users_page(request, state, link=link, link_for=target.username)
+        auth.set_disabled(target, action == "disable")
+    return _users_page(request, state)
 
 
 def create_app(config: Config, config_path: Path | None = None) -> FastAPI:

@@ -111,6 +111,12 @@ llm:
   # moonshot_requests_per_minute: 3   # 0 (default) = no limiter
   # zai_requests_per_minute: 0        # Z.ai doesn't publish its paid limits
 
+  # With several candidates (profiles/, docs/m10-multi-user.md): the profiles that use
+  # this file's models and the keys in .env, and may use claude_code and ollama (your
+  # own subscription and GPU). Every other profile picks its own models and enters its
+  # own keys on Settings → Models and keys. `migrate-profiles` adds the first one.
+  # server_key_profiles: [jenny]
+
   monthly_budget_usd: 20
   drafting_budget_share: 0.8    # drafting pauses at 80% of the budget, ranking at 100%
   # Prices (USD per million tokens) for models not in the built-in table:

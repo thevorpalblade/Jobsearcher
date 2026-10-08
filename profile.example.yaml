@@ -22,3 +22,12 @@ search:
   locations:
     - "Stockholm"
   include_remote: true
+
+# This candidate's own models and budget (Settings → Models and keys edits this).
+# Anything left out comes from config.yaml. Profiles not in config.yaml's
+# llm.server_key_profiles use their own API keys (set on that page, stored in
+# secrets.env next to this file) and can't use claude_code or ollama.
+# llm:
+#   ranking: {provider: zai, model: glm-5.3-flash, extra_body: {reasoning_effort: low}}
+#   drafting: {provider: anthropic, model: claude-sonnet-5-5}
+#   monthly_budget_usd: 10

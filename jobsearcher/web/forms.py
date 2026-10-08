@@ -8,6 +8,7 @@ An emptied optional field becomes `settings.DELETE`, so its key leaves the file.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from starlette.datastructures import FormData
@@ -198,3 +199,52 @@ def without_deletes(value: Any) -> Any:
     if isinstance(value, list):
         return [without_deletes(v) for v in value]
     return value
+
+
+MODEL_ROLES = ("ranking", "drafting")
+
+
+def models_data(form: FormData, allowed: set[str]) -> dict[str, Any]:
+    """profile.yaml's llm section from the Models form. A role with neither provider nor
+    model is removed, so config.yaml's applies."""
+    errors: list[str] = []
+    llm: dict[str, Any] = {}
+    for role in MODEL_ROLES:
+        provider = _field(form, f"{role}-provider")
+        model = _field(form, f"{role}-model")
+        if not provider and not model:
+            llm[role] = DELETE
+            continue
+        if not provider or not model:
+            errors.append(f"{role}: pick both a provider and a model (or neither)")
+            continue
+        if provider not in allowed:
+            errors.append(f"{role}: {provider} isn't available to this profile")
+            continue
+        spec: dict[str, Any] = {"provider": provider, "model": model}
+        effort = _field(form, f"{role}-effort")
+        if effort:
+            spec["effort"] = effort
+        extra = _field(form, f"{role}-extra")
+        if extra:
+            try:
+                parsed = json.loads(extra)
+            except ValueError:
+                parsed = None
+            if not isinstance(parsed, dict):
+                errors.append(
+                    f'{role}: extra request fields must be a JSON object, e.g. {{"a": 1}}'
+                )
+                continue
+            spec["extra_body"] = parsed
+        if _field(form, f"{role}-max_parallel"):
+            label = f"{role}: requests at once"
+            spec["max_parallel"] = _number(form, f"{role}-max_parallel", label, errors, int)
+        llm[role] = spec
+    if _field(form, "monthly_budget_usd"):
+        llm["monthly_budget_usd"] = _number(form, "monthly_budget_usd", "Monthly budget", errors)
+    else:
+        llm["monthly_budget_usd"] = DELETE
+    if errors:
+        raise FormErrors(errors)
+    return {"llm": llm}

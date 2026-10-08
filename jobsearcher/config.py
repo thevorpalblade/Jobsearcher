@@ -169,6 +169,10 @@ class LLMConfig(BaseModel):
     moonshot_requests_per_minute: int = 0
     # Z.ai doesn't publish its paid limits; 0 = no limiter (a 429 still pauses and retries).
     zai_requests_per_minute: int = 0
+    # Profiles that use the keys in .env and may use claude_code and ollama (the admin's
+    # own subscription and GPU). Other profiles bring their own keys (secrets.env in
+    # their folder) and use pay-per-token providers. A setup without profiles uses .env.
+    server_key_profiles: list[str] = Field(default_factory=list)
     monthly_budget_usd: float = 20.0
     # Drafting pauses once this share of the monthly budget is spent; ranking at 100%.
     drafting_budget_share: float = 0.8
@@ -222,6 +226,29 @@ DEFAULT_PROFILE = "default"
 PROFILE_FILE = "profile.yaml"
 
 
+# Only profiles in llm.server_key_profiles may use these: the admin's own Claude
+# subscription and GPU.
+ADMIN_PROVIDERS = frozenset({Provider.CLAUDE_CODE, Provider.OLLAMA})
+# The environment variable (in .env, or a profile's secrets.env) with each provider's key.
+KEY_ENV = {
+    Provider.MOONSHOT: "MOONSHOT_API_KEY",
+    Provider.ANTHROPIC: "ANTHROPIC_API_KEY",
+    Provider.NVIDIA: "NVIDIA_API_KEY",
+    Provider.ZAI: "ZAI_API_KEY",
+}
+SECRETS_FILE = "secrets.env"
+
+
+class ProfileLLM(BaseModel):
+    """A profile's own models and budget; anything unset comes from config.yaml."""
+
+    ranking: ModelRole | None = None
+    drafting: ModelRole | None = None
+    grounding: ModelRole | None = None
+    grounding_fallback: ModelRole | None = None
+    monthly_budget_usd: float | None = None
+
+
 class ProfileSettings(BaseModel):
     """profiles/<slug>/profile.yaml: one candidate's own settings."""
 
@@ -230,6 +257,37 @@ class ProfileSettings(BaseModel):
     # Their keywords, excluded words and region. expire_after_days stays global
     # (config.yaml), since the job pool is shared.
     search: SearchConfig = Field(default_factory=SearchConfig)
+    llm: ProfileLLM = Field(default_factory=ProfileLLM)
+
+
+def read_secrets(path: Path) -> dict[str, str]:
+    """KEY=value lines of a profile's secrets.env."""
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text().splitlines():
+        key, sep, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if sep and key and not key.startswith("#") and value:
+            out[key] = value
+    return out
+
+
+def save_secret(path: Path, env: str, value: str | None) -> None:
+    """Set (or with None, remove) one key in a secrets.env, readable by its owner only."""
+    if env not in KEY_ENV.values():
+        raise ValueError(f"Unknown key {env!r}")
+    if value is not None and (not value.strip() or "\n" in value or len(value) > 500):
+        raise ValueError("That doesn't look like an API key.")
+    secrets = read_secrets(path)
+    if value is None:
+        secrets.pop(env, None)
+    else:
+        secrets[env] = value.strip()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_text("".join(f"{k}={v}\n" for k, v in sorted(secrets.items())))
 
 
 def load_profile_settings(path: Path) -> ProfileSettings:
@@ -255,8 +313,19 @@ class Config(BaseModel):
     # profiles/ next to config.yaml. Without it, the setup has one profile,
     # DEFAULT_PROFILE, made of the paths above.
     profiles_dir: Path | None = None
-    # Which profile this config is for: set by for_profile(), not in config.yaml.
+    # Which profile this config is for, and its own API keys: set by for_profile(), not
+    # in config.yaml, and never written out.
     profile: str = DEFAULT_PROFILE
+    own_keys: bool = Field(default=False, exclude=True)
+    api_keys: dict[str, str] = Field(default_factory=dict, exclude=True, repr=False)
+
+    def api_key(self, env: str) -> str | None:
+        """A provider's key: the profile's own (secrets.env), or for the admin's
+        profiles (llm.server_key_profiles) and setups without profiles, .env's."""
+        return self.api_keys.get(env) if self.own_keys else os.environ.get(env)
+
+    def provider_allowed(self, provider: Provider) -> bool:
+        return not (self.own_keys and provider in ADMIN_PROVIDERS)
 
     def profile_slugs(self) -> list[str]:
         """Every profile: the folders in profiles/ with a profile.yaml, by name."""
@@ -280,16 +349,34 @@ class Config(BaseModel):
             update={"expire_after_days": self.search.expire_after_days}
         )
         web = self.web.model_copy(update={"user_name": settings.name or self.web.user_name})
+        own_keys = slug not in self.llm.server_key_profiles
+        overrides = settings.llm.model_dump(exclude_none=True)
+        llm = self.llm.model_copy(
+            update={k: getattr(settings.llm, k) for k in overrides}  # models, not dicts
+        )
+        if own_keys and llm.grounding_fallback is not None:
+            if llm.grounding_fallback.provider in ADMIN_PROVIDERS:
+                llm.grounding_fallback = None  # the admin's; not for this profile
         return self.model_copy(
             update={
                 "profile": slug,
                 "search": search,
                 "web": web,
+                "llm": llm,
+                "own_keys": own_keys,
+                "api_keys": read_secrets(folder / SECRETS_FILE) if own_keys else {},
                 "cv_path": folder / "cvs" / "master.md",
                 "ranking_config": folder / "ranking.yaml",
                 "companies_config": folder / "companies.yaml",
             }
         )
+
+    @property
+    def secrets_file(self) -> Path | None:
+        """This profile's secrets.env (None when it uses .env's keys)."""
+        if not self.own_keys or self.profiles_dir is None:
+            return None
+        return self.profiles_dir / self.profile / SECRETS_FILE
 
     @property
     def profile_file(self) -> Path | None:

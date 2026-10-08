@@ -11,6 +11,7 @@ included, goes through one limiter per process, which spaces requests out and, a
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from collections.abc import Callable
@@ -70,11 +71,16 @@ _registry: dict[str, RateLimiter] = {}
 _registry_lock = threading.Lock()
 
 
-def limiter_for(name: str, requests_per_minute: float) -> RateLimiter | None:
-    """The process-wide limiter for an API (ranking, news classification and drafts'
-    grounding checks all share one), or None when no limit is configured."""
+def limiter_for(
+    name: str, requests_per_minute: float, key: str | None = None
+) -> RateLimiter | None:
+    """The process-wide limiter for an API key (ranking, news classification and drafts'
+    grounding checks all share one; limits are per key, so each profile's own key gets
+    its own), or None when no limit is configured."""
     if not requests_per_minute or requests_per_minute <= 0:
         return None
+    if key:
+        name = f"{name}:{hashlib.sha256(key.encode()).hexdigest()[:12]}"
     with _registry_lock:
         limiter = _registry.get(name)
         if limiter is None or abs(limiter.interval - 60.0 / requests_per_minute) > 1e-9:

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Models and keys · Settings · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/settings">← Settings</a></p>
+<div class="page-head">
+  <h1>Models and keys</h1>
+  {% if own is not none %}<a class="muted small" href="/settings/files/profile">Edit as YAML</a>{% endif %}
+</div>
+
+{% if own is none %}
+  <p>This setup has no candidate profiles, so the models are set in
+    {% if user and user.is_admin %}<a href="/settings/files/config">config.yaml</a>{% else %}config.yaml{% endif %}
+    and the keys in <code>.env</code>.</p>
+{% else %}
+<p class="muted">Which AI models rank jobs and write drafts for this profile, and its monthly budget.
+  Leave a model empty to use the default from config.yaml (shown in grey).</p>
+
+<form class="settings-form" hx-target="#form-result">
+  {% for role, label, help in [
+      ("ranking", "Ranking", "Scores every job that passes your filters. It runs for every new job, so a cheap model is best. Changing it re-ranks everything."),
+      ("drafting", "Drafting", "Writes the tailored CV and cover letter. Runs only when you ask, so a stronger model is worth it.")] %}
+  {% set mine = own[role] %}{% set default = base[role] %}
+  <section>
+    <h2>{{ label }}</h2>
+    <p class="help">{{ help }}</p>
+    <div class="row">
+      <label>Provider
+        <select name="{{ role }}-provider">
+          <option value="">Default ({{ default.provider }})</option>
+          {% for p in providers %}<option value="{{ p }}" {{ "selected" if mine and mine.provider == p }}>{{ p }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Model <input name="{{ role }}-model" value="{{ mine.model if mine else '' }}" placeholder="{{ default.model }}"></label>
+      <label>Effort <input name="{{ role }}-effort" value="{{ mine.effort if mine and mine.effort else '' }}" placeholder="optional, e.g. medium"></label>
+      <label>Requests at once <input type="number" min="1" name="{{ role }}-max_parallel" value="{{ mine.max_parallel if mine and mine.max_parallel != 1 else '' }}" placeholder="1"></label>
+    </div>
+    <label>Extra request fields (JSON, optional)
+      <input name="{{ role }}-extra" value="{{ mine.extra_body | tojson if mine and mine.extra_body else '' }}" placeholder='e.g. {"reasoning_effort": "low"}'>
+    </label>
+  </section>
+  {% endfor %}
+
+  <section>
+    <h2>Budget</h2>
+    <label class="inline">Monthly limit, USD
+      <input type="number" step="0.5" min="0" name="monthly_budget_usd" value="{{ own.monthly_budget_usd if own.monthly_budget_usd is not none else '' }}" placeholder="{{ base.monthly_budget_usd }}">
+    </label>
+    <p class="help">Ranking stops for the month when it's reached; drafting at {{ (effective.drafting_budget_share * 100) | round | int }}% of it.</p>
+  </section>
+
+  <div class="savebar">
+    <button type="submit" class="primary" hx-post="/settings/models">Save</button>
+    <button type="submit" hx-post="/settings/models/test">Test both models</button>
+    <div id="form-result"></div>
+  </div>
+</form>
+
+<section>
+  <h2>API keys</h2>
+  {% if keys is none %}
+    <p class="muted">This profile uses the server's keys (from <code>.env</code>).</p>
+  {% else %}
+    <p class="muted">Your own keys for the providers you pick above. They're stored on the server for
+      this profile only, and never shown again: only their last four characters.</p>
+    <table class="jobs">
+      <thead><tr><th>Provider</th><th>Key</th><th></th></tr></thead>
+      <tbody>
+      {% for k in keys %}
+      <tr>
+        <td>{{ k.provider }}</td>
+        <td>{% if k.hint %}set, ends in <code>…{{ k.hint }}</code>{% else %}<span class="muted">not set</span>{% endif %}</td>
+        <td>
+          <form class="inline" hx-post="/settings/keys" hx-target="#key-result">
+            <input type="hidden" name="env" value="{{ k.env }}">
+            <input type="password" name="key" autocomplete="off" placeholder="{{ 'Replace' if k.hint else 'Paste key' }}" required>
+            <button type="submit">Save</button>
+          </form>
+          {% if k.hint %}
+          <form class="inline" hx-post="/settings/keys" hx-target="#key-result" hx-confirm="Remove the {{ k.provider }} key?">
+            <input type="hidden" name="env" value="{{ k.env }}">
+            <input type="hidden" name="remove" value="1">
+            <button type="submit" class="danger">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div id="key-result"></div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

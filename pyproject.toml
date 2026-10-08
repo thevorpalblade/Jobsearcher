@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pyyaml>=6",
     "ruamel.yaml>=0.18",
+    "segno>=1.6",  # QR codes for two-factor setup (pure Python)
     "tzdata",
     "uvicorn>=0.30",
 ]

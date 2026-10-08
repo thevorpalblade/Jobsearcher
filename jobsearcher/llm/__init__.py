@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from jobsearcher.config import Config, Provider
+from jobsearcher.config import KEY_ENV, Config, Provider
 from jobsearcher.llm.base import (
     BudgetExceeded,
     LLMClient,
@@ -37,6 +37,16 @@ def _spec(config: Config, role: Role):  # type: ignore[no-untyped-def]
 def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
     """Build the client configured for `role`, wrapped with budget enforcement."""
     spec = _spec(config, role)
+    if not config.provider_allowed(spec.provider):
+        raise LLMError(
+            f"{spec.provider} runs on the admin's own subscription or machine: pick another "
+            f"{role} model in Settings → Models and keys"
+        )
+    env = KEY_ENV.get(spec.provider)
+    key = config.api_key(env) if env else None
+    if env and not key:
+        where = "Settings → Models and keys" if config.own_keys else ".env"
+        raise LLMError(f"{env} is not set (add it in {where})")
     client: LLMClient
     if spec.provider == Provider.CLAUDE_CODE:
         from jobsearcher.llm.claude_code_client import ClaudeCodeLLM
@@ -45,21 +55,23 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
     elif spec.provider == Provider.ANTHROPIC:
         from jobsearcher.llm.anthropic_client import AnthropicLLM
 
-        client = AnthropicLLM(spec.model, effort=spec.effort, max_tokens=spec.max_tokens)
+        client = AnthropicLLM(
+            spec.model, effort=spec.effort, max_tokens=spec.max_tokens, api_key=key
+        )
     elif spec.provider == Provider.NVIDIA:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
 
         client = OpenAICompatibleLLM(
             spec.model,
             base_url=config.llm.nvidia_base_url,
-            api_key_env="NVIDIA_API_KEY",
+            api_key=key,
             label="NVIDIA",
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
-            limiter=limiter_for("nvidia", config.llm.nvidia_requests_per_minute),
+            limiter=limiter_for("nvidia", config.llm.nvidia_requests_per_minute, key),
         )
     elif spec.provider == Provider.ZAI:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
@@ -67,14 +79,14 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
         client = OpenAICompatibleLLM(
             spec.model,
             base_url=config.llm.zai_base_url,
-            api_key_env="ZAI_API_KEY",
+            api_key=key,
             label="Z.ai",
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
-            limiter=limiter_for("zai", config.llm.zai_requests_per_minute),
+            limiter=limiter_for("zai", config.llm.zai_requests_per_minute, key),
         )
     elif spec.provider == Provider.OLLAMA:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
@@ -97,12 +109,13 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
         client = OpenAICompatibleLLM(
             spec.model,
             base_url=config.llm.moonshot_base_url,
+            api_key=key,
             max_tokens=spec.max_tokens,
             extra_body=spec.extra_body,
             enforce_schema=spec.enforce_schema,
             timeout_s=spec.timeout_s,
             max_retries=spec.max_retries,
-            limiter=limiter_for("moonshot", config.llm.moonshot_requests_per_minute),
+            limiter=limiter_for("moonshot", config.llm.moonshot_requests_per_minute, key),
         )
     return BudgetedLLM(client, tracker, purpose=role)
 

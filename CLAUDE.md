@@ -92,3 +92,6 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   `/static/*` and `/healthz` (deny by default: a new route is private). A route gets the
   user's own profile through `State`; never take a profile from the URL. Admin-only routes
   use `Depends(require_admin)` (404 for others). Accounts: `jobsearcher users add|invite|...`.
+- **API keys per profile:** read keys with `config.api_key(env)`, never `os.environ` directly:
+  profiles outside `llm.server_key_profiles` use their own `secrets.env` and may not use
+  `claude_code`/`ollama` (`config.provider_allowed`). Keys are never shown or logged (last 4 only).

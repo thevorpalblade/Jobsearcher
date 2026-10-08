@@ -145,6 +145,11 @@ def effects(file: ConfigFile, old_text: str, new: BaseModel) -> list[str]:
         if new.search != old.search or new.sources != old.sources:
             notes.append("Search settings changed: they apply from the next search.")
     if isinstance(new, ProfileSettings) and isinstance(old, ProfileSettings):
+        if new.llm.ranking != old.llm.ranking:
+            notes.append(
+                "The ranking model changed: every open job in this profile is re-ranked on "
+                "the next run, at the new model's price."
+            )
         if new.search != old.search:
             notes.append(
                 "Search settings changed: new keywords and places apply from the next "

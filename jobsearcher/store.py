@@ -141,7 +141,9 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash   TEXT,                   -- NULL until the invite link is used
     invite_hash     TEXT,
     invite_expires  TEXT,
-    totp_secret     TEXT,                   -- two-factor codes (phase 3)
+    totp_secret     TEXT,                   -- two-factor codes (base32), once confirmed
+    totp_pending    TEXT,                   -- a new secret waiting for its first code
+    totp_last       TEXT,                   -- the last time step used (no replays)
     disabled        INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL
 );
@@ -152,7 +154,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen   TEXT NOT NULL,
     expires_at  TEXT NOT NULL,
     ip          TEXT NOT NULL DEFAULT '',
-    user_agent  TEXT NOT NULL DEFAULT ''
+    user_agent  TEXT NOT NULL DEFAULT '',
+    acting_profile  TEXT                -- an admin viewing another profile
 );
 CREATE TABLE IF NOT EXISTS login_failures (
     key  TEXT NOT NULL,                     -- "user:<name>" or "ip:<address>"
@@ -270,6 +273,13 @@ class Store:
                 self.conn.execute(
                     f"ALTER TABLE llm_usage ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
                 )
+        for table, column in (
+            ("sessions", "acting_profile"),
+            ("users", "totp_pending"),
+            ("users", "totp_last"),
+        ):
+            if column not in self._columns(table):
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
         if "profile" not in columns:
             with self.conn:
                 self.conn.execute("ALTER TABLE llm_usage ADD COLUMN profile TEXT")
@@ -590,14 +600,16 @@ class Store:
         """(number of calls, total tokens) for models starting with `model_prefix`."""
         row = self.conn.execute(
             "SELECT COUNT(*), COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens"
-            " + cache_write_tokens), 0) FROM llm_usage WHERE ts >= ? AND model LIKE ?",
-            (since.isoformat(), model_prefix + "%"),
+            " + cache_write_tokens), 0) FROM llm_usage"
+            " WHERE profile = ? AND ts >= ? AND model LIKE ?",
+            (self.profile, since.isoformat(), model_prefix + "%"),
         ).fetchone()
         return int(row[0]), int(row[1])
 
     def llm_cost_since(self, since: datetime) -> float:
         row = self.conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE ts >= ?", (since.isoformat(),)
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE profile = ? AND ts >= ?",
+            (self.profile, since.isoformat()),
         ).fetchone()
         return float(row[0])
 
@@ -607,9 +619,9 @@ class Store:
             "SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,"
             " SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,"
             " SUM(cache_write_tokens) AS cache_write_tokens, SUM(cost_usd) AS cost_usd"
-            " FROM llm_usage WHERE ts >= ? GROUP BY model, purpose"
+            " FROM llm_usage WHERE profile = ? AND ts >= ? GROUP BY model, purpose"
             " ORDER BY cost_usd DESC, calls DESC",
-            (since.isoformat(),),
+            (self.profile, since.isoformat()),
         )
         return [UsageSummary(**dict(row)) for row in rows]
 
