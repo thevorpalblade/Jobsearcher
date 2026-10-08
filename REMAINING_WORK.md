@@ -41,7 +41,7 @@ could not be built there.
 - [ ] Optional: replace `tests/fixtures/*.json` with real (anonymised) responses.
 - [x] `claude_code` provider: `llm-check` succeeded for Haiku 4.5 and Opus 5.5
       (2026-10-01).
-- [ ] Kimi isn't in use (ranking runs on GLM via NVIDIA). If it's switched on:
+- [ ] Kimi isn't in use (Jenny ranks on GLM via Z.ai, Deirdre on NVIDIA). If it's switched on:
       `jobsearcher llm-check` with a real `MOONSHOT_API_KEY`. Confirm Moonshot reports cached tokens where
       `_cached_tokens()` in `llm/openai_compatible.py` expects them, and that the
       model IDs `kimi-k2.6` / `kimi-k3` and their prices in `config.py`
@@ -229,7 +229,10 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       - [x] The chat for non-admins too (2026-10-08): `chat.users` in config.yaml, home
             network only; chats are private to their owner (`chat_sessions.owner`), and
             Claude is told who's asking and which profile folder is theirs.
-      - [ ] Phase 5: onboard the second candidate.
+      - [ ] Phase 5: onboard the second candidate. Done 2026-10-08: profile `deirdre`
+            (`jobsearcher profiles add`), account with an invite link, models default to
+            NVIDIA's free GLM. Waiting on her: set a password, add her NVIDIA key, upload a
+            CV, take the Preferences interview.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others
       as "more facts about the same candidate", exact copies skipped) and gives one score.
@@ -310,12 +313,6 @@ treat differences under ~0.05 as noise.
 - [x] GLM 5.3 Flash on Z.ai benchmarked (row above) and ranking switched to it 2026-10-07:
       Jenny's 861 jobs re-ranked for $0.43. Still open from this item: Z.ai's free
       GLM-4.7-Flash, and a fresh Opus reference on prompt v3 + all CVs.
-- [ ] (old note) Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`) and Z.ai's free
-      GLM-4.7-Flash. Key is in `.env` (2026-10-07) but the account has no balance yet.
-      On Z.ai GLM 5.3 Flash can't turn thinking off (400: "use low, high, or max"); use
-      `extra_body: {reasoning_effort: low}`, so it costs more than the ~$0.0007 a job
-      estimated without reasoning. GLM-4.7-Flash (free) took 49 s for a tiny test call.
-      Re-run the Opus reference first: prompt version 3 and all CVs make the old runs stale.
 - [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
       them predate the current CV, so they aren't comparable).
 
