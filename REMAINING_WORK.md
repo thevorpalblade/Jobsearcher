@@ -273,6 +273,7 @@ Code, effort medium) as the reference:
 | Sonnet 5.5 (effort medium) | 0.96 | 10 | 22 | 7 | subscription |
 | Haiku 4.5, thinking off | 0.79 | 7 | 36 | 9 | subscription |
 | Qwen3 8B (Ollama, local RTX 3080), no thinking; newer CV (2026-10-07) | 0.65 | 7 | 65 | 5 | 0 |
+| GLM 5.3 Flash (Z.ai, paid), reasoning low; prompt v3 + all CVs (2026-10-07) | 0.85 | 9 | 25 | 11 | 0.0006 |
 
 Sonnet matches Opus almost exactly (mean gap 3.8 points). Haiku through Claude Code thinks for
 3-9k tokens a job (60-90 s) unless `MAX_THINKING_TOKENS=0`; thinking off it takes 9 s but is
@@ -283,7 +284,10 @@ overheating; the 2026-10-07 run went under a watchdog that cancels at 80 C (it p
 Qwen's run used a newer CV; that can't explain a 40-point gap. One run per model, 40 jobs:
 treat differences under ~0.05 as noise.
 
-- [ ] Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`) and Z.ai's free
+- [x] GLM 5.3 Flash on Z.ai benchmarked (row above) and ranking switched to it 2026-10-07:
+      Jenny's 861 jobs re-ranked for $0.43. Still open from this item: Z.ai's free
+      GLM-4.7-Flash, and a fresh Opus reference on prompt v3 + all CVs.
+- [ ] (old note) Benchmark GLM 5.3 Flash on Z.ai's paid API (provider `zai`) and Z.ai's free
       GLM-4.7-Flash. Key is in `.env` (2026-10-07) but the account has no balance yet.
       On Z.ai GLM 5.3 Flash can't turn thinking off (400: "use low, high, or max"); use
       `extra_body: {reasoning_effort: low}`, so it costs more than the ~$0.0007 a job
