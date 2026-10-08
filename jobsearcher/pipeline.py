@@ -98,8 +98,12 @@ def run_search(
     report = SearchReport()
     started = datetime.now(UTC)
 
+    # A profile with nothing to search for yet (no keywords, no target roles) doesn't
+    # widen the filter: its empty region would otherwise mean "all of Sweden".
+    searching = [p for p in profiles if search_keywords(p)] or profiles
+
     def wanted(job: Job) -> bool:
-        return any(matches_filters(job, p.search) for p in profiles)
+        return any(matches_filters(job, p.search) for p in searching)
 
     def keep(job: Job) -> bool:
         report.fetched += 1

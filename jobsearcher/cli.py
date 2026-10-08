@@ -596,6 +596,56 @@ def cmd_contacts(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_profiles(config: Config, args: argparse.Namespace) -> int:
+    """Candidate profiles: list them, or add an empty one (docs/m10-multi-user.md)."""
+    import yaml
+
+    from jobsearcher.companies.config import slugify
+    from jobsearcher.config import PROFILE_FILE
+
+    if args.action == "list":
+        for slug in config.profile_slugs():
+            profile = config.for_profile(slug)
+            keys = "own keys" if profile.own_keys else "server keys"
+            cvs = (
+                len(list(profile.cv_path.parent.glob("*.md")))
+                if profile.cv_path.parent.is_dir()
+                else 0
+            )
+            print(f"{slug:12} {profile.web.user_name or '-':16} {keys:11} {cvs} CVs")
+        return 0
+    slug = slugify(args.slug or "")
+    if not slug or slug != args.slug or slug == DEFAULT_PROFILE:
+        print(f"Pick a plain lowercase name, not {args.slug!r}", file=sys.stderr)
+        return 2
+    if config.profiles_dir is None or config.profile_slugs() == [DEFAULT_PROFILE]:
+        print(
+            "This setup has no profiles yet: run `jobsearcher migrate-profiles` first",
+            file=sys.stderr,
+        )
+        return 2
+    folder = config.profiles_dir / slug
+    if folder.exists():
+        print(f"{folder} already exists", file=sys.stderr)
+        return 1
+    (folder / "cvs").mkdir(parents=True)
+    settings = {"name": args.name or slug.title(), "search": {"keywords": [], "locations": []}}
+    (folder / PROFILE_FILE).write_text(
+        "# This candidate's own settings (profile.example.yaml explains each one). Until\n"
+        "# there are keywords or target roles, nothing is searched or ranked for them.\n"
+        + yaml.safe_dump(settings, allow_unicode=True, sort_keys=False)
+    )
+    (folder / "ranking.yaml").write_text(
+        "# Target roles and preferences: edit on Settings > Ranking (ranking.example.yaml\n"
+        "# explains each setting). No roles yet, so nothing is ranked.\ntarget_roles: []\n"
+    )
+    (folder / "companies.yaml").write_text("companies: []\n")
+    print(f"Created {folder}: upload a CV and set target roles, region and models in Settings.")
+    if slug not in config.llm.server_key_profiles:
+        print("It brings its own API keys (Settings > Models and keys).")
+    return 0
+
+
 def cmd_migrate_profiles(config: Config, args: argparse.Namespace) -> int:
     """Move a setup without profiles into profiles/<slug>/: ranking.yaml,
     companies.yaml, the CVs and config.yaml's search section, plus the database rows
@@ -742,7 +792,9 @@ def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
 
 
 # Commands that work on every profile (or none) rather than one.
-SHARED_COMMANDS = {"search", "run", "daemon", "web", "users", "migrate-profiles", "budget"}
+SHARED_COMMANDS = {
+    "search", "run", "daemon", "web", "users", "profiles", "migrate-profiles", "budget",
+}  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -822,6 +874,11 @@ def main(argv: list[str] | None = None) -> int:
         "--url", help="the web UI's address, for the link (default: http://<web.host>:<web.port>)"
     )
 
+    p_profiles = sub.add_parser("profiles", help="candidate profiles: list, or add an empty one")
+    p_profiles.add_argument("action", choices=["add", "list"])
+    p_profiles.add_argument("slug", nargs="?", help="with add: the profile's name, e.g. 'anna'")
+    p_profiles.add_argument("--name", help="with add: how the dashboard greets them")
+
     p_contacts = sub.add_parser(
         "contacts",
         help="look up contact people on employers' websites (a job, --company, or the "
@@ -872,6 +929,7 @@ def main(argv: list[str] | None = None) -> int:
         "migrate-profiles": cmd_migrate_profiles,
         "users": cmd_users,
         "contacts": cmd_contacts,
+        "profiles": cmd_profiles,
     }
     return handler[args.command](config, args)
 

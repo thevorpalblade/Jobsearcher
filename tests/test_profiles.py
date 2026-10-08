@@ -211,3 +211,21 @@ def test_matches_filters_is_per_profile():
     bo = SearchConfig(locations=["Göteborg"], exclude_keywords=["konsult"])
     job = make_job(1, "Konsult", location="Göteborg")
     assert not matches_filters(job, anna) and not matches_filters(job, bo)
+
+
+def test_a_profile_not_searching_yet_doesnt_widen_the_search(two, tmp_path):
+    """A new, empty profile has no region: it mustn't make the search keep all of Sweden."""
+    (tmp_path / "config.yaml").write_text("search: {expire_after_days: 5}\n")
+    assert cli.main(["--config", str(tmp_path / "config.yaml"), "profiles", "add", "cecilia"]) == 0
+    config = load_config(tmp_path / "config.yaml")
+    assert config.profile_slugs() == ["anna", "bo", "cecilia"]
+    cecilia = config.for_profile("cecilia")
+    assert cecilia.web.user_name == "Cecilia" and cecilia.own_keys
+    assert load_ranking_config(cecilia.ranking_config).target_roles == []
+    store = Store(":memory:")
+    malmo = make_job(3, "Projektledare", location="Malmö")
+    run_search(config, store, [FakeSource("platsbanken", [malmo])], profiles=all_profiles(config))
+    assert list(store.iter_jobs()) == []  # still only anna's and bo's regions
+    args = ["--config", str(tmp_path / "config.yaml"), "profiles", "add"]
+    assert cli.main([*args, "cecilia"]) == 1  # exists
+    assert cli.main([*args, "Not Plain"]) == 2
