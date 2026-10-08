@@ -163,6 +163,18 @@ CREATE TABLE IF NOT EXISTS interviews (
     updated_at  TEXT NOT NULL
 );
 
+-- Calibration (jobsearcher/calibrate.py): the jobs of a profile's current round and
+-- the candidate's ratings of them.
+CREATE TABLE IF NOT EXISTS calibrations (
+    profile     TEXT NOT NULL,
+    job_id      TEXT NOT NULL,
+    position    INTEGER NOT NULL,
+    rating      TEXT,               -- calibrate.RATINGS key; NULL until rated
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (profile, job_id)
+);
+
 -- Web UI accounts and sessions (jobsearcher/auth.py). Tokens are stored as SHA-256.
 CREATE TABLE IF NOT EXISTS users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,7 +215,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-PROFILE_TABLES = ("rankings", "drafts", "applications", "signals", "job_contacts", "interviews")
+PROFILE_TABLES = (
+    "rankings", "drafts", "applications", "signals", "job_contacts", "interviews", "calibrations",
+)  # fmt: skip
 
 
 def _table_ddl(table: str) -> str:
@@ -905,6 +919,33 @@ class Store:
                 " DO UPDATE SET chosen = excluded.chosen",
                 (self.profile, key, contact_key, _now().isoformat()),
             )
+
+    # --- calibration -------------------------------------------------------
+
+    def start_calibration(self, job_ids: list[str]) -> None:
+        """A new round: these jobs, unrated (the previous round is dropped)."""
+        now = _now().isoformat()
+        with self.conn:
+            self.conn.execute("DELETE FROM calibrations WHERE profile = ?", (self.profile,))
+            self.conn.executemany(
+                "INSERT INTO calibrations (profile, job_id, position, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                [(self.profile, job_id, i, now) for i, job_id in enumerate(job_ids)],
+            )
+
+    def calibrations(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM calibrations WHERE profile = ? ORDER BY position", (self.profile,)
+        ).fetchall()
+
+    def rate(self, job_id: str, rating: str | None, note: str) -> bool:
+        """Rate a job of the current round; False if it isn't in it."""
+        with self.conn:
+            cur = self.conn.execute(
+                "UPDATE calibrations SET rating = ?, note = ? WHERE profile = ? AND job_id = ?",
+                (rating, note, self.profile, job_id),
+            )
+        return cur.rowcount == 1
 
     # --- the preferences interview ---------------------------------------
 

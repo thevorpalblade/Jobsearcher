@@ -124,6 +124,9 @@ class Interview:
     done: bool = False
     proposal: Proposal | None = None
     updated_at: datetime | None = None
+    # When its settings were saved: the interview is complete (the dashboard stops
+    # nudging, and calibration opens once jobs are ranked with them).
+    applied_at: datetime | None = None
 
     def to_json(self) -> str:
         return json.dumps(
@@ -133,6 +136,7 @@ class Interview:
                 "covered": self.covered,
                 "done": self.done,
                 "proposal": self.proposal.model_dump() if self.proposal else None,
+                "applied_at": self.applied_at.isoformat() if self.applied_at else None,
             },
             ensure_ascii=False,
         )
@@ -148,11 +152,27 @@ class Interview:
             done=data.get("done", False),
             proposal=Proposal.model_validate(proposal) if proposal else None,
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            applied_at=datetime.fromisoformat(data["applied_at"])
+            if data.get("applied_at")
+            else None,
         )
 
     def transcript(self) -> str:
         who = {"interviewer": "Interviewer", "candidate": "Candidate"}
         return "\n\n".join(f"{who[m['role']]}: {m['text']}" for m in self.messages)
+
+
+def mark_applied(store: Store) -> None:
+    interview = load(store)
+    if interview is not None:
+        interview.applied_at = now()
+        store.save_interview(interview.to_json())
+
+
+def completed(store: Store) -> datetime | None:
+    """When this profile's interview settings were saved, if ever."""
+    interview = load(store)
+    return interview.applied_at if interview else None
 
 
 def load(store: Store) -> Interview | None:
@@ -193,8 +213,10 @@ def _system(config: Config, interview: Interview) -> str:
 
 
 def start(config: Config, store: Store, llm: BudgetedLLM, language: str) -> Interview:
-    """A new interview (replacing any earlier one) and its first question."""
-    interview = Interview(language=language)
+    """A new interview (replacing any earlier one) and its first question. An earlier
+    interview's completion is kept: its settings are still the ones in use."""
+    earlier = load(store)
+    interview = Interview(language=language, applied_at=earlier.applied_at if earlier else None)
     _ask(
         config,
         llm,

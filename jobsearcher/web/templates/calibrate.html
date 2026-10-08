@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Calibrate · Jobsearcher{% endblock %}
+{% block content %}
+<div id="calibrate">
+<h1>Calibrate</h1>
+<p class="muted">Rate a spread of your ranked jobs yourself. You'll see how well the ranking
+  agrees with you, where it doesn't, and how to fix that.</p>
+
+<div id="calibrate-result"></div>
+
+{% if not readiness.ready %}
+  <div class="result">{{ readiness.reason }}
+    {% if "interview" in readiness.reason %}<a href="/interview">Go to the interview →</a>{% endif %}</div>
+{% elif not items %}
+  <p>{{ set_size }} jobs, from your best match down to your weakest, chosen from the
+    {{ readiness.current }} ranked with your current settings. Rating them takes a few minutes.</p>
+  <form hx-post="/calibrate/start" hx-target="#calibrate-result">
+    <button type="submit" class="primary">Start calibrating</button>
+  </form>
+{% else %}
+  <p class="small muted">{{ rated }} of {{ items | length }} rated.
+    {% if rated < min_rated %}Results appear after {{ min_rated }}.{% endif %}
+    <button type="button" class="link small" hx-post="/calibrate/reset" hx-target="#calibrate-result"
+            hx-confirm="Start a new round with other jobs? These ratings are dropped.">New round</button></p>
+
+  {% if found %}
+  <section class="card">
+    <h2>How well the ranking agrees with you</h2>
+    {% if found.agreement is none %}
+      <p class="muted">Not enough variety in the ratings to tell yet.</p>
+    {% else %}
+      {% set a = found.agreement %}
+      <p><b>{{ "%.2f" | format(a) }}</b> (rank agreement, from -1 to 1):
+        {% if a >= 0.7 %}it ranks jobs much like you do.
+        {% elif a >= 0.4 %}roughly right, with some clear misses.
+        {% else %}it often disagrees with you; the preferences need work.{% endif %}</p>
+    {% endif %}
+
+    {% if found.weights %}
+      <p>Weighing <b>fit {{ "%.0f" | format(found.weights.fit * 100) }}%</b> and
+        <b>chance of success {{ "%.0f" | format(found.weights.success * 100) }}%</b> would agree
+        better: {{ "%.2f" | format(found.weights_agreement) }}. Scores change at once; nothing is re-ranked.</p>
+      <form hx-post="/calibrate/weights" hx-target="#calibrate-result">
+        <input type="hidden" name="fit" value="{{ found.weights.fit }}">
+        <input type="hidden" name="success" value="{{ found.weights.success }}">
+        <button type="submit">Use these weights</button>
+      </form>
+    {% endif %}
+
+    {% if found.disagreements %}
+      <h3>The biggest disagreements</h3>
+      <ul class="tight">
+      {% for d in found.disagreements %}
+        <li><a href="/jobs/{{ d.row.job.id }}">{{ d.row.job.title }}</a> <span class="muted">{{ d.row.job.company or "" }}</span><br>
+          <span class="small">You: {{ d.mine }} · ranking: {{ d.model }}{% if d.note %} · “{{ d.note }}”{% endif %}</span><br>
+          <span class="small muted">{{ d.row.ranking.assessment.rationale }}</span></li>
+      {% endfor %}
+      </ul>
+      <form hx-post="/calibrate/suggest" hx-target="#prefs-suggestion" hx-disabled-elt="find button">
+        <button type="submit">Suggest preference changes</button>
+        <span class="htmx-indicator muted small">Thinking…</span>
+      </form>
+      <div id="prefs-suggestion"></div>
+    {% elif found.agreement is not none %}
+      <p class="muted">No big disagreements.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <ol class="calibrate">
+  {% for row, c in items %}
+    <li id="cal-{{ row.job.id }}">
+      <a href="/jobs/{{ row.job.id }}" target="_blank" rel="noopener"><b>{{ row.job.title }}</b></a>
+      <span class="muted">{{ row.job.company or "" }} · {{ row.job.location or "" }}</span>
+      <p class="small">{{ (row.job.description | replace("\n", " "))[:280] }}…</p>
+      <form class="rate" hx-post="/calibrate/rate" hx-target="#calibrate" hx-select="#calibrate" hx-swap="outerHTML">
+        <input type="hidden" name="job_id" value="{{ row.job.id }}">
+        {% for key, score, label in ratings %}
+          <button type="submit" name="rating" value="{{ key }}" class="{{ 'on' if c.rating == key }}">{{ label }}</button>
+        {% endfor %}
+        <input name="note" value="{{ c.note }}" placeholder="Why? (optional)" maxlength="500">
+      </form>
+    </li>
+  {% endfor %}
+  </ol>
+{% endif %}
+</div>
+{% endblock %}

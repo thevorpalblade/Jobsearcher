@@ -45,8 +45,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from jobsearcher import calibrate, cvs, settings
 from jobsearcher import chat as chat_module
-from jobsearcher import cvs, settings
 from jobsearcher import interview as interview_module
 from jobsearcher.auth import (
     MIN_PASSWORD,
@@ -374,6 +374,8 @@ def dashboard(
         chat_problem=state.chat.unavailable(),
         suggestions=chat_module.SUGGESTIONS,
         chat_allowed=chat_allowed,
+        has_cv=state.cv.get() is not None,
+        interview_done=interview_module.completed(store) is not None,
     )
 
 
@@ -1339,7 +1341,12 @@ def interview_propose(request: Request, state: State, store: WriteStore) -> Resp
 
 @router.post("/interview/reset", dependencies=[Depends(require_htmx)])
 def interview_reset(state: State, store: WriteStore) -> Response:
-    store.delete_interview()
+    """A fresh conversation. A completed interview stays completed: its settings are saved."""
+    done = interview_module.completed(store)
+    if done is None:
+        store.delete_interview()
+    else:
+        store.save_interview(interview_module.Interview(applied_at=done).to_json())
     return htmx_redirect("/interview")
 
 
@@ -1408,8 +1415,150 @@ async def interview_apply(request: Request) -> HTMLResponse:
         notes.append("Search region and keywords: set them in config.yaml (no profiles here).")
     if added:
         notes.append(f"Added {len(added)} companies: {', '.join(added)}.")
+    write_store = Store(state.config.db_path, check_same_thread=False, profile=state.config.profile)
+    try:
+        interview_module.mark_applied(write_store)
+    finally:
+        write_store.close()
     state.reload_config()
     return _result(request, state, True, "Saved your settings.", notes)
+
+
+# --- calibration (jobsearcher/calibrate.py) ----------------------------------------------
+
+
+def _calibration(state: WebState, store: Store) -> dict[str, Any]:
+    rows = views.load_rows(store, state.row_context(), "all")
+    done = interview_module.completed(store) is not None
+    ready = calibrate.readiness(done, rows)
+    by_id = {r.job.id: r for r in rows}
+    items = [(by_id.get(c["job_id"]), c) for c in store.calibrations()] if ready.ready else []
+    items = [(row, c) for row, c in items if row is not None]  # jobs gone since: skipped
+    rated = [c for _, c in items if c["rating"]]
+    found = None
+    if len(rated) >= calibrate.MIN_RATED:
+        found = calibrate.results(by_id, rated, state.ranking.get())
+    return {"readiness": ready, "items": items, "rated": len(rated), "found": found}
+
+
+def _calibrate_page(request: Request, state: WebState, store: Store, **extra: Any) -> HTMLResponse:
+    return render(
+        request,
+        state,
+        "calibrate.html",
+        store,
+        ratings=calibrate.RATINGS,
+        min_rated=calibrate.MIN_RATED,
+        set_size=calibrate.SET_SIZE,
+        **_calibration(state, store),
+        **extra,
+    )
+
+
+@router.get("/calibrate", response_class=HTMLResponse)
+def calibrate_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    return _calibrate_page(request, state, store)
+
+
+@router.post("/calibrate/start", dependencies=[Depends(require_htmx)])
+def calibrate_start(request: Request, state: State, store: WriteStore) -> Response:
+    rows = views.load_rows(store, state.row_context(), "all")
+    ready = calibrate.readiness(interview_module.completed(store) is not None, rows)
+    if not ready.ready:
+        return _result(request, state, False, ready.reason)
+    store.start_calibration(calibrate.pick(rows))
+    return htmx_redirect("/calibrate")
+
+
+@router.post("/calibrate/rate", response_class=HTMLResponse, dependencies=[Depends(require_htmx)])
+def calibrate_rate(
+    request: Request,
+    state: State,
+    store: WriteStore,
+    job_id: Annotated[str, Form()] = "",
+    rating: Annotated[str, Form()] = "",
+    note: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    if rating not in calibrate.SCORES and rating != "":
+        raise HTTPException(400, "Unknown rating")
+    if not store.rate(job_id, rating or None, note.strip()[:500]):
+        raise HTTPException(404)
+    return _calibrate_page(request, state, store)
+
+
+@router.post("/calibrate/reset", dependencies=[Depends(require_htmx)])
+def calibrate_reset(store: WriteStore) -> Response:
+    store.start_calibration([])
+    return htmx_redirect("/calibrate")
+
+
+@router.post(
+    "/calibrate/weights", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def calibrate_weights(
+    request: Request,
+    state: State,
+    fit: Annotated[float, Form()] = 0.6,
+    success: Annotated[float, Form()] = 0.4,
+) -> HTMLResponse:
+    """Use the weights calibration found: scores change at once, nothing is re-ranked."""
+    if not (0 <= fit <= 1 and 0 <= success <= 1):
+        raise HTTPException(400)
+    file, path = _config_file(state, "ranking")
+    old = path.read_text() if path.is_file() else ""
+    new = settings.merge_yaml(old, {"weights": {"fit": fit, "success": success}})
+    model, errors = settings.parse(file, new)
+    if model is None:
+        return _result(request, state, False, "Not saved.", errors)
+    settings.save(path, new, state.backup_dir)
+    return _result(request, state, True, "Saved the new weights: your scores have changed.")
+
+
+@router.post(
+    "/calibrate/suggest", response_class=HTMLResponse, dependencies=[Depends(require_htmx)]
+)
+def calibrate_suggest(request: Request, state: State, store: WriteStore) -> HTMLResponse:
+    """Ask the drafting model what the disagreements say about the preferences."""
+    from jobsearcher.llm import LLMError
+
+    found = _calibration(state, store)["found"]
+    if found is None or not found.disagreements:
+        return _result(request, state, False, "No clear disagreements to learn from.")
+    try:
+        change = calibrate.suggest_preferences(
+            _interview_llm(state, store), state.ranking.get(), found
+        )
+    except (LLMError, ValueError) as exc:
+        return _result(request, state, False, str(exc))
+    return render(request, state, "_calibrate_prefs.html", change=change, rc=state.ranking.get())
+
+
+@router.post("/calibrate/preferences", response_class=HTMLResponse)
+async def calibrate_preferences(request: Request) -> HTMLResponse:
+    require_htmx(request)
+    state = _state(request)
+    form = await request.form()
+    data = {
+        "preferences": {
+            "situation": forms._field(form, "situation"),
+            "seniority": forms._field(form, "seniority"),
+            "likes": forms.lines(forms._field(form, "likes")),
+            "dislikes": forms.lines(forms._field(form, "dislikes")),
+            "dealbreakers": forms.lines(forms._field(form, "dealbreakers")),
+        }
+    }
+    file, path = _config_file(state, "ranking")
+    old = path.read_text() if path.is_file() else ""
+    new = settings.merge_yaml(old, data)
+    model, errors = settings.parse(file, new)
+    if model is None:
+        return _result(request, state, False, "Not saved.", errors)
+    if new == old:
+        return _result(request, state, True, "No changes.")
+    notes = settings.effects(file, old, model)
+    settings.save(path, new, state.backup_dir)
+    notes.append("Start a new calibration round once your jobs are re-ranked, to see if it helped.")
+    return _result(request, state, True, "Saved your preferences.", notes)
 
 
 # --- models and API keys (each profile's own; docs/m10-multi-user.md section 3a) ------

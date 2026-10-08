@@ -1,0 +1,16 @@
+{# Suggested preference changes from calibration: edit, then save to ranking.yaml. #}
+<div class="result ok">{{ change.explanation }}</div>
+<form class="settings-form" hx-post="/calibrate/preferences" hx-target="#prefs-result">
+  <label>Situation <textarea name="situation" rows="2">{{ change.situation }}</textarea></label>
+  <p class="help">Now: {{ rc.preferences.situation or "–" }}</p>
+  <label>Seniority <input name="seniority" value="{{ change.seniority }}"></label>
+  <p class="help">Now: {{ rc.preferences.seniority or "–" }}</p>
+  <label>Likes (one per line) <textarea name="likes" rows="4">{{ change.likes | join("\n") }}</textarea></label>
+  <p class="help">Now: {{ rc.preferences.likes | join("; ") or "–" }}</p>
+  <label>Dislikes <textarea name="dislikes" rows="3">{{ change.dislikes | join("\n") }}</textarea></label>
+  <p class="help">Now: {{ rc.preferences.dislikes | join("; ") or "–" }}</p>
+  <label>Dealbreakers <textarea name="dealbreakers" rows="3">{{ change.dealbreakers | join("\n") }}</textarea></label>
+  <p class="help">Now: {{ rc.preferences.dealbreakers | join("; ") or "–" }}</p>
+  <button type="submit" class="primary">Save these preferences</button>
+  <div id="prefs-result"></div>
+</form>

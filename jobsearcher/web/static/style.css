@@ -235,3 +235,6 @@ code.select-all { user-select: all; word-break: break-all; }
 .interview .msg p:first-child { margin-top: 0; } .interview .msg p:last-child { margin-bottom: 0; }
 form.interview-reply { max-width: 46em; } form.interview-reply textarea { width: 100%; }
 .htmx-indicator { display: none; } .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
+.nudge { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--line); border-radius: 4px; }
+ol.calibrate { padding-left: 1.4em; } ol.calibrate li { margin: 0 0 14px; }
+form.rate { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } form.rate input[name=note] { flex: 1; min-width: 12em; }

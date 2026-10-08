@@ -11,7 +11,7 @@
 
 <div id="interview-result"></div>
 
-{% if interview is none %}
+{% if interview is none or not interview.messages %}
   <form class="actions" hx-post="/interview/start" hx-target="#interview-result" hx-disabled-elt="find button">
     <button type="submit" name="language" value="English" class="primary">Start in English</button>
     <button type="submit" name="language" value="Swedish">Börja på svenska</button>

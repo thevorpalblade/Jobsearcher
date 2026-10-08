@@ -51,10 +51,14 @@ could not be built there.
 
 ## 1. Ranking leftovers (M2)
 
-- [ ] **`jobsearcher calibrate`**: the user hand-scores ~20 jobs (e.g. a CSV of
-      `job_id,score`). The command reports rank correlation (Spearman) against
-      `final_score` and lists the biggest disagreements, to guide prompt and
-      `ranking.yaml` tuning.
+- [x] **Calibrate** (2026-10-08, a web tab, not a CSV command). It opens once the
+      preferences interview's settings are saved and at least 20 jobs are ranked with
+      them (stale rankings don't count). The candidate rates 20 jobs spread over the score
+      range (great fit → no, plus an optional note). From 12 ratings it shows the rank
+      agreement (Spearman), the biggest disagreements with the model's reasoning, weights
+      that agree better (applied at once, no re-ranking), and preference changes the
+      drafting model proposes from the disagreements and notes (reviewed before saving).
+      The dashboard nudges: upload a CV, then do the interview.
 - [x] **Parallel ranking** (`llm.ranking.max_parallel`) and server-enforced JSON
       schemas (`enforce_schema`) for OpenAI-compatible providers. On NVIDIA's free
       tier GLM 5.3 Flash calls are queued (85–330 s each); with plain JSON mode GLM

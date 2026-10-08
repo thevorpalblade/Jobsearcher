@@ -8,6 +8,15 @@
   {% if stats.last_search %} · last search {{ stats.last_search|localtime }}{% endif %}
 </p>
 
+{% if not has_cv %}
+<div class="nudge"><b>First, upload your CV.</b> Jobs are ranked against it, and the
+  preferences interview starts from it. <a href="/settings">Upload it in Settings →</a></div>
+{% elif not interview_done %}
+<div class="nudge"><b>Next: a short interview about what you're looking for.</b> It sets up
+  your target roles, region, preferences and companies, so the ranking fits you.
+  <a href="/interview">Start the interview →</a></div>
+{% endif %}
+
 <section>
   <h2>Your top five right now</h2>
   {% if top %}

@@ -66,6 +66,9 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
 - `jobsearcher/interview.py`: the Preferences tab: a model (the profile's drafting model, no
   tools) interviews the candidate, then proposes target roles, preferences, search region and
   companies; nothing is saved until they review it (`/interview/review`)
+- `jobsearcher/calibrate.py`: the Calibrate tab (after the interview, once jobs are ranked
+  with its settings): rate 20 jobs, see agreement and disagreements, better weights,
+  suggested preference changes
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules
