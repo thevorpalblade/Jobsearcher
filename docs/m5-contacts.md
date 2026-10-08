@@ -121,14 +121,37 @@ So M5 is about the top of the list, not the whole pool.
 | 5c | Picking people per job, "use for the letter", lookup before drafting | Small to medium |
 | 5d | Automatic lookup for top-scoring and shortlisted jobs in the daily run | Small |
 
-## Open questions
+## Decisions (2026-10-08)
 
-1. **Guessed email addresses.** When a company's site shows a pattern (e.g.
-   anna.svensson@acme.se), we could suggest `firstname.lastname@acme.se` for a person
-   whose name is known but whose address isn't, clearly labelled "guessed from the
-   pattern on <page>". Allowed, or names only?
-2. **Automatic lookups:** on (score ≥ 60 and shortlisted jobs), or only on demand?
-3. **Public registers:** the CEO and board from Bolagsverket are useful for small
-   companies and spontaneous applications. Bolagsverket's free API covers basic
-   company data; whether it includes officers needs checking. Worth looking into, or
-   leave it?
+1. **Guessed email addresses: yes, shown as a guess.** Only when the company's own
+   site shows at least one real address in that pattern. The contact is labelled
+   "guessed from the pattern on <page>", with provenance `pattern:company_site`.
+   Drafting never sends to it: it's a suggestion for the person to check.
+2. **Automatic lookups: yes,** for jobs with a final score of 60 or more and for
+   shortlisted jobs (5d).
+3. **Bolagsverket: try it** (5e, below).
+
+## 5e: Bolagsverket (researched 2026-10-08)
+
+- **The free API** ("värdefulla datamängder", since 2025-02-03, no agreement, no
+  cost) returns name, legal form, status, address, SNI codes and **digitally filed
+  annual reports**. It does **not** return officers (board, CEO, signatories). The
+  fuller "API för företagsinformation" costs money, so it's out (free sources only).
+- **Officers from the annual report:** the board members and the CEO sign it. The
+  signatories' first name, last name and role ("Verkställande direktör",
+  "Styrelseledamot") should be tagged in the iXBRL; if they aren't, they're still in
+  the text, and the literal check applies. The report is up to about 18 months old,
+  so the contact is shown with the report's year.
+- **Use:** only for small employers (the report's average number of employees,
+  `MedelantaletAnstallda`, under about 100), where the CEO is a realistic person to
+  write to. Look-up by org number: Platsbanken gives `company_org_nr`; other sources
+  don't, so those are matched by name, accepted only if there's exactly one hit.
+- **Access:** OAuth2 client credentials, free, from a customer application at
+  portal.api.bolagsverket.se (the user's step). 60 requests a minute. Keys go in
+  `.env` as `BOLAGSVERKET_CLIENT_ID` / `BOLAGSVERKET_CLIENT_SECRET`.
+- **Provenance:** `bolagsverket:arsredovisning:<year>`.
+- **To check when building:** the exact endpoints, whether reports come as iXBRL or
+  zip, and the signature element names, against the API's own documentation.
+
+| 5e | Bolagsverket: CEO and board of small employers from their annual reports | Small to medium (after the user's application) |
+
