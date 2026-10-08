@@ -144,13 +144,17 @@ web:
   port: 8080
   user_name: ""          # the dashboard says "Welcome, <name>"
   allowed_hosts: []      # extra host names the chat accepts (see chat); "*" = any
+  # On the internet behind Caddy (deploy/caddy/Caddyfile.example): also listen on
+  # 127.0.0.1:<public_port> for Caddy. Requests there get no chat, need two-factor
+  # codes for admins, and trust Caddy's X-Forwarded-For. Never forward this port itself.
+  # public_port: 8081
 
 # The dashboard's chat with Claude Code, run in this repository (needs the `claude`
 # CLI and a checkout, so not in Docker). Uses your own Claude login or
 # CLAUDE_CODE_OAUTH_TOKEN, one message at a time.
-# WARNING: it runs with full access (no permission prompts) and the web UI has no
-# login, so anyone who can open the page can make Claude Code read and change files
-# and run commands on this machine. Enable it only on a network you trust (or Tailscale).
+# WARNING: it runs with full access (no permission prompts), so an admin account can make
+# Claude Code read and change files and run commands on this machine. It's admin only,
+# and never served on the internet-facing listener (web.public_port).
 # It refuses requests addressed to public-looking host names (DNS rebinding); open
 # the UI by IP address, or list your name under web.allowed_hosts.
 chat:

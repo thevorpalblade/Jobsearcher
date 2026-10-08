@@ -208,7 +208,9 @@ def test_users_cli(setup, capsys):
     args = ["--config", str(config.profiles_dir.parent / "config.yaml"), "users"]
     assert cli.main([*args, "add", "bo"]) == 2  # a user needs --profile
     assert cli.main([*args, "add", "bo", "--profile", "nope"]) == 2
-    assert cli.main([*args, "add", "bo", "--profile", "bo", "--url", "https://jobs.example.com"]) == 0
+    assert (
+        cli.main([*args, "add", "bo", "--profile", "bo", "--url", "https://jobs.example.com"]) == 0
+    )
     out = capsys.readouterr().out
     assert re.search(r"https://jobs\.example\.com/invite/[\w-]{30,}", out)
     assert cli.main([*args, "add", "matthew", "--admin"]) == 0

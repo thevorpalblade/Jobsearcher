@@ -242,7 +242,7 @@ user the same as the first.
 | 1 | Profiles in files, DB and pipeline; migration; one profile | Same app, data now per profile | **Built 2026-10-07** (branch `m10-profiles`); see "Phase 1 as built" |
 | 2 | Users, sessions, login/logout, middleware, CLI user commands, roles | Login required, still LAN only | **Built 2026-10-07** (branch `m10-auth`); see "Phase 2 as built" |
 | 3 | Per-profile web UI, per-profile models and keys, admin user page, profile switcher, `/account`, admin TOTP | Two candidates usable | **Built 2026-10-08** (branch `m10-phase3`); see "Phase 3 as built" |
-| 4 | Caddy, headers, Origin checks, throttling, chat lockdown, security review, outside tests | On the internet | Small to medium |
+| 4 | Caddy, headers, Origin checks, throttling, chat lockdown, security review, outside tests | On the internet | **App side built 2026-10-08** (branch `m10-phase4`); Caddy and the router are the user's steps |
 | 5 | Onboard the second user: profile, CV upload, roles form, first ranking run | Second candidate live | Small |
 
 Phases 1–3 can be built and tested on the LAN; the port opens only after phase 4.
@@ -343,6 +343,34 @@ Phases 1–3 can be built and tested on the LAN; the port opens only after phase
     password or code."
 - **Deploying:** add the existing profile to `llm.server_key_profiles` in the live
   config.yaml before restarting. Otherwise it's treated as a new candidate with no keys.
+
+## Phase 4 as built (2026-10-08)
+
+- **Two listeners, one process:** with `web.public_port` set, `jobsearcher web` also
+  listens on `127.0.0.1:<public_port>`, for Caddy. The app tells the two apart by the
+  local port a request came in on (`is_public`), which a client can't forge.
+- **On the public listener:**
+  - The chat and its routes return 404, and the dashboard doesn't show it.
+  - Admins can't log in, or use a session, without two-factor codes.
+  - Cookies are Secure.
+  - The last `X-Forwarded-For` entry, the one Caddy adds, is the visitor's address for
+    login throttling and the audit log. On the home-network listener the header is
+    ignored.
+  - uvicorn runs with `proxy_headers=False`, so nothing else trusts it.
+- **Security headers on every response:** a CSP (`script-src 'self'`, no inline
+  scripts; inline styles allowed), `frame-ancestors 'none'`, nosniff,
+  `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`. HSTS comes from Caddy.
+- **`deploy/caddy/Caddyfile.example`.**
+- **Tried live:** both listeners on spare ports, with probes as Caddy would send them.
+- **The user's steps:**
+  1. Install Caddy (`sudo pacman -S caddy`) and copy the Caddyfile with the domain
+     filled in.
+  2. Set `web.public_port: 8081` and restart `jobsearcher-web`.
+  3. On the router, give this machine a fixed address and forward TCP 80 and 443 to it.
+  4. `sudo systemctl enable --now caddy`; Caddy fetches the certificate.
+  5. The admin sets up two-factor codes before logging in from outside.
+  6. Check from outside: only the login page answers, `:8080` doesn't, and the chat
+     is gone.
 
 ## Still open
 

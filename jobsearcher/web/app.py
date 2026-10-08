@@ -181,6 +181,20 @@ def _state(request: Request) -> WebState:
     return shared.state_for(user.profile if user else None)
 
 
+def is_public(request: Request) -> bool:
+    """Did the request come in on the internet-facing listener (through Caddy)? Decided
+    by the local port it arrived on, which a client can't forge, unlike a header."""
+    port = request.app.state.web.base.web.public_port
+    server = request.scope.get("server")
+    return port is not None and server is not None and server[1] == port
+
+
+def require_lan(request: Request) -> None:
+    """The chat runs Claude Code with full permissions: never from the internet."""
+    if is_public(request):
+        raise HTTPException(404)
+
+
 def require_admin(request: Request) -> None:
     user = current_user(request)
     if user is None or not user.is_admin:
@@ -315,8 +329,10 @@ def dashboard(
     ctx = state.row_context()
     rows = views.load_rows(store, ctx, "all")
     user = current_user(request)
-    # The chat runs Claude Code with full permissions on this machine: admin only.
-    chats = store.list_chats() if user and user.is_admin else []
+    # The chat runs Claude Code with full permissions on this machine: admin only, and
+    # only on the home network.
+    chat_allowed = bool(user and user.is_admin and not is_public(request))
+    chats = store.list_chats() if chat_allowed else []
     current = None
     if chat != "new" and chats:
         current = store.get_chat(chat) if chat else chats[0]
@@ -348,6 +364,7 @@ def dashboard(
         running_after=after,
         chat_problem=state.chat.unavailable(),
         suggestions=chat_module.SUGGESTIONS,
+        chat_allowed=chat_allowed,
     )
 
 
@@ -870,7 +887,12 @@ def require_chat_host(request: Request) -> None:
         )
 
 
-ChatGuards = [Depends(require_admin), Depends(require_htmx), Depends(require_chat_host)]
+ChatGuards = [
+    Depends(require_lan),
+    Depends(require_admin),
+    Depends(require_htmx),
+    Depends(require_chat_host),
+]
 
 
 @router.post("/chat/send", dependencies=ChatGuards)
@@ -891,7 +913,8 @@ def chat_send(
 
 
 @router.get(
-    "/chat/{chat_id}/stream", dependencies=[Depends(require_admin), Depends(require_chat_host)]
+    "/chat/{chat_id}/stream",
+    dependencies=[Depends(require_lan), Depends(require_admin), Depends(require_chat_host)],
 )
 def chat_stream(chat_id: str, state: State, after: int = 0) -> StreamingResponse:
     """Server-Sent Events for the chat's current run, from event number `after`."""
@@ -1192,6 +1215,13 @@ def _auth(request: Request) -> Iterator[Auth]:
 
 
 def _client_ip(request: Request) -> str:
+    """The visitor's address. Through Caddy, the last X-Forwarded-For entry is the one
+    Caddy added (the address it saw); earlier entries come from the client and are
+    ignored. On the home network the header isn't trusted at all."""
+    if is_public(request):
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.rsplit(",", 1)[-1].strip()
     return request.client.host if request.client else ""
 
 
@@ -1216,8 +1246,34 @@ async def _login_required(request: Request, call_next: Any) -> Response:
         if request.method in ("GET", "HEAD"):
             return RedirectResponse(target, status_code=303)
         return PlainTextResponse("Log in first.", status_code=401)
+    if user.is_admin and not user.has_totp and is_public(request):
+        return PlainTextResponse(
+            "Admin accounts need two-factor codes to work from the internet. Set them up "
+            "on the Account page from the home network.",
+            status_code=403,
+        )
     request.state.user = user
     return await call_next(request)
+
+
+SECURITY_HEADERS = {
+    # No inline scripts anywhere (HTMX is vendored); inline styles are allowed for a
+    # few style attributes and HTMX's indicator styles.
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+}
+
+
+async def _security_headers(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 async def _same_origin_writes(request: Request, call_next: Any) -> Response:
@@ -1247,7 +1303,7 @@ def _start_session(request: Request, response: Response, auth: Auth, user: User)
         max_age=int(SESSION_MAX.total_seconds()),
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        secure=request.url.scheme == "https" or is_public(request),
         path="/",
     )
 
@@ -1272,6 +1328,11 @@ def login(
     with _auth(request) as auth:
         try:
             user = auth.authenticate(username, password, _client_ip(request), code)
+            if user.is_admin and not user.has_totp and is_public(request):
+                raise AuthError(
+                    "Admin accounts need two-factor codes to log in from the internet. "
+                    "Set them up on the Account page from the home network."
+                )
         except AuthError as exc:
             return render(
                 request,
@@ -1449,7 +1510,10 @@ def _users_page(request: Request, state: WebState, **context: Any) -> HTMLRespon
 
 
 def _invite_url(request: Request, token: str) -> str:
-    return f"{str(request.base_url).rstrip('/')}/invite/{token}"
+    base = str(request.base_url).rstrip("/")
+    if is_public(request):  # Caddy speaks plain HTTP to the app; visitors use HTTPS
+        base = f"https://{request.headers.get('host', '')}"
+    return f"{base}/invite/{token}"
 
 
 @router.get("/admin/users", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
@@ -1524,7 +1588,8 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
     )
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.middleware("http")(_login_required)
-    app.middleware("http")(_same_origin_writes)  # runs first: added last
+    app.middleware("http")(_same_origin_writes)
+    app.middleware("http")(_security_headers)  # runs first: added last
 
     @app.exception_handler(StarletteHTTPException)
     def http_error(request: Request, exc: StarletteHTTPException) -> Response:

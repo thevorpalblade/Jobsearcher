@@ -1,0 +1,29 @@
+# HTTPS for the Jobsearcher web UI (docs/m10-multi-user.md, phase 4).
+# Copy to /etc/caddy/Caddyfile, put your domain in place of jobs.example.com, and
+# set web.public_port: 8081 in config.yaml. Caddy gets and renews the Let's Encrypt
+# certificate itself; it needs ports 80 and 443 forwarded to this machine.
+#
+# Caddy passes the Host header through and sets X-Forwarded-For (only the address it
+# saw: forwarded headers from the internet are dropped) and X-Forwarded-Proto. The app
+# trusts these on its public listener only, and never serves the chat there.
+
+jobs.example.com {
+	reverse_proxy 127.0.0.1:8081
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# CV uploads are at most 5 MB.
+	request_body {
+		max_size 10MB
+	}
+
+	log {
+		output file /var/log/caddy/jobsearcher.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

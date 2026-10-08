@@ -215,7 +215,9 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
             `m10-auth` (see the plan, "Phase 2 as built").
       - [x] Phase 3: per-profile models, keys and budget; admin switcher and accounts
             page; two-factor codes. Built 2026-10-08 (the plan, "Phase 3 as built").
-      - [ ] Phase 4: Caddy and hardening, then open the port.
+      - [x] Phase 4, app side: public listener, security headers, admin 2FA from outside,
+            Caddyfile (built 2026-10-08; the plan, "Phase 4 as built").
+      - [ ] Phase 4, the user's steps: install Caddy, router port forwards, check from outside.
       - [ ] Phase 5: onboard the second candidate.
 - [x] **Several CVs, all used in ranking** (done 2026-10-07). One candidate, so ranking
       sends every CV in `cvs/` in one call (`cvs.ranking_cv`: the master, then the others

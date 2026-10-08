@@ -452,6 +452,27 @@ def cmd_web(config: Config, args: argparse.Namespace) -> int:
             reload=True,
             workers=1,
         )
+    elif config.web.public_port:
+        # One process, two listeners: the home network's, and the internet-facing one that
+        # only a reverse proxy on this machine reaches (the app tells them apart by port).
+        # proxy_headers=False: the app trusts X-Forwarded-For itself, on the public one only.
+        import socket
+
+        sockets = []
+        for bind_host, bind_port in ((host, port), ("127.0.0.1", config.web.public_port)):
+            sock = socket.socket(socket.AF_INET6 if ":" in bind_host else socket.AF_INET)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((bind_host, bind_port))
+            sockets.append(sock)
+        app = create_app(config, config_file_path(args.config))
+        server = uvicorn.Server(uvicorn.Config(app, workers=1, proxy_headers=False))
+        log.info(
+            "Listening on %s:%d and, for the proxy, 127.0.0.1:%d",
+            host,
+            port,
+            config.web.public_port,
+        )
+        server.run(sockets=sockets)
     else:
         uvicorn.run(
             create_app(config, config_file_path(args.config)), host=host, port=port, workers=1

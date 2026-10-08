@@ -203,6 +203,11 @@ class WebConfig(BaseModel):
     # the chat accepts requests for; "*" turns the check off. Guards the chat against
     # DNS rebinding (on top of the login).
     allowed_hosts: list[str] = Field(default_factory=list)
+    # The internet-facing listener (docs/m10-multi-user.md, phase 4): `jobsearcher web`
+    # also listens on 127.0.0.1:<public_port>, for a reverse proxy (Caddy) on this
+    # machine. Requests that come in on it are public: no chat, admins need two-factor
+    # codes, cookies are Secure, and the proxy's X-Forwarded-For is trusted. None: off.
+    public_port: int | None = None
 
 
 class ChatConfig(BaseModel):
