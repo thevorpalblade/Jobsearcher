@@ -47,6 +47,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jobsearcher import chat as chat_module
 from jobsearcher import cvs, settings
+from jobsearcher import interview as interview_module
 from jobsearcher.auth import (
     MIN_PASSWORD,
     SESSION_MAX,
@@ -1259,6 +1260,156 @@ async def _submit_form(request: Request, key: str, write: bool) -> HTMLResponse:
     if backup is not None:
         notes.append(f"The previous version is in {backup}.")
     return _result(request, state, True, f"Saved {path.name}.", notes)
+
+
+# --- the preferences interview (jobsearcher/interview.py) ------------------------------
+
+
+def _interview_llm(state: WebState, store: Store) -> Any:
+    """The profile's drafting model, budgeted (it fails with a readable LLMError)."""
+    from jobsearcher.llm import BudgetTracker, make_llm
+
+    llm = make_llm(state.config, "drafting", BudgetTracker(store, state.config.llm))
+    llm.purpose = "interview"
+    return llm
+
+
+def _interview_step(
+    request: Request, state: WebState, step: Any, then: str = "/interview"
+) -> Response:
+    """Run one interview step; on success reload the page, else show what went wrong."""
+    from jobsearcher.llm import LLMError
+
+    try:
+        step()
+    except (LLMError, ValueError) as exc:
+        message = str(exc)
+        if "drafting model" not in message and "is not set" in message:
+            message += " The interview uses your drafting model."
+        return _result(request, state, False, message)
+    return htmx_redirect(then)
+
+
+@router.get("/interview", response_class=HTMLResponse)
+def interview_page(request: Request, state: State, store: ReadStore) -> HTMLResponse:
+    current = interview_module.load(store)
+    return render(
+        request,
+        state,
+        "interview.html",
+        store,
+        interview=current,
+        topics=interview_module.TOPICS,
+        has_cv=state.cv.get() is not None,
+    )
+
+
+@router.post("/interview/start", dependencies=[Depends(require_htmx)])
+def interview_start(
+    request: Request, state: State, store: WriteStore, language: Annotated[str, Form()] = "English"
+) -> Response:
+    language = "Swedish" if language == "Swedish" else "English"
+    return _interview_step(
+        request,
+        state,
+        lambda: interview_module.start(state.config, store, _interview_llm(state, store), language),
+    )
+
+
+@router.post("/interview/answer", dependencies=[Depends(require_htmx)])
+def interview_answer(
+    request: Request, state: State, store: WriteStore, text: Annotated[str, Form()] = ""
+) -> Response:
+    return _interview_step(
+        request,
+        state,
+        lambda: interview_module.answer(state.config, store, _interview_llm(state, store), text),
+    )
+
+
+@router.post("/interview/propose", dependencies=[Depends(require_htmx)])
+def interview_propose(request: Request, state: State, store: WriteStore) -> Response:
+    return _interview_step(
+        request,
+        state,
+        lambda: interview_module.propose(state.config, store, _interview_llm(state, store)),
+        then="/interview/review",
+    )
+
+
+@router.post("/interview/reset", dependencies=[Depends(require_htmx)])
+def interview_reset(state: State, store: WriteStore) -> Response:
+    store.delete_interview()
+    return htmx_redirect("/interview")
+
+
+@router.get("/interview/review", response_class=HTMLResponse)
+def interview_review(request: Request, state: State, store: ReadStore) -> Response:
+    current = interview_module.load(store)
+    if current is None or current.proposal is None:
+        return RedirectResponse("/interview", status_code=303)
+    rc = state.ranking.get()
+    return render(
+        request,
+        state,
+        "interview_review.html",
+        store,
+        proposal=current.proposal,
+        rc=rc,
+        search=state.config.search,
+        has_profile=state.config.profile_file is not None,
+    )
+
+
+@router.post("/interview/apply", response_class=HTMLResponse)
+async def interview_apply(request: Request) -> HTMLResponse:
+    """Save the reviewed settings: ranking.yaml, profile.yaml's search, companies.yaml."""
+    require_htmx(request)
+    state = _state(request)
+    form = await request.form()
+    try:
+        proposal = forms.interview_proposal(form)
+    except forms.FormErrors as exc:
+        return _result(request, state, False, "Not saved: fix these first.", exc.errors)
+    notes: list[str] = []
+    writes: list[tuple[settings.ConfigFile, Path, str, str]] = []
+    rfile, rpath = _config_file(state, "ranking")
+    rold = rpath.read_text() if rpath.is_file() else ""
+    writes.append(
+        (
+            rfile,
+            rpath,
+            rold,
+            settings.merge_yaml(rold, interview_module.ranking_data(rold, proposal)),
+        )
+    )
+    if state.config.profile_file is not None:
+        pfile, ppath = _config_file(state, "profile")
+        pold = ppath.read_text() if ppath.is_file() else ""
+        writes.append(
+            (pfile, ppath, pold, settings.merge_yaml(pold, interview_module.profile_data(proposal)))
+        )
+    cfile, cpath = _config_file(state, "companies")
+    cold = cpath.read_text() if cpath.is_file() else ""
+    ctext, added = interview_module.companies_text(cold, proposal)
+    writes.append((cfile, cpath, cold, ctext))
+    for file, _, old, new in writes:  # validate everything before writing anything
+        model, errors = settings.parse(file, new)
+        if model is None:
+            return _result(
+                request, state, False, f"Not saved: {file.title} would be invalid.", errors
+            )
+        if new != old:
+            notes += settings.effects(file, old, model)
+    for _, path, old, new in writes:
+        if new != old:
+            settings.save(path, new, state.backup_dir)
+    if state.config.profile_file is None:
+        notes.append("Search region and keywords: set them in config.yaml (no profiles here).")
+    if added:
+        notes.append(f"Added {len(added)} companies: {', '.join(added)}.")
+    state.reload_config()
+    return _result(request, state, True, "Saved your settings.", notes)
 
 
 # --- models and API keys (each profile's own; docs/m10-multi-user.md section 3a) ------

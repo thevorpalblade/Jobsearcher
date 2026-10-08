@@ -156,6 +156,13 @@ CREATE TABLE IF NOT EXISTS job_contacts (
     PRIMARY KEY (profile, job_id)
 );
 
+-- The preferences interview (jobsearcher/interview.py): one per profile.
+CREATE TABLE IF NOT EXISTS interviews (
+    profile     TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- interview.Interview as JSON
+    updated_at  TEXT NOT NULL
+);
+
 -- Web UI accounts and sessions (jobsearcher/auth.py). Tokens are stored as SHA-256.
 CREATE TABLE IF NOT EXISTS users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -196,7 +203,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-PROFILE_TABLES = ("rankings", "drafts", "applications", "signals", "job_contacts")
+PROFILE_TABLES = ("rankings", "drafts", "applications", "signals", "job_contacts", "interviews")
 
 
 def _table_ddl(table: str) -> str:
@@ -898,6 +905,24 @@ class Store:
                 " DO UPDATE SET chosen = excluded.chosen",
                 (self.profile, key, contact_key, _now().isoformat()),
             )
+
+    # --- the preferences interview ---------------------------------------
+
+    def interview(self) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM interviews WHERE profile = ?", (self.profile,)
+        ).fetchone()
+
+    def save_interview(self, data: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO interviews (profile, data, updated_at) VALUES (?, ?, ?)",
+                (self.profile, data, _now().isoformat()),
+            )
+
+    def delete_interview(self) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM interviews WHERE profile = ?", (self.profile,))
 
     # --- run bookkeeping --------------------------------------------------
 

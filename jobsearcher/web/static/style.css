@@ -227,3 +227,11 @@ form.inline input[type=password] { width: 16em; max-width: 100%; }
 form.acting label { display: flex; gap: 6px; align-items: center; font-size: 0.85em; color: var(--muted); }
 code.select-all { user-select: all; word-break: break-all; }
 .qr svg { background: #fff; padding: 4px; border-radius: 4px; }
+
+/* Preferences interview */
+.interview { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-width: 46em; }
+.interview .msg { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); }
+.interview .msg.candidate { align-self: flex-end; background: var(--line); max-width: 85%; }
+.interview .msg p:first-child { margin-top: 0; } .interview .msg p:last-child { margin-bottom: 0; }
+form.interview-reply { max-width: 46em; } form.interview-reply textarea { width: 100%; }
+.htmx-indicator { display: none; } .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Suggested settings · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="/interview">← Back to the interview</a></p>
+<h1>Suggested settings</h1>
+<p class="muted">From your interview. Change anything, untick what you don't want, then save.
+  Your current setting is shown in grey under each one. Changing roles or preferences
+  re-ranks your jobs on the next run.</p>
+
+{% macro now(value) %}<p class="help">Now: {% if value %}{{ value }}{% else %}<i>nothing</i>{% endif %}</p>{% endmacro %}
+
+<form class="settings-form" hx-post="/interview/apply" hx-target="#apply-result">
+  <section>
+    <h2>Target roles</h2>
+    <p class="help">Each role, and the job titles employers use for it (one per line, Swedish and English). These are also the search words.</p>
+    {% for role in proposal.target_roles %}{% set i = loop.index0 %}
+      <fieldset>
+        <label class="check"><input type="hidden" name="role-{{ i }}-keep" value="0"><input type="checkbox" name="role-{{ i }}-keep" value="1" checked> Keep</label>
+        <label>Role <input name="role-{{ i }}-name" value="{{ role.name }}"></label>
+        <label>Job titles <textarea name="role-{{ i }}-aliases" rows="3">{{ role.aliases | join("\n") }}</textarea></label>
+      </fieldset>
+    {% endfor %}
+    {{ now(rc.target_roles | map(attribute="name") | join(", ")) }}
+  </section>
+
+  <section>
+    <h2>About you</h2>
+    <label>Situation <textarea name="situation" rows="2">{{ proposal.situation }}</textarea></label>
+    {{ now(rc.preferences.situation) }}
+    <label>Seniority <input name="seniority" value="{{ proposal.seniority }}"></label>
+    {{ now(rc.preferences.seniority) }}
+    <label>Languages <input name="languages" value="{{ proposal.languages }}"></label>
+    {{ now(rc.preferences.languages) }}
+  </section>
+
+  <section>
+    <h2>What matters to you</h2>
+    <p class="help">One per line.</p>
+    <label>Likes <textarea name="likes" rows="4">{{ proposal.likes | join("\n") }}</textarea></label>
+    {{ now(rc.preferences.likes | join("; ")) }}
+    <label>Dislikes <textarea name="dislikes" rows="3">{{ proposal.dislikes | join("\n") }}</textarea></label>
+    {{ now(rc.preferences.dislikes | join("; ")) }}
+    <label>Dealbreakers <textarea name="dealbreakers" rows="3">{{ proposal.dealbreakers | join("\n") }}</textarea></label>
+    {{ now(rc.preferences.dealbreakers | join("; ")) }}
+  </section>
+
+  <section>
+    <h2>Where</h2>
+    {% if not has_profile %}<p class="help">This setup keeps the search region in config.yaml, so it isn't saved from here.</p>{% endif %}
+    <label>Places (one per line, as in job ads) <textarea name="locations" rows="3">{{ proposal.locations | join("\n") }}</textarea></label>
+    {{ now(search.locations | join(", ")) }}
+    <label class="check"><input type="hidden" name="include_remote" value="0"><input type="checkbox" name="include_remote" value="1" {{ "checked" if proposal.include_remote }}> Remote jobs elsewhere are fine</label>
+    <label>Extra search words <textarea name="keywords" rows="2">{{ proposal.keywords | join("\n") }}</textarea></label>
+    {{ now(search.keywords | join(", ")) }}
+    <label>Leave out ads containing <textarea name="exclude_keywords" rows="2">{{ proposal.exclude_keywords | join("\n") }}</textarea></label>
+    {{ now(search.exclude_keywords | join(", ")) }}
+  </section>
+
+  <section>
+    <h2>Companies</h2>
+    <p class="help">Ticked companies are added to your target companies: their careers sites are checked for jobs, and their news is watched.</p>
+    {% for c in proposal.companies %}{% set i = loop.index0 %}
+      <fieldset>
+        <label class="check"><input type="hidden" name="company-{{ i }}-add" value="0"><input type="checkbox" name="company-{{ i }}-add" value="1" checked>
+          Add <b>{{ c.name }}</b>{% if c.suggested %} <span class="chip">suggested</span>{% endif %}</label>
+        <input type="hidden" name="company-{{ i }}-name" value="{{ c.name }}">
+        <input type="hidden" name="company-{{ i }}-suggested" value="{{ '1' if c.suggested else '0' }}">
+        <label>Website <input name="company-{{ i }}-website" value="{{ c.website or '' }}" placeholder="optional"></label>
+        {% if c.reason %}<p class="help">{{ c.reason }}</p>{% endif %}
+      </fieldset>
+    {% else %}
+      <p class="muted">No companies came up in the interview.</p>
+    {% endfor %}
+  </section>
+
+  <div class="savebar">
+    <button type="submit" class="primary">Save these settings</button>
+    <div id="apply-result"></div>
+  </div>
+</form>
+{% endblock %}

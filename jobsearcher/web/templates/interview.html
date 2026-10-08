@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Preferences interview · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Preferences interview</h1>
+<p class="muted">A short conversation about what you're looking for: the roles, where, what
+  matters to you, and companies you'd like to work for. At the end it suggests your search
+  settings, and you check them before anything is saved. It uses your drafting model.</p>
+{% if not has_cv %}
+  <div class="result error">Upload your CV first (Settings → CVs): the interview starts from it.</div>
+{% endif %}
+
+<div id="interview-result"></div>
+
+{% if interview is none %}
+  <form class="actions" hx-post="/interview/start" hx-target="#interview-result" hx-disabled-elt="find button">
+    <button type="submit" name="language" value="English" class="primary">Start in English</button>
+    <button type="submit" name="language" value="Swedish">Börja på svenska</button>
+    <span class="htmx-indicator muted small">Thinking…</span>
+  </form>
+{% else %}
+  <p class="small">
+    {% for t in topics %}<span class="chip {{ 'good' if t in interview.covered }}">{{ t }}</span> {% endfor %}
+  </p>
+
+  <div class="interview">
+    {% for m in interview.messages %}
+      <div class="msg {{ m.role }}"{% if loop.last %} id="latest"{% endif %}>{{ m.text | markdown }}</div>
+    {% endfor %}
+  </div>
+
+  <form class="interview-reply" hx-post="/interview/answer" hx-target="#interview-result" hx-disabled-elt="find button">
+    <textarea name="text" rows="3" placeholder="Your answer" required autofocus></textarea>
+    <div class="actions">
+      <button type="submit" class="primary">Answer</button>
+      <span class="htmx-indicator muted small">Thinking…</span>
+    </div>
+  </form>
+
+  <div class="actions">
+    <form hx-post="/interview/propose" hx-target="#interview-result" hx-disabled-elt="find button">
+      <button type="submit" class="{{ 'primary' if interview.done }}">Make my settings</button>
+      <span class="htmx-indicator muted small">Writing your settings…</span>
+    </form>
+    {% if interview.proposal %}<a href="/interview/review">See the suggested settings</a>{% endif %}
+    <form hx-post="/interview/reset" hx-target="#interview-result" hx-confirm="Start the interview over? This conversation is deleted (your saved settings stay).">
+      <button type="submit" class="link danger">Start over</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

@@ -237,6 +237,15 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       `input_hash`; the web UI's stale flag watches the whole folder); prompt version 3.
       Each extra CV adds its length to every ranking call's input.
 
+- [x] **Preferences interview** (2026-10-08): a "Preferences" tab where the profile's
+      drafting model interviews the candidate (one question at a time, English or Swedish,
+      starting from their CV and current settings), covering situation, roles and their job
+      titles, region, seniority, languages, likes, dislikes, dealbreakers and companies
+      (asking whether to suggest more). It then proposes ranking.yaml's roles and
+      preferences, profile.yaml's search and new companies, shown in an editable review
+      form with the current values; saving validates and backs up all three files.
+      Tried live on Opus: 5-6 s a turn.
+
 ## NVIDIA free-tier limits (researched 2026-10-05)
 
 Ranking, news classification and draft checks run on GLM through NVIDIA's free hosted API

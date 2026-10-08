@@ -248,3 +248,40 @@ def models_data(form: FormData, allowed: set[str]) -> dict[str, Any]:
     if errors:
         raise FormErrors(errors)
     return {"llm": llm}
+
+
+def interview_proposal(form: FormData) -> Any:
+    """The interview's proposal as the person edited it on the review page."""
+    from jobsearcher.interview import Proposal, ProposedCompany, ProposedRole
+
+    roles = [
+        ProposedRole(name=block["name"].strip(), aliases=lines(block.get("aliases")))
+        for block in groups(form, "role")
+        if block.get("name", "").strip() and block.get("keep") != "0"
+    ]
+    if not roles:
+        raise FormErrors(["Keep at least one target role."])
+    companies = [
+        ProposedCompany(
+            name=block["name"].strip(),
+            website=block.get("website", "").strip() or None,
+            reason=None,
+            suggested=block.get("suggested") == "1",
+        )
+        for block in groups(form, "company")
+        if block.get("name", "").strip() and block.get("add") == "1"
+    ]
+    return Proposal(
+        target_roles=roles,
+        situation=_field(form, "situation"),
+        seniority=_field(form, "seniority"),
+        languages=_field(form, "languages"),
+        likes=lines(_field(form, "likes")),
+        dislikes=lines(_field(form, "dislikes")),
+        dealbreakers=lines(_field(form, "dealbreakers")),
+        locations=lines(_field(form, "locations")),
+        include_remote=_field(form, "include_remote") == "1",
+        keywords=lines(_field(form, "keywords")),
+        exclude_keywords=lines(_field(form, "exclude_keywords")),
+        companies=companies,
+    )

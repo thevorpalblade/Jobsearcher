@@ -63,6 +63,9 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
 - `jobsearcher/contacts/`: contact people (docs/m5-contacts.md): regexes for ads, search
   links, the employer's website and the people on it (literal-check: nothing invented),
   picks per job, the letter's addressee
+- `jobsearcher/interview.py`: the Preferences tab: a model (the profile's drafting model, no
+  tools) interviews the candidate, then proposes target roles, preferences, search region and
+  companies; nothing is saved until they review it (`/interview/review`)
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules
