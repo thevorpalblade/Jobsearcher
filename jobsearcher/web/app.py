@@ -67,12 +67,14 @@ from jobsearcher.config import (
     save_secret,
 )
 from jobsearcher.contacts import is_generic_email
+from jobsearcher.contacts import service as contacts_service
+from jobsearcher.contacts.links import search_links
 from jobsearcher.drafting import service as draft_service
 from jobsearcher.drafting.core import Draft
 from jobsearcher.drafting.manager import DraftManager, ProfileDrafts
 from jobsearcher.models import Application, ApplicationState, JobStatus
 from jobsearcher.ranking.config import RankingConfig
-from jobsearcher.ranking.ranker import job_details
+from jobsearcher.ranking.ranker import Ranking, job_details
 from jobsearcher.store import Store
 from jobsearcher.web import forms, views
 
@@ -90,6 +92,7 @@ class Shared:
     tz: ZoneInfo
     chat: chat_module.ChatManager
     draft_manager: DraftManager
+    contact_manager: DraftManager  # contact lookups, one at a time, apart from drafts
     states: dict[str, WebState] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -125,6 +128,7 @@ class WebState:
         self.shared = shared
         self.memo = views.PrefilterMemo()
         self.drafts = ProfileDrafts(shared.draft_manager, lambda: self.config)
+        self.contacts = ProfileDrafts(shared.contact_manager, lambda: self.config)
         self.use_config(config)
 
     def use_config(self, config: Config) -> None:
@@ -266,6 +270,7 @@ def _make_templates(tz: ZoneInfo) -> Jinja2Templates:
     templates.env.filters["safe_url"] = views.safe_url
     templates.env.filters["provenance"] = views.provenance_label
     templates.env.tests["generic_email"] = is_generic_email
+    templates.env.globals["contact_key"] = contacts_service.contact_key
     return templates
 
 
@@ -474,6 +479,9 @@ def job_page(request: Request, job_id: str, state: State, store: ReadStore) -> H
         ranking=ctx.config,
         states=list(ApplicationState),
         **_draft_context(state, store, job_id, f"/jobs/{job_id}"),
+        **_contacts_context(
+            state, store, job_id, f"/jobs/{job_id}", record.job, _job_role(store, job_id)
+        ),
     )
 
 
@@ -771,6 +779,154 @@ def _draft_file(state: WebState, store: Store, key: str, label: str, version: st
     return FileResponse(path, filename=_download_name(draft, label, name, path.suffix[1:]))
 
 
+# --- contact people (docs/m5-contacts.md) ---------------------------------------------
+
+
+def _contacts_context(
+    state: WebState, store: Store, key: str, base: str, job: Any = None, role: str | None = None
+) -> dict[str, Any]:
+    found = contacts_service.load_lookup(store, key)
+    company = job.company if job is not None else None
+    if company is None and key.startswith(contacts_service.COMPANY_PREFIX):
+        slug = key.removeprefix(contacts_service.COMPANY_PREFIX)
+        company = _company(state, slug).name
+    return {
+        "contacts_base": base,
+        "contacts_status": state.contacts.status(key),
+        "found": found,
+        "chosen": found.chosen if found else None,
+        "ad_contacts": list(job.contacts) if job is not None else [],
+        "links": search_links(company, role, found.domain if found else None),
+    }
+
+
+def _job_role(store: Store, job_id: str) -> str | None:
+    latest = store.latest_ranking(job_id)
+    if latest is None:
+        return None
+    try:
+        return Ranking.model_validate_json(latest[0]).assessment.matched_role
+    except ValueError:
+        return None
+
+
+def _contacts_panel(request: Request, state: WebState, store: Store, key: str) -> HTMLResponse:
+    if key.startswith(contacts_service.COMPANY_PREFIX):
+        slug = key.removeprefix(contacts_service.COMPANY_PREFIX)
+        context = _contacts_context(state, store, key, f"/companies/{slug}")
+    else:
+        job = store.get_job(key)
+        if job is None:
+            raise HTTPException(404)
+        context = _contacts_context(state, store, key, f"/jobs/{key}", job, _job_role(store, key))
+    return render(request, state, "_contacts.html", **context)
+
+
+def _start_lookup(state: WebState, key: str) -> None:
+    if key.startswith(contacts_service.COMPANY_PREFIX):
+        company = _company(state, key.removeprefix(contacts_service.COMPANY_PREFIX))
+        state.contacts.submit(
+            key, lambda config, st: contacts_service.for_company(config, st, company, force=True)
+        )
+    else:
+        state.contacts.submit(
+            key, lambda config, st: contacts_service.for_job(config, st, key, force=True)
+        )
+
+
+@router.get("/jobs/{job_id}/contacts", response_class=HTMLResponse)
+def job_contacts_panel(
+    request: Request, job_id: str, state: State, store: ReadStore
+) -> HTMLResponse:
+    return _contacts_panel(request, state, store, job_id)
+
+
+@router.get("/companies/{slug}/contacts", response_class=HTMLResponse)
+def company_contacts_panel(
+    request: Request, slug: str, state: State, store: ReadStore
+) -> HTMLResponse:
+    _company(state, slug)
+    return _contacts_panel(request, state, store, contacts_service.COMPANY_PREFIX + slug)
+
+
+def _contacts_key(state: WebState, store: Store, kind: str, ident: str) -> str:
+    if kind == "companies":
+        _company(state, ident)
+        return contacts_service.COMPANY_PREFIX + ident
+    if store.get_job(ident) is None:
+        raise HTTPException(404)
+    return ident
+
+
+@router.post(
+    "/{kind}/{ident}/contacts",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_htmx)],
+)
+def contacts_start(
+    request: Request, kind: str, ident: str, state: State, store: ReadStore
+) -> HTMLResponse:
+    if kind not in ("jobs", "companies"):
+        raise HTTPException(404)
+    key = _contacts_key(state, store, kind, ident)
+    _start_lookup(state, key)
+    return _contacts_panel(request, state, store, key)
+
+
+@router.post(
+    "/{kind}/{ident}/contacts/choose",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_htmx)],
+)
+def contacts_choose(
+    request: Request,
+    kind: str,
+    ident: str,
+    state: State,
+    store: WriteStore,
+    key: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    if kind not in ("jobs", "companies"):
+        raise HTTPException(404)
+    job_key = _contacts_key(state, store, kind, ident)
+    store.choose_contact(job_key, key[:500] or None)
+    return _contacts_panel(request, state, store, job_key)
+
+
+@router.post(
+    "/{kind}/{ident}/contacts/site",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_htmx)],
+)
+def contacts_site(
+    request: Request,
+    kind: str,
+    ident: str,
+    state: State,
+    store: WriteStore,
+    domain: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    """The user's correction of the company's website; then look again with it."""
+    from urllib.parse import urlsplit
+
+    from jobsearcher.contacts.site import is_company_host, registered_domain
+
+    if kind not in ("jobs", "companies"):
+        raise HTTPException(404)
+    job_key = _contacts_key(state, store, kind, ident)
+    if kind == "companies":
+        company_name = _company(state, ident).name
+    else:
+        company_name = store.get_job(ident).company or ""  # type: ignore[union-attr]
+    raw = domain.strip()
+    host = urlsplit(raw if "//" in raw else f"//{raw}").hostname or ""
+    if not company_name or not host or not is_company_host(host):
+        return _result(request, state, False, f"“{raw}” doesn't look like a company website.")
+    contacts_service.set_site(store, company_name, registered_domain(host))
+    _start_lookup(state, job_key)
+    return _contacts_panel(request, state, store, job_key)
+
+
 @router.get("/jobs/{job_id}/draft", response_class=HTMLResponse)
 def job_draft_panel(
     request: Request, job_id: str, state: State, store: ReadStore, v: str | None = None
@@ -833,6 +989,9 @@ def company_page(request: Request, slug: str, state: State, store: ReadStore) ->
         signals=[s for s in signals if s["kind"] != "not_about_company"],
         open_jobs=open_jobs,
         **_draft_context(state, store, key, f"/companies/{slug}"),
+        **_contacts_context(
+            state, store, contacts_service.COMPANY_PREFIX + slug, f"/companies/{slug}"
+        ),
     )
 
 
@@ -1634,6 +1793,7 @@ def create_app(config: Config, config_path: Path | None = None) -> FastAPI:
         config_path=config_path or config_file_path(),
         chat=chat_module.ChatManager(config.chat, config.db_path, config.web.user_name),
         draft_manager=DraftManager(lambda: shared.state_for(None).config, config.db_path),
+        contact_manager=DraftManager(lambda: shared.state_for(None).config, config.db_path),
         templates=_make_templates(tz),
         tz=tz,
     )

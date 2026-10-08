@@ -23,6 +23,11 @@ class Contact(BaseModel):
     phone: str | None = None
     # Where this contact came from, e.g. "platsbanken:application_contacts" or "ad_text".
     provenance: str
+    # For contacts found on the company's website (M5): the page, why this person,
+    # and an address guessed from the site's pattern (never used without checking).
+    url: str | None = None
+    note: str | None = None
+    guessed_email: str | None = None
 
     def key(self) -> tuple[str, str, str]:
         return (
@@ -45,6 +50,7 @@ class Job(BaseModel):
     title: str
     company: str | None = None
     company_org_nr: str | None = None
+    company_url: str | None = None  # the employer's own website, when the source gives it
     location: str | None = None
     region: str | None = None
     remote: bool | None = None

@@ -133,6 +133,29 @@ CREATE TABLE IF NOT EXISTS signals (
     PRIMARY KEY (profile, item_id)
 );
 
+-- Contact people (M5, jobsearcher/contacts/). An employer's website and what its pages
+-- say are public and shared by every profile; the people picked for a job are a
+-- profile's own.
+CREATE TABLE IF NOT EXISTS company_sites (
+    company     TEXT PRIMARY KEY,   -- contacts.site.company_key(name)
+    domain      TEXT,               -- NULL: none found
+    source      TEXT NOT NULL,      -- where it came from, or "manual"
+    checked_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS company_contacts (
+    domain      TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- contacts.extract.SiteFindings as JSON
+    fetched_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS job_contacts (
+    profile     TEXT NOT NULL,
+    job_id      TEXT NOT NULL,      -- a job id, or "company:<slug>"
+    data        TEXT NOT NULL,      -- {"contacts": [...], "domain": ..., "error": ...}
+    chosen      TEXT,               -- the contact to address the letter to (its key)
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (profile, job_id)
+);
+
 -- Web UI accounts and sessions (jobsearcher/auth.py). Tokens are stored as SHA-256.
 CREATE TABLE IF NOT EXISTS users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +196,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-PROFILE_TABLES = ("rankings", "drafts", "applications", "signals")
+PROFILE_TABLES = ("rankings", "drafts", "applications", "signals", "job_contacts")
 
 
 def _table_ddl(table: str) -> str:
@@ -816,6 +839,65 @@ class Store:
             " ORDER BY s.relevance DESC, n.published_at DESC",
             (self.profile, since.isoformat()),
         ).fetchall()
+
+    # --- contact people (M5) ---------------------------------------------
+
+    def company_site(self, company: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM company_sites WHERE company = ?", (company,)
+        ).fetchone()
+
+    def save_company_site(self, company: str, domain: str | None, source: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO company_sites (company, domain, source, checked_at)"
+                " VALUES (?, ?, ?, ?)",
+                (company, domain, source, _now().isoformat()),
+            )
+
+    def company_contacts(self, domain: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM company_contacts WHERE domain = ?", (domain,)
+        ).fetchone()
+
+    def save_company_contacts(self, domain: str, data: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO company_contacts (domain, data, fetched_at)"
+                " VALUES (?, ?, ?)",
+                (domain, data, _now().isoformat()),
+            )
+
+    def job_contacts(self, key: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM job_contacts WHERE profile = ? AND job_id = ?", (self.profile, key)
+        ).fetchone()
+
+    def all_job_contacts(self) -> set[str]:
+        """Keys of the jobs (and companies) this profile has looked up contacts for."""
+        rows = self.conn.execute(
+            "SELECT job_id FROM job_contacts WHERE profile = ?", (self.profile,)
+        )
+        return {row["job_id"] for row in rows}
+
+    def save_job_contacts(self, key: str, data: str) -> None:
+        """A new lookup's result; a contact chosen earlier stays chosen."""
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO job_contacts (profile, job_id, data, created_at) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (profile, job_id) DO UPDATE SET data = excluded.data,"
+                " created_at = excluded.created_at",
+                (self.profile, key, data, _now().isoformat()),
+            )
+
+    def choose_contact(self, key: str, contact_key: str | None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO job_contacts (profile, job_id, data, chosen, created_at)"
+                " VALUES (?, ?, '{}', ?, ?) ON CONFLICT (profile, job_id)"
+                " DO UPDATE SET chosen = excluded.chosen",
+                (self.profile, key, contact_key, _now().isoformat()),
+            )
 
     # --- run bookkeeping --------------------------------------------------
 

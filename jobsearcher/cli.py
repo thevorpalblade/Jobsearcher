@@ -128,6 +128,10 @@ def run_pipeline(config: Config, args: argparse.Namespace) -> tuple[int, bool]:
             signals_status = cmd_signals(profile, signals_args)
             retry = retry or signals_status == RETRY
             status = max(status, 0 if signals_status == RETRY else signals_status)
+        try:  # contact people for the best jobs; never fails the run
+            cmd_contacts(profile, argparse.Namespace(job_id=None, company=None))
+        except Exception:
+            log.exception("Contact lookups failed")
     return status, retry
 
 
@@ -534,6 +538,64 @@ def daemon_cycle(
             break
 
 
+def cmd_contacts(config: Config, args: argparse.Namespace) -> int:
+    """Look up contact people on employers' websites (docs/m5-contacts.md): for one job
+    or company, or (with neither) for this profile's best and shortlisted jobs."""
+    from jobsearcher.companies.config import slugify
+    from jobsearcher.contacts import service as contacts
+    from jobsearcher.contacts.site import company_key
+    from jobsearcher.ranking import load_ranking_config
+
+    store = Store(config.db_path, profile=config.profile)
+    job_id = getattr(args, "job_id", None)
+    company_name = getattr(args, "company", None)
+    if job_id or company_name:
+        if company_name:
+            from jobsearcher.companies import load_companies
+
+            wanted = slugify(company_name)
+            matches = [c for c in load_companies(config.companies_config) if c.slug == wanted]
+            if not matches:
+                print(f"No company {company_name!r} in {config.companies_config}", file=sys.stderr)
+                return 1
+            found = contacts.for_company(config, store, matches[0], force=True)
+        else:
+            found = contacts.for_job(config, store, job_id, force=True)
+        for c in found.contacts:
+            guess = f"  (guessed: {c.guessed_email})" if c.guessed_email else ""
+            print(f"{c.name}, {c.role or '-'} <{c.email or '-'}>{guess}")
+            print(f"    {c.note or ''}\n    {c.url}")
+        if found.error:
+            print(found.error, file=sys.stderr)
+        return 0
+    rc = load_ranking_config(config.ranking_config)
+    if not rc.contacts.auto:
+        return 0
+    due = contacts.due_for_lookup(store, rc)
+    if not due:
+        return 0
+    clients = contacts.make_clients(config, store)
+    companies: set[str] = set()
+    looked = found_people = 0
+    for job in due:
+        key = company_key(job.company or "")
+        if key not in companies and len(companies) >= rc.contacts.max_companies_per_run:
+            continue  # the rest wait for the next run (other jobs at known companies don't)
+        companies.add(key)
+        try:
+            result = contacts.for_job(config, store, job.id, clients=clients)
+        except Exception:  # one site failing mustn't stop the others
+            log.exception("Contact lookup for %s failed", job.id)
+            continue
+        looked += 1
+        found_people += bool(result.contacts)
+    print(
+        f"contacts{_profile_label(config)}: {looked} jobs looked up at {len(companies)} "
+        f"companies, people found for {found_people}; {len(due) - looked} wait"
+    )
+    return 0
+
+
 def cmd_migrate_profiles(config: Config, args: argparse.Namespace) -> int:
     """Move a setup without profiles into profiles/<slug>/: ranking.yaml,
     companies.yaml, the CVs and config.yaml's search section, plus the database rows
@@ -760,6 +822,14 @@ def main(argv: list[str] | None = None) -> int:
         "--url", help="the web UI's address, for the link (default: http://<web.host>:<web.port>)"
     )
 
+    p_contacts = sub.add_parser(
+        "contacts",
+        help="look up contact people on employers' websites (a job, --company, or the "
+        "best and shortlisted jobs)",
+    )
+    p_contacts.add_argument("job_id", nargs="?", help="one job (default: the due ones)")
+    p_contacts.add_argument("--company", help="a company in companies.yaml")
+
     p_migrate = sub.add_parser(
         "migrate-profiles", help="move this setup's files and data into profiles/<slug>/"
     )
@@ -801,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
         "web": cmd_web,
         "migrate-profiles": cmd_migrate_profiles,
         "users": cmd_users,
+        "contacts": cmd_contacts,
     }
     return handler[args.command](config, args)
 

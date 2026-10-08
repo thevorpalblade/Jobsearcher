@@ -121,6 +121,8 @@ So M5 is about the top of the list, not the whole pool.
 | 5c | Picking people per job, "use for the letter", lookup before drafting | Small to medium |
 | 5d | Automatic lookup for top-scoring and shortlisted jobs in the daily run | Small |
 
+5a-5d were built on 2026-10-08 (see "As built").
+
 ## Decisions (2026-10-08)
 
 1. **Guessed email addresses: yes, shown as a guess.** Only when the company's own
@@ -130,6 +132,36 @@ So M5 is about the top of the list, not the whole pool.
 2. **Automatic lookups: yes,** for jobs with a final score of 60 or more and for
    shortlisted jobs (5d).
 3. **Bolagsverket: try it** (5e, below).
+
+## As built (5a-5d, 2026-10-08)
+
+- **`jobsearcher/contacts/`:**
+  - `links.py`: search links.
+  - `site.py`: finding the site and the pages; candidates are tried in order, and the
+    model's guess is only asked for when none of them is the company's site.
+  - `extract.py`: JSON-LD, mailto links, the model pass with the literal check, and
+    the address pattern.
+  - `pick.py`: choosing people for a job or company.
+  - `service.py`: caching, lookups, `letter_contact`, `due_for_lookup`.
+- **Tables:** `company_sites` and `company_contacts` (shared), `job_contacts` (per
+  profile, with the chosen contact). Jobs keep `company_url` from Platsbanken
+  (`employer.url`) and JobSpy (`company_url_direct`).
+- **Web:** the contacts panel (`_contacts.html`) on job and company pages. It has
+  "Find contacts" (a background queue of its own), "use for the letter", setting or
+  correcting the website, and the search links.
+- **CLI:** `jobsearcher contacts [<job id> | --company NAME]`; with neither, it runs
+  the automatic lookups. The daily run calls it after ranking, for each profile.
+- **ranking.yaml:** `contacts: {auto, auto_min_score: 60, max_companies_per_run: 20,
+  before_drafting: true}`.
+- **Drafting:** the letter goes to the chosen contact, else a named person from the
+  ad, else the first website pick. With nobody named, it looks one up first.
+- **Tests stay offline:** `make_clients` refuses in tests, so tests pass fake clients.
+- **First live try (4 of Jenny's top jobs, $0.003 in all):**
+  - LeoVegas: its Chief HR Officer, from the executive-management page, with a
+    sensible reason.
+  - Tobii Dynavox, TD SYNNEX and Alstom: the site was found (guessed or from the
+    apply link) and the right pages read, but large employers don't name staff there.
+    The search links cover those.
 
 ## 5e: Bolagsverket (researched 2026-10-08)
 

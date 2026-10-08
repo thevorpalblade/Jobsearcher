@@ -83,25 +83,9 @@
   {% endif %}
 </section>
 
-<section>
-  <h2>Contacts</h2>
-  {% if job.contacts %}
-    <ul class="tight">
-    {% for c in job.contacts %}
-      <li>
-        {% if c.name %}<strong>{{ c.name }}</strong>{% endif %}
-        {% if c.role and c.role != "generic mailbox" %}<span class="muted">{{ c.role }}</span>{% endif %}
-        {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>
-          {% if c.email is generic_email or c.role == "generic mailbox" %}<span class="chip">generic mailbox</span>{% endif %}{% endif %}
-        {% if c.phone %}<a href="tel:{{ c.phone|replace(' ', '')|replace('-', '') }}">{{ c.phone }}</a>{% endif %}
-        <br><span class="small muted">{{ c.provenance|provenance }}{% if c.provenance|provenance != c.provenance %} ({{ c.provenance }}){% endif %}</span>
-      </li>
-    {% endfor %}
-    </ul>
-  {% else %}
-    <p class="muted">No contacts known.</p>
-  {% endif %}
+{% include "_contacts.html" %}
 
+<section>
   <h2>Prefilter</h2>
   {% set p = row.prefilter %}
   <dl class="facts">

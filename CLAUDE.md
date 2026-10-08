@@ -60,6 +60,9 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   these jobs expire by age, not by absence
 - `benchmarks/ranking/` + `scripts/rank_benchmark.py`: a fixed job set and every ranking model's
   scores on it, to compare a new model before switching (scores only: no CV-derived text in git)
+- `jobsearcher/contacts/`: contact people (docs/m5-contacts.md): regexes for ads, search
+  links, the employer's website and the people on it (literal-check: nothing invented),
+  picks per job, the letter's addressee
 - `jobsearcher/signals/`: company news from GDELT, classified by the LLM into spontaneous-application signals
 
 ## Rules

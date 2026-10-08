@@ -3,6 +3,7 @@ The CLI, the web UI's background runner and the chat all go through here."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,6 +20,8 @@ from jobsearcher.models import Contact, Job
 from jobsearcher.ranking import load_ranking_config
 from jobsearcher.ranking.ranker import Ranking
 from jobsearcher.store import Store
+
+log = logging.getLogger(__name__)
 
 COMPANY_PREFIX = "company:"
 SIGNAL_DAYS = 45
@@ -72,6 +75,29 @@ def load_cvs(config: Config, base: str | None = None) -> list[tuple[str, str]]:
     return [(c.name, c.path.read_text()) for c in ordered]
 
 
+def _letter_contact(
+    config: Config, store: Store, key: str, job: Job | None, company: Company | None = None
+) -> Contact | None:
+    """Whom to address the letter to: the contact the user chose, a named person from
+    the ad, or one picked from the company's website. With no named person yet (and
+    `contacts.before_drafting`), the website is looked up first (docs/m5-contacts.md)."""
+    from jobsearcher.contacts import service as contacts
+
+    found = contacts.load_lookup(store, key)
+    has_named = job is not None and choose_contact(job) is not None
+    if found is None and not has_named:
+        if load_ranking_config(config.ranking_config).contacts.before_drafting:
+            try:
+                if job is not None:
+                    found = contacts.for_job(config, store, key)
+                elif company is not None:
+                    found = contacts.for_company(config, store, company)
+            except Exception as exc:  # no contact is fine: the letter says "Dear Hiring Manager"
+                log.warning("Contact lookup before the draft failed: %s", exc)
+    subject = job or Job(id=key, title="", url="")
+    return contacts.letter_contact(subject, found)
+
+
 def choose_contact(job: Job) -> Contact | None:
     """A named person from the ad to address the letter to (never a generic mailbox)."""
     named = [c for c in job.contacts if c.name and c.role != "generic mailbox"]
@@ -79,14 +105,20 @@ def choose_contact(job: Job) -> Contact | None:
     return named[0] if named else None
 
 
-def job_request(job: Job, ranking_json: str | None, instructions: str = "") -> Request:
+def job_request(
+    job: Job,
+    ranking_json: str | None,
+    instructions: str = "",
+    contact: Contact | None = None,
+) -> Request:
+    """`contact`: whom to address (default: a named person from the ad)."""
     assessment = None
     if ranking_json:
         try:
             assessment = Ranking.model_validate_json(ranking_json).assessment
         except ValueError:
             assessment = None  # an older prompt version's ranking: draft without it
-    contact = choose_contact(job)
+    contact = contact or choose_contact(job)
     identity = [job.content_hash, contact.name if contact and contact.name else ""]
     if assessment:
         identity += assessment.matched_requirements + ["|"] + assessment.missing_requirements
@@ -105,6 +137,7 @@ def company_request(
     signals: list[dict[str, str]],
     target_roles: list[str],
     instructions: str = "",
+    contact: Contact | None = None,
 ) -> Request:
     if not signals:
         raise DraftError(
@@ -113,9 +146,13 @@ def company_request(
         )
     return Request(
         key=COMPANY_PREFIX + company.slug,
-        prompt=prompts.spontaneous_prompt(company.name, signals, target_roles, None, instructions),
-        identity=[company.name] + [s["summary"] for s in signals],
+        prompt=prompts.spontaneous_prompt(
+            company.name, signals, target_roles, contact, instructions
+        ),
+        identity=[company.name, contact.name if contact and contact.name else ""]
+        + [s["summary"] for s in signals],
         instructions=instructions,
+        addressed_to=contact.name if contact else None,
         sources=[s["summary"] + " " + s["title"] for s in signals],
     )
 
@@ -147,7 +184,8 @@ def draft_job(
     if job is None:
         raise DraftError(f"No job {job_id}")
     latest = store.latest_ranking(job_id)
-    request = job_request(job, latest[0] if latest else None, instructions)
+    contact = _letter_contact(config, store, job_id, job)
+    request = job_request(job, latest[0] if latest else None, instructions, contact)
     llms = llms or make_llms(config, store)
     return generate_draft(
         store,
@@ -174,7 +212,9 @@ def draft_company(
     render: Renderer | None = None,
 ) -> Draft:
     roles = [r.name for r in load_ranking_config(config.ranking_config).target_roles]
-    request = company_request(company, company_signals(store, company), roles, instructions)
+    signals = company_signals(store, company)
+    contact = _letter_contact(config, store, COMPANY_PREFIX + company.slug, None, company)
+    request = company_request(company, signals, roles, instructions, contact)
     llms = llms or make_llms(config, store)
     return generate_draft(
         store,

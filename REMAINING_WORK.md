@@ -15,7 +15,7 @@ file only lists what is **not done yet**, in suggested order. Last updated
 | M2 Ranking (`ranking.yaml`, prefilter, LLM scoring) | Done; all ~350 candidates ranked live with GLM on 2026-10-01; `calibrate` command missing |
 | M3 Local web UI | Done (`jobsearcher web`, [docs/m3-web-ui.md](docs/m3-web-ui.md)); smoke-tested on a copy of the live DB, not yet run in Docker |
 | M4 Drafting (tailored CV + cover letter, PDF/DOCX) | Done 2026-10-05: on demand, checked against the CVs (docs/m4-drafting.md) |
-| M5 Contacts from company sites (application tracking was done in M3) | Planned 2026-10-08 ([docs/m5-contacts.md](docs/m5-contacts.md)) |
+| M5 Contacts from company sites (application tracking was done in M3) | 5a-5d built 2026-10-08 ([docs/m5-contacts.md](docs/m5-contacts.md)); 5e (Bolagsverket) needs API credentials |
 | M6 Target companies: ATS crawling + news signals (docs/m6-companies.md) | Done (phases 1–3); first live runs 2026-10-01 |
 | M9 Landing dashboard + chat with Claude Code (docs/m9-dashboard-chat.md) | Done 2026-10-05 |
 | M10 Several candidates + logins + internet access ([docs/m10-multi-user.md](docs/m10-multi-user.md)) | Phases 1–3 built 2026-10-07/08 (profiles, logins, own models and keys, 2FA); HTTPS next |
@@ -153,9 +153,11 @@ Word via python-docx, PDF via LibreOffice, a Markdown preview in the browser.
 Planned 2026-10-08: [docs/m5-contacts.md](docs/m5-contacts.md) (company websites, picking the right
 person per job, search links; phases 5a-5d, three open questions).
 
-- [ ] Fallback contact: a pre-built LinkedIn/Google search link (company + role)
-      when no contact person is known (PLAN.md §2, item 5).
-- [ ] Contacts from the company's own career/contact page (shares code with M6).
+- [x] Search links (LinkedIn/Google) for every job and company (5a, 2026-10-08).
+- [x] Contacts from the company's own website: found, picked per job, chosen for the
+      letter, looked up automatically for jobs scoring 60+ and shortlisted ones (5b-5d).
+- [ ] 5e: the CEO and board of small employers from Bolagsverket's annual reports. It
+      needs free API credentials (the user applies at portal.api.bolagsverket.se).
 - [x] Application tracking (built with M3): states new / shortlisted / applied /
       interview / rejected / ignored plus notes, in the `applications` table, set
       from the job page. Ignored jobs are hidden from the list; `view=tracked`

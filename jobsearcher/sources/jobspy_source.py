@@ -65,6 +65,7 @@ def parse_row(row: dict[str, Any], site: str) -> Job | None:
         id=make_job_id(site, source_id),
         title=str(title).strip(),
         company=_value(row, "company"),
+        company_url=_value(row, "company_url_direct"),
         location=city,
         region=region,
         remote=bool(_value(row, "is_remote")) or None,

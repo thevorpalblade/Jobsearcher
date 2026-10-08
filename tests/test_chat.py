@@ -367,7 +367,9 @@ def test_chat_users_get_their_own_private_chats(web, tmp_path):  # noqa: F811
 
     launcher_procs = [FakeProc([text("hi"), result()]) for _ in range(3)]
     manager = enable_chat(web, tmp_path, *launcher_procs)
-    admin_chat = web.client.post("/chat/send", data={"message": "from the admin"}, headers=HX).json()
+    admin_chat = web.client.post(
+        "/chat/send", data={"message": "from the admin"}, headers=HX
+    ).json()
     wait_done(manager.run_for(admin_chat["chat_id"]))
 
     jenny = TestClient(web.client.app)

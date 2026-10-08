@@ -1,0 +1,64 @@
+{# The contacts panel for a job or a company (docs/m5-contacts.md); HTMX swaps it as a
+   whole, and it polls itself while a lookup runs. #}
+{% set status = contacts_status %}
+<section class="contacts" id="contacts"
+  {% if status and status.active %}hx-get="{{ contacts_base }}/contacts" hx-trigger="every 3s" hx-target="#contacts" hx-swap="outerHTML"{% endif %}>
+  <h2>Contacts</h2>
+
+  {% macro person(c, choosable) %}
+    <li>
+      {% if c.name %}<strong>{{ c.name }}</strong>{% endif %}
+      {% if c.role and c.role != "generic mailbox" %}<span class="muted">{{ c.role }}</span>{% endif %}
+      {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>
+        {% if c.email is generic_email or c.role == "generic mailbox" %}<span class="chip">generic mailbox</span>{% endif %}{% endif %}
+      {% if c.guessed_email %}<span class="chip warn" title="Guessed from the address pattern on the company's site; check it before using it">guess: {{ c.guessed_email }}</span>{% endif %}
+      {% if c.phone %}<a href="tel:{{ c.phone|replace(' ', '')|replace('-', '') }}">{{ c.phone }}</a>{% endif %}
+      {% if choosable and c.name and c.role != "generic mailbox" %}
+        {% if chosen == contact_key(c) %}<span class="chip good">letter is addressed to them</span>
+        {% else %}<button type="button" class="link small" hx-post="{{ contacts_base }}/contacts/choose" hx-vals='{"key": {{ contact_key(c)|tojson }}}' hx-target="#contacts" hx-swap="outerHTML">use for the letter</button>{% endif %}
+      {% endif %}
+      {% if c.note %}<br><span class="small">{{ c.note }}</span>{% endif %}
+      <br><span class="small muted">{% if c.url %}<a href="{{ c.url|safe_url }}" rel="noopener" target="_blank">{{ c.url }}</a>{% else %}{{ c.provenance|provenance }}{% if c.provenance|provenance != c.provenance %} ({{ c.provenance }}){% endif %}{% endif %}</span>
+    </li>
+  {% endmacro %}
+
+  {% if ad_contacts %}
+    <h3 class="small">From the ad</h3>
+    <ul class="tight">{% for c in ad_contacts %}{{ person(c, true) }}{% endfor %}</ul>
+  {% endif %}
+
+  <h3 class="small">From the company's website</h3>
+  {% if status and status.active %}
+    <p class="working">⏳ Looking at the company's website…
+      <span class="muted small">This takes up to a minute; the page updates itself.</span></p>
+  {% else %}
+    {% if status and status.state == "failed" %}
+      <div class="result error">The lookup didn't work: {{ status.error }}</div>
+    {% endif %}
+    {% if found %}
+      {% if found.contacts %}
+        <ul class="tight">{% for c in found.contacts %}{{ person(c, true) }}{% endfor %}</ul>
+      {% endif %}
+      {% if found.error %}<p class="muted">{{ found.error }}</p>{% endif %}
+      {% if found.mailboxes %}<p class="small">Mailboxes on the site: {% for m in found.mailboxes %}<a href="mailto:{{ m }}">{{ m }}</a>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+      <p class="small muted">
+        {% if found.domain %}Website: <a href="https://{{ found.domain }}/" rel="noopener" target="_blank">{{ found.domain }}</a> ({{ found.site_source }}) · {% endif %}
+        looked up {{ found.checked_at|localtime }}
+      </p>
+    {% else %}
+      <p class="muted">Not looked up yet.</p>
+    {% endif %}
+    <div class="actions">
+      <button type="button" hx-post="{{ contacts_base }}/contacts" hx-target="#contacts" hx-swap="outerHTML">{{ "Look again" if found else "Find contacts" }}</button>
+      <form class="inline" hx-post="{{ contacts_base }}/contacts/site" hx-target="#contacts" hx-swap="outerHTML">
+        <input name="domain" placeholder="{{ found.domain if found and found.domain else 'company.se' }}" aria-label="The company's website" size="18">
+        <button type="submit" class="link">{{ "Correct the website" if found and found.domain else "Set the website" }}</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if links %}
+    <h3 class="small">Search yourself</h3>
+    <ul class="tight">{% for l in links %}<li><a href="{{ l.url }}" rel="noopener" target="_blank">{{ l.label }}</a></li>{% endfor %}</ul>
+  {% endif %}
+</section>

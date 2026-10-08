@@ -110,6 +110,19 @@ class DraftingThresholds(BaseModel):
     auto_on_shortlist: bool = True
 
 
+class ContactSettings(BaseModel):
+    """Looking up contact people on employers' websites (docs/m5-contacts.md)."""
+
+    # The daily run looks up contacts for jobs scoring at least this, and for shortlisted
+    # jobs, at most max_companies_per_run companies a run (each costs one or two cheap
+    # model calls). Set auto_min_score above 100 to only look up shortlisted jobs.
+    auto: bool = True
+    auto_min_score: int = 60
+    max_companies_per_run: int = 20
+    # Before a draft for a job with no named contact, look one up to address it to.
+    before_drafting: bool = True
+
+
 class RankingConfig(BaseModel):
     target_roles: list[TargetRole] = Field(default_factory=list)
     preferences: Preferences = Field(default_factory=Preferences)
@@ -117,6 +130,7 @@ class RankingConfig(BaseModel):
     adjustments: Adjustments = Field(default_factory=Adjustments)
     prefilter: Prefilter = Field(default_factory=Prefilter)
     drafting: DraftingThresholds = Field(default_factory=DraftingThresholds)
+    contacts: ContactSettings = Field(default_factory=ContactSettings)
 
     @property
     def role_terms(self) -> list[str]:

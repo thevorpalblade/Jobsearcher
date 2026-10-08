@@ -82,6 +82,7 @@ def parse_hit(hit: dict[str, Any]) -> Job | None:
         title=title.strip(),
         company=dig(hit, "employer", "name") or dig(hit, "employer", "workplace"),
         company_org_nr=dig(hit, "employer", "organization_number"),
+        company_url=dig(hit, "employer", "url"),
         location=location,
         region=address.get("region"),
         remote=_remote(hit, description),

@@ -18,6 +18,17 @@ def _isolated_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
+@pytest.fixture(autouse=True)
+def _no_contact_lookups_online(monkeypatch):
+    """Contact lookups (before drafts, in the daily run) would crawl real websites:
+    tests that want one pass their own fake clients to contacts.service.lookup."""
+
+    def offline(config, store):
+        raise RuntimeError("no network in tests: pass clients= to contacts.service.lookup")
+
+    monkeypatch.setattr("jobsearcher.contacts.service.make_clients", offline)
+
+
 @pytest.fixture
 def load_fixture():
     return lambda name: json.loads((FIXTURES / name).read_text())
