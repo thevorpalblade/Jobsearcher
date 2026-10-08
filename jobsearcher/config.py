@@ -191,6 +191,10 @@ class ScheduleConfig(BaseModel):
     # times (and never into the next daily run). 0 retries = wait for the next daily run.
     retry_minutes: int = 30
     retries: int = 16
+    # When the daemon (re)starts, it searches only if the last search is older than this;
+    # otherwise its start-up run just ranks, checks news and looks up contacts. Restarts
+    # (e.g. after an update) then don't add traffic that sites like LinkedIn rate-limit.
+    min_hours_between_searches: float = 6
 
 
 class WebConfig(BaseModel):

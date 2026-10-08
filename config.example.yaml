@@ -130,6 +130,9 @@ schedule:
   # into the next daily run. 0 retries = wait for the next daily run.
   retry_minutes: 30
   retries: 16
+  # A (re)started daemon searches only if the last search is older than this; otherwise
+  # its start-up run just ranks. Keeps restarts from adding LinkedIn/Indeed traffic.
+  min_hours_between_searches: 6
   timezone: "Europe/Stockholm"
 
 # Relative paths are resolved against this file's directory.

@@ -174,3 +174,17 @@ def test_leftover_classification_skips_the_model_when_nothing_is_left(monkeypatc
     monkeypatch.setattr(llm, "make_llm", no_client)
     args = argparse.Namespace(digest_only=False, days=None, min_relevance=40, limit=0, fetch=False)
     assert cli.cmd_signals(config, args) == 0
+
+
+def test_a_restart_soon_after_a_search_ranks_without_searching(monkeypatch):
+    from datetime import timedelta
+
+    script = Script(monkeypatch)
+    config = script.config
+    now = datetime(2026, 10, 8, 12, tzinfo=UTC)
+    assert cli.search_due(config, now)  # never searched
+    Store(config.db_path).set_last_run("linkedin", now - timedelta(hours=2))
+    assert not cli.search_due(config, now)
+    assert cli.search_due(config, now + timedelta(hours=4, minutes=1))  # 6 h by default
+    cli.daemon_cycle(config, ARGS, TZ, sleep=script.sleeps.append, search=False)
+    assert script.calls == ["rank", "signals"]  # no search

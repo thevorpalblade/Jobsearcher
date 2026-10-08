@@ -100,14 +100,14 @@ def _profiles(config: Config, args: argparse.Namespace) -> list[Config]:
     return all_profiles(config)
 
 
-def run_pipeline(config: Config, args: argparse.Namespace) -> tuple[int, bool]:
-    """One full pass: search (once, for every profile), then for each profile rank and
-    news signals (fetched weekly; leftovers are classified every pass). Returns (exit
-    status, retry): retry is True when ranking or news classification stopped for any
-    profile because the provider kept failing."""
+def run_pipeline(config: Config, args: argparse.Namespace, search: bool = True) -> tuple[int, bool]:
+    """One full pass: search (once, for every profile; skipped with `search=False`), then
+    for each profile rank and news signals (fetched weekly; leftovers are classified
+    every pass). Returns (exit status, retry): retry is True when ranking or news
+    classification stopped for any profile because the provider kept failing."""
     from jobsearcher.signals.run import due
 
-    search_status = cmd_search(config, args)
+    search_status = cmd_search(config, args) if search else 0
     if search_status == 2:
         return search_status, False
     status, retry = search_status, False
@@ -513,10 +513,11 @@ def daemon_cycle(
     args: argparse.Namespace,
     tz: ZoneInfo,
     sleep: Callable[[float], None] = time.sleep,
+    search: bool = True,
 ) -> None:
     """One daily run, then, while a failing provider keeps ranking stalled, a retry every
     `schedule.retry_minutes` (up to `schedule.retries`, and not into the next daily run)."""
-    _, stalled = run_pipeline(config, args)
+    _, stalled = run_pipeline(config, args, search=search)
     attempt = 0
     while stalled and attempt < config.schedule.retries:
         pause = config.schedule.retry_minutes * 60
@@ -775,11 +776,28 @@ def cmd_users(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def search_due(config: Config, now: datetime | None = None) -> bool:
+    """Is the last search older than schedule.min_hours_between_searches?"""
+    from datetime import UTC
+
+    runs = Store(config.db_path).last_runs()
+    if not runs:
+        return True
+    age = (now or datetime.now(UTC)) - max(runs.values())
+    if age >= timedelta(hours=config.schedule.min_hours_between_searches):
+        return True
+    log.info(
+        "Last search %.1f h ago: the start-up run ranks without searching",
+        age.total_seconds() / 3600,
+    )
+    return False
+
+
 def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
     """Run the pipeline once at startup (unless --no-initial-run), then daily."""
     tz = ZoneInfo(config.schedule.timezone)
     if not args.no_initial_run:
-        daemon_cycle(config, args, tz)
+        daemon_cycle(config, args, tz, search=search_due(config))
     while True:
         wait = seconds_until(config.schedule.daily_at, tz)
         log.info("Next run in %.1f h", wait / 3600)
