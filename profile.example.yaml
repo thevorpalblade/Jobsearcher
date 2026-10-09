@@ -23,6 +23,10 @@ search:
     - "Stockholm"
   include_remote: true
 
+# Rules every application draft follows (as well as each draft's own instructions).
+# They can't add facts: drafts still only say what the CVs say.
+draft_instructions: ""
+
 # This candidate's own models and budget (Settings → Models and keys edits this).
 # Anything left out comes from config.yaml. Profiles not in config.yaml's
 # llm.server_key_profiles use their own API keys (set on that page, stored in

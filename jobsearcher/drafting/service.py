@@ -110,8 +110,10 @@ def job_request(
     ranking_json: str | None,
     instructions: str = "",
     contact: Contact | None = None,
+    standing: str = "",
 ) -> Request:
-    """`contact`: whom to address (default: a named person from the ad)."""
+    """`contact`: whom to address (default: a named person from the ad); `standing`: the
+    profile's instructions for every draft."""
     assessment = None
     if ranking_json:
         try:
@@ -119,12 +121,16 @@ def job_request(
         except ValueError:
             assessment = None  # an older prompt version's ranking: draft without it
     contact = contact or choose_contact(job)
-    identity = [job.content_hash, contact.name if contact and contact.name else ""]
+    identity = [
+        job.content_hash,
+        contact.name if contact and contact.name else "",
+        standing.strip(),
+    ]
     if assessment:
         identity += assessment.matched_requirements + ["|"] + assessment.missing_requirements
     return Request(
         key=job.id,
-        prompt=prompts.ad_prompt(job, assessment, contact, instructions),
+        prompt=prompts.ad_prompt(job, assessment, contact, instructions, standing=standing),
         identity=identity,
         instructions=instructions,
         addressed_to=contact.name if contact else None,
@@ -138,6 +144,7 @@ def company_request(
     target_roles: list[str],
     instructions: str = "",
     contact: Contact | None = None,
+    standing: str = "",
 ) -> Request:
     if not signals:
         raise DraftError(
@@ -147,9 +154,9 @@ def company_request(
     return Request(
         key=COMPANY_PREFIX + company.slug,
         prompt=prompts.spontaneous_prompt(
-            company.name, signals, target_roles, contact, instructions
+            company.name, signals, target_roles, contact, instructions, standing
         ),
-        identity=[company.name, contact.name if contact and contact.name else ""]
+        identity=[company.name, contact.name if contact and contact.name else "", standing.strip()]
         + [s["summary"] for s in signals],
         instructions=instructions,
         addressed_to=contact.name if contact else None,
@@ -185,7 +192,9 @@ def draft_job(
         raise DraftError(f"No job {job_id}")
     latest = store.latest_ranking(job_id)
     contact = _letter_contact(config, store, job_id, job)
-    request = job_request(job, latest[0] if latest else None, instructions, contact)
+    request = job_request(
+        job, latest[0] if latest else None, instructions, contact, config.draft_instructions
+    )
     llms = llms or make_llms(config, store)
     return generate_draft(
         store,
@@ -214,7 +223,9 @@ def draft_company(
     roles = [r.name for r in load_ranking_config(config.ranking_config).target_roles]
     signals = company_signals(store, company)
     contact = _letter_contact(config, store, COMPANY_PREFIX + company.slug, None, company)
-    request = company_request(company, signals, roles, instructions, contact)
+    request = company_request(
+        company, signals, roles, instructions, contact, config.draft_instructions
+    )
     llms = llms or make_llms(config, store)
     return generate_draft(
         store,

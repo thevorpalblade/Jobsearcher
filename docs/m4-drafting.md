@@ -45,7 +45,9 @@ One generation call returns structured JSON (`claude -p --json-schema`):
 
 Inputs: master CV and the other CVs in `cvs/` as extra facts, the ad (title, company,
 description, deadline, contacts), the ranking (matched/missing requirements, language,
-Swedish requirement), and her optional instructions. Chat context isn't used.
+Swedish requirement), her standing instructions (`draft_instructions` in profile.yaml,
+for every draft, e.g. which phone number to use where) and her optional instructions
+for this draft. Chat context isn't used.
 
 ## The hard rule: never invent experience
 
@@ -67,7 +69,7 @@ Swedish requirement), and her optional instructions. Chat context isn't used.
   (claims, flagged, repaired) and file names. Add `drafts.kind` ("job" | "company") and a
   nullable `company` for spontaneous drafts (new columns, migrated).
 - `input_hash` = hash(ad content, all CV texts, the ranking's requirement lists,
-  instructions, model, prompt version): identical requests are free; changed
+  standing and per-draft instructions, model, prompt version): identical requests are free; changed
   instructions or CVs make a new version, and older versions stay listed.
 - Job status in the UI: none / queued / running / ready / needs review / failed.
 

@@ -270,6 +270,8 @@ class ProfileSettings(BaseModel):
     # (config.yaml), since the job pool is shared.
     search: SearchConfig = Field(default_factory=SearchConfig)
     llm: ProfileLLM = Field(default_factory=ProfileLLM)
+    # Rules every draft follows, e.g. which phone number to use where.
+    draft_instructions: str = ""
 
 
 def read_secrets(path: Path) -> dict[str, str]:
@@ -321,6 +323,8 @@ class Config(BaseModel):
     cv_path: Path = Path("cvs/master.md")
     companies_config: Path = Path("companies.yaml")
     companies: CompaniesSettings = Field(default_factory=CompaniesSettings)
+    # Rules every draft follows (a profile's own come from its profile.yaml).
+    draft_instructions: str = ""
     # One folder per candidate (docs/m10-multi-user.md); load_config defaults it to
     # profiles/ next to config.yaml. Without it, the setup has one profile,
     # DEFAULT_PROFILE, made of the paths above.
@@ -377,6 +381,7 @@ class Config(BaseModel):
                 "llm": llm,
                 "own_keys": own_keys,
                 "api_keys": read_secrets(folder / SECRETS_FILE) if own_keys else {},
+                "draft_instructions": settings.draft_instructions,
                 "cv_path": folder / "cvs" / "master.md",
                 "ranking_config": folder / "ranking.yaml",
                 "companies_config": folder / "companies.yaml",

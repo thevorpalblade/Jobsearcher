@@ -24,6 +24,7 @@ from jobsearcher.drafting.service import (
     DraftError,
     Llms,
     choose_contact,
+    company_request,
     draft_company,
     draft_job,
     job_request,
@@ -204,10 +205,24 @@ def test_contact_choice_and_requests():
     req = job_request(job, ranking, "Lead with M&A")
     assert req.addressed_to == "Anna Svensson" and req.key == job.id
     assert "Dear Anna Svensson," in req.prompt and "HR-chef" in req.prompt
-    assert "Her instructions: Lead with M&A" in req.prompt and "HR partnering" in req.prompt
+    assert "Her instructions for this one: Lead with M&A" in req.prompt
+    assert "HR partnering" in req.prompt and "standing" not in req.prompt
     anon = job_request(make_job(2, "J"), None)
     assert "Dear Hiring Manager," in anon.prompt and "don't invent one" in anon.prompt
     assert job_request(job, "not json", "").key == job.id  # an old ranking is just skipped
+
+
+def test_standing_instructions_go_into_every_draft_and_its_cache_key():
+    job = make_job(1, "HR Business Partner")
+    rule = "Use the Swedish phone number for jobs in Sweden."
+    plain, ruled = job_request(job, None), job_request(job, None, standing=rule)
+    assert f"Her standing instructions (for every application): {rule}" in ruled.prompt
+    assert ruled.instructions == ""  # not shown as this draft's own instructions
+    cvs = [("master", "CV")]
+    assert draft_hash(plain, cvs, "opus") != draft_hash(ruled, cvs, "opus")
+    company = Company(name="Acme")
+    signal = [{"summary": "Acme grows", "title": "News", "url": "https://x"}]
+    assert rule in company_request(company, signal, [], standing=rule).prompt
 
 
 # --- the service with a real store and files --------------------------------------------------

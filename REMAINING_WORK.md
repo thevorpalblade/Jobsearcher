@@ -142,7 +142,9 @@ by `max_drafts_per_day`); spontaneous applications from news signals (`/companie
 English only. Claude Code writes, GLM checks every claim against the CVs, one repair round,
 a model-free check of figures; anything unsupported marks the draft "needs review".
 Word via python-docx, PDF via LibreOffice, a Markdown preview in the browser.
+Standing instructions for every draft are `draft_instructions` in profile.yaml (2026-10-09).
 
+- [ ] A form for `draft_instructions` on Settings (today: the profile.yaml editor).
 - [ ] Editing a draft in the browser (today: edit the downloaded Word file).
 - [ ] The grounding check is only as strict as GLM; a stricter model (Claude Haiku) is a
       config switch away if drafts slip through.

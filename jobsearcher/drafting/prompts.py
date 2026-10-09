@@ -6,7 +6,7 @@ from jobsearcher.models import Contact, Job
 from jobsearcher.ranking.ranker import JobAssessment
 
 # Bump when a prompt or schema changes in a way that should invalidate cached drafts.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 DRAFT_SYSTEM = """\
 You write job application documents for one candidate, using only the CVs you are given. \
@@ -32,6 +32,9 @@ Tailored CV: Markdown, in the same structure as the base CV (a "# Name" heading,
 line, a summary, core competencies, experience, education/certification). Keep every \
 employer, title and date exactly as in the CVs; reorder and trim bullets so the most relevant \
 come first, rewrite the summary for this role, and keep it to about two pages.
+
+Her standing instructions, when given, apply to every application: follow them, but they \
+never allow facts the CVs don't contain.
 
 `notes`: short plain-English points for the candidate: what you emphasised and why, which \
 requirements her CV doesn't cover, and any question only she can answer.
@@ -68,12 +71,22 @@ def salutation(contact: Contact | None) -> str:
     return f"Dear {contact.name}," if contact and contact.name else "Dear Hiring Manager,"
 
 
+def _instruction_lines(standing: str, instructions: str) -> list[str]:
+    lines = []
+    if standing.strip():
+        lines += ["", f"Her standing instructions (for every application): {standing.strip()}"]
+    if instructions.strip():
+        lines += ["", f"Her instructions for this one: {instructions.strip()}"]
+    return lines
+
+
 def ad_prompt(
     job: Job,
     assessment: JobAssessment | None,
     contact: Contact | None,
     instructions: str,
     max_ad_chars: int = 12_000,
+    standing: str = "",
 ) -> str:
     lines = [
         "Write a tailored CV and cover letter for this job.",
@@ -99,8 +112,7 @@ def ad_prompt(
         if assessment.missing_requirements:
             lines += ["", "Requirements her CV doesn't show (don't claim them):"]
             lines += [f"- {r}" for r in assessment.missing_requirements]
-    if instructions.strip():
-        lines += ["", f"Her instructions: {instructions.strip()}"]
+    lines += _instruction_lines(standing, instructions)
     ad = job.description or "(no description available)"
     if len(ad) > max_ad_chars:
         ad = ad[:max_ad_chars] + "\n[ad truncated]"
@@ -114,6 +126,7 @@ def spontaneous_prompt(
     target_roles: list[str],
     contact: Contact | None,
     instructions: str,
+    standing: str = "",
 ) -> str:
     lines = [
         "Write a tailored CV and a SPONTANEOUS (unsolicited) application cover letter to this "
@@ -133,8 +146,7 @@ def spontaneous_prompt(
             "",
             "Kinds of role she'd like (pick what her CV supports): " + ", ".join(target_roles),
         ]
-    if instructions.strip():
-        lines += ["", f"Her instructions: {instructions.strip()}"]
+    lines += _instruction_lines(standing, instructions)
     return "\n".join(lines)
 
 
