@@ -20,6 +20,11 @@ def enabled_sources(config: Config) -> list[SourceAdapter]:
         sources.append(
             JobTechLinksSource(client(), skip_platsbanken_only=config.sources.platsbanken)
         )
+    if config.sources.environmentjob:
+        from jobsearcher.companies.http import PoliteClient
+        from jobsearcher.sources.environmentjob import EnvironmentJobSource
+
+        sources.append(EnvironmentJobSource(PoliteClient.from_config(config)))
     jobspy = config.sources.jobspy
     if jobspy.sites:
         from jobsearcher.sources.jobspy_source import JobSpySource, available

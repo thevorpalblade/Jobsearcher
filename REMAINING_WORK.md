@@ -209,6 +209,13 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       and **Jobylon** (Coor, Unilabs, Kronans Apotek, LKAB) adapters (2026-10-05).
       Ericsson moved to Eightfold (jobs.ericsson.com): not supported; its jobs reach
       LinkedIn.
+- [x] environmentjob.co.uk (2026-10-09): UK environmental jobs, from its sitemap and each
+      page's JobPosting data, one page a second (~180 jobs, ~3 min a run);
+      `sources.environmentjob`. Its jobs are kept only for a profile whose region matches
+      (e.g. "United Kingdom", "Scotland", "London").
+- [ ] eurojobs.com: not added. Its acceptable-use terms forbid bots and scrapers without
+      written permission, and its robots.txt blocks AI crawlers by name. Its own job
+      alerts (email) are the allowed way in.
 - [ ] JobSpy: watch for LinkedIn rate limiting (429) as volume grows; Glassdoor
       and Google Jobs are supported but untested.
 - [ ] Dedupe can't merge the same ad under different titles across sources

@@ -71,6 +71,9 @@ class SourcesConfig(BaseModel):
     jobspy: JobSpyConfig = Field(default_factory=JobSpyConfig)
     # Careers sites (ATS feeds) of the companies in companies.yaml.
     companies: bool = True
+    # environmentjob.co.uk: UK environmental and conservation jobs (about 180, read from
+    # its sitemap, one page a second). Off by default: it's UK-only.
+    environmentjob: bool = False
 
 
 class CompaniesSettings(BaseModel):

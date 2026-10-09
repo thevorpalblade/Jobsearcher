@@ -134,12 +134,18 @@ def _country(address: dict[str, Any]) -> str | None:
     return str(country) if country else None
 
 
-def parse_posting(posting: dict[str, Any], url: str, company: Company, source: str) -> Job | None:
+def parse_posting(
+    posting: dict[str, Any], url: str, company: Company, source: str, abroad: bool = False
+) -> Job | None:
+    """A Job from a schema.org JobPosting. Postings only abroad are dropped, unless
+    `abroad` (a job board for another country): then the country goes into the region,
+    so a location filter like "United Kingdom" matches."""
     title = " ".join(str(posting.get("title") or "").split())
     if not title:
         return None
     address = _address(posting)
-    if is_sweden(_country(address)) is False:
+    country = _country(address)
+    if is_sweden(country) is False and not abroad:
         return None  # only offices abroad
     identifier = posting.get("identifier")
     if isinstance(identifier, dict):
@@ -159,7 +165,11 @@ def parse_posting(posting: dict[str, Any], url: str, company: Company, source: s
         company=employer or company.name,
         company_org_nr=company.org_nr if not employer else None,
         location=location or company.location,
-        region=address.get("addressRegion"),
+        region=(
+            ", ".join(x for x in (address.get("addressRegion"), country) if x) or None
+            if abroad and is_sweden(country) is False
+            else address.get("addressRegion")
+        ),
         remote=posting.get("jobLocationType") == "TELECOMMUTE" or None,
         description=html_to_text(posting.get("description")),
         employment_type=str(employment).replace("_", " ").lower() if employment else None,

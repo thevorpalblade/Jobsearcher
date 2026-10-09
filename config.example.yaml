@@ -25,6 +25,7 @@ sources:
   platsbanken: true
   jobtech_links: true
   companies: true          # careers-site feeds of the companies in companies.yaml
+  environmentjob: false    # environmentjob.co.uk: UK environmental and conservation jobs
   # LinkedIn and Indeed (also glassdoor, google) via JobSpy: pip install '.[jobspy]'.
   # Scrapes the sites' public pages without a login, against their terms of service;
   # keep the volume low. Searches the same keywords as the other sources.
