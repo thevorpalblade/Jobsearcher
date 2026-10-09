@@ -308,6 +308,8 @@ Code, effort medium) as the reference:
 | Haiku 4.5, thinking off | 0.79 | 7 | 36 | 9 | subscription |
 | Qwen3 8B (Ollama, local RTX 3080), no thinking; newer CV (2026-10-07) | 0.65 | 7 | 65 | 5 | 0 |
 | GLM 5.3 Flash (Z.ai, paid), reasoning low; prompt v3 + all CVs (2026-10-07) | 0.85 | 9 | 25 | 11 | 0.0006 |
+| Gemini Flash-Lite (Google free tier), reasoning minimal (2026-10-09) | 0.86 | 9 | 42 | 6 | 0 (free tier) |
+| GLM-4.7-Flash (Z.ai free), 19 of 40 jobs: 21 failed "overloaded" (2026-10-09) | 0.75 | 8 | 42 | 51 | 0 |
 
 Sonnet matches Opus almost exactly (mean gap 3.8 points). Haiku through Claude Code thinks for
 3-9k tokens a job (60-90 s) unless `MAX_THINKING_TOKENS=0`; thinking off it takes 9 s but is
@@ -321,6 +323,10 @@ treat differences under ~0.05 as noise.
 - [x] GLM 5.3 Flash on Z.ai benchmarked (row above) and ranking switched to it 2026-10-07:
       Jenny's 861 jobs re-ranked for $0.43. Still open from this item: Z.ai's free
       GLM-4.7-Flash, and a fresh Opus reference on prompt v3 + all CVs.
+- Free tiers tried 2026-10-09: Gemini 3.8 Flash allows only 20 requests a day per model
+  on the free tier (unusable); Gemini Flash-Lite ranks like Z.ai's paid GLM but scores
+  generously (mean 42 vs Opus's 24), and Google's free tier may use prompts for training;
+  Z.ai's free GLM-4.7-Flash failed half its calls with "overloaded".
 - [ ] Run GLM on the other 29 benchmark jobs when NVIDIA answers (its older rankings of
       them predate the current CV, so they aren't comparable).
 
