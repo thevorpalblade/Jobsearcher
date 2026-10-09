@@ -1,6 +1,7 @@
 import io
 
 import pytest
+from conftest import tiny_png
 from test_web import RANKING_YAML, log_in, web  # noqa: F401  (the `web` fixture)
 
 from jobsearcher import cvs, settings
@@ -187,6 +188,22 @@ def test_upload_errors_and_guards(web):  # noqa: F811
     assert web.client.get("/settings/cvs/nope").status_code == 404
     deleted = web.client.post("/settings/cvs/master/delete", headers=HX)
     assert "be deleted" in deleted.text
+
+
+def test_signature_upload_show_and_remove(web):  # noqa: F811
+    assert web.config.signature_file is None
+    assert web.client.get("/settings/signature").status_code == 404
+    bad = web.client.post("/settings/signature", files={"file": ("s.png", b"GIF89a")}, headers=HX)
+    assert "a PNG or JPEG" in bad.text and web.config.signature_file is None
+    files = {"file": ("s.png", tiny_png())}
+    assert web.client.post("/settings/signature", files=files).status_code == 403
+    response = web.client.post("/settings/signature", files=files, headers=HX)
+    assert response.headers["HX-Redirect"] == "/settings?signature=1"
+    assert web.config.signature_file.name == "signature.png"
+    assert web.client.get("/settings/signature").content == tiny_png()
+    assert "Remove signature" in web.client.get("/settings?signature=1").text
+    web.client.post("/settings/signature/delete", headers=HX)
+    assert web.config.signature_file is None
 
 
 def test_edit_config_files(web, tmp_path):  # noqa: F811

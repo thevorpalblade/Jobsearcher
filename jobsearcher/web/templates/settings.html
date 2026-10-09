@@ -41,6 +41,26 @@
 </section>
 
 <section>
+  <h2>Cover letter signature</h2>
+  <p class="muted small">A picture of your signature (PNG or JPEG, up to 2 MB; a scan or photo on a white
+    background works best). It goes above your name at the end of every new cover letter, in the Word and PDF files.</p>
+  {% if request.query_params.get("signature") %}
+    <div class="result ok"><strong>Signature saved.</strong> New drafts will include it; regenerate a draft to add it there.</div>
+  {% endif %}
+  {% if config.signature_file %}
+    <p><img src="/settings/signature?v={{ config.signature_file.stat().st_mtime|int }}" alt="Your signature" style="max-width: 220px; max-height: 90px; background: #fff; padding: 4px;"></p>
+    <button type="button" hx-post="/settings/signature/delete" hx-confirm="Remove your signature?">Remove signature</button>
+  {% endif %}
+  <form class="upload" hx-post="/settings/signature" hx-encoding="multipart/form-data" hx-target="#signature-result">
+    <label>{{ "Replace" if config.signature_file else "Upload" }} signature
+      <input type="file" name="file" accept=".png,.jpg,.jpeg" required>
+    </label>
+    <button type="submit">Upload</button>
+  </form>
+  <div id="signature-result"></div>
+</section>
+
+<section>
   <h2>Configuration</h2>
   <p class="muted small">Every save is checked first, keeps the comments in the file, and backs the previous version up to <code>{{ config.data_dir }}/backups</code>.</p>
   <div class="cards">
@@ -59,7 +79,7 @@
     </a>
     <a class="card link-card" href="/settings/files/profile">
       <strong>Search and drafts (profile.yaml)</strong>
-      <span>Your name, extra search keywords, excluded words and region, and standing instructions for every application draft. Edited as YAML.</span>
+      <span>Your name, extra search keywords, excluded words and region, standing instructions for every application draft, and the cover letter's font, greeting and letterhead. Edited as YAML.</span>
     </a>
     {% endif %}
     {% if user and user.is_admin %}

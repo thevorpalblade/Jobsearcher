@@ -143,8 +143,10 @@ English only. Claude Code writes, GLM checks every claim against the CVs, one re
 a model-free check of figures; anything unsupported marks the draft "needs review".
 Word via python-docx, PDF via LibreOffice, a Markdown preview in the browser.
 Standing instructions for every draft are `draft_instructions` in profile.yaml (2026-10-09).
+So is the letter's look (`letter:` font, greeting, letterhead); a signature image is uploaded on
+Settings (2026-10-09).
 
-- [ ] A form for `draft_instructions` on Settings (today: the profile.yaml editor).
+- [ ] A form for `draft_instructions` and `letter:` on Settings (today: the profile.yaml editor).
 - [ ] Editing a draft in the browser (today: edit the downloaded Word file).
 - [ ] The grounding check is only as strict as GLM; a stricter model (Claude Haiku) is a
       config switch away if drafts slip through.

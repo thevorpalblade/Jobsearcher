@@ -68,8 +68,12 @@ def test_for_profile_points_at_the_profiles_files(two, tmp_path):
     assert two.for_profile("bo").search.locations == ["Göteborg"]
     assert anna.draft_instructions == ""
     path = tmp_path / "profiles" / "bo" / "profile.yaml"
-    path.write_text(path.read_text() + "draft_instructions: Use my Swedish number.\n")
-    assert two.for_profile("bo").draft_instructions == "Use my Swedish number."
+    path.write_text(
+        path.read_text() + "draft_instructions: Use my Swedish number.\nletter: {greeting: To}\n"
+    )
+    bo = two.for_profile("bo")
+    assert bo.draft_instructions == "Use my Swedish number." and bo.letter.greeting == "To"
+    assert anna.letter.greeting == "Dear" and anna.signature_file is None
     with pytest.raises(ValueError, match="No profile 'cecilia'"):
         two.for_profile("cecilia")
 

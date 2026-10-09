@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from jobsearcher.companies.config import slugify
+from jobsearcher.config import SIGNATURE_STEM
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 UPLOAD_TYPES = (".pdf", ".docx", ".md", ".markdown", ".txt")
@@ -214,3 +215,27 @@ def _normalise(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
+
+
+# The cover letter's signature: one image next to the CVs' folder (config.signature_file).
+MAX_SIGNATURE_BYTES = 2 * 1024 * 1024
+_IMAGE_TYPES = {b"\x89PNG\r\n\x1a\n": ".png", b"\xff\xd8\xff": ".jpg"}
+
+
+def save_signature(master: Path, data: bytes) -> Path:
+    """Store an uploaded PNG or JPEG as the signature, replacing any earlier one. The
+    type comes from the file's own bytes, not its name."""
+    if len(data) > MAX_SIGNATURE_BYTES:
+        raise CvError(f"The image is larger than {MAX_SIGNATURE_BYTES // 1024 // 1024} MB.")
+    suffix = next((s for magic, s in _IMAGE_TYPES.items() if data.startswith(magic)), None)
+    if suffix is None:
+        raise CvError("That isn't a PNG or JPEG image.")
+    delete_signature(master)
+    path = cv_dir(master).parent / (SIGNATURE_STEM + suffix)
+    path.write_bytes(data)
+    return path
+
+
+def delete_signature(master: Path) -> None:
+    for suffix in _IMAGE_TYPES.values():
+        (cv_dir(master).parent / (SIGNATURE_STEM + suffix)).unlink(missing_ok=True)

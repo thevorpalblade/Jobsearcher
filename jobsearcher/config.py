@@ -261,6 +261,19 @@ class ProfileLLM(BaseModel):
     monthly_budget_usd: float | None = None
 
 
+class LetterStyle(BaseModel):
+    """How cover letters look (a signature is an image file next to the CVs' folder)."""
+
+    font: str = "Arial"  # for the letter only; the CV keeps the default
+    # The greeting word: "To" gives "To Anna Svensson," and "To the Hiring Manager,".
+    greeting: str = "Dear"
+    # A letterhead: her name; email and phone; "Re: <the role>"; today's date.
+    header: bool = False
+
+
+SIGNATURE_STEM = "signature"  # signature.png or signature.jpg
+
+
 class ProfileSettings(BaseModel):
     """profiles/<slug>/profile.yaml: one candidate's own settings."""
 
@@ -272,6 +285,7 @@ class ProfileSettings(BaseModel):
     llm: ProfileLLM = Field(default_factory=ProfileLLM)
     # Rules every draft follows, e.g. which phone number to use where.
     draft_instructions: str = ""
+    letter: LetterStyle = Field(default_factory=LetterStyle)
 
 
 def read_secrets(path: Path) -> dict[str, str]:
@@ -323,8 +337,10 @@ class Config(BaseModel):
     cv_path: Path = Path("cvs/master.md")
     companies_config: Path = Path("companies.yaml")
     companies: CompaniesSettings = Field(default_factory=CompaniesSettings)
-    # Rules every draft follows (a profile's own come from its profile.yaml).
+    # Rules every draft follows and the letters' look (a profile's own come from its
+    # profile.yaml).
     draft_instructions: str = ""
+    letter: LetterStyle = Field(default_factory=LetterStyle)
     # One folder per candidate (docs/m10-multi-user.md); load_config defaults it to
     # profiles/ next to config.yaml. Without it, the setup has one profile,
     # DEFAULT_PROFILE, made of the paths above.
@@ -382,6 +398,7 @@ class Config(BaseModel):
                 "own_keys": own_keys,
                 "api_keys": read_secrets(folder / SECRETS_FILE) if own_keys else {},
                 "draft_instructions": settings.draft_instructions,
+                "letter": settings.letter,
                 "cv_path": folder / "cvs" / "master.md",
                 "ranking_config": folder / "ranking.yaml",
                 "companies_config": folder / "companies.yaml",
@@ -401,6 +418,15 @@ class Config(BaseModel):
         if self.profile == DEFAULT_PROFILE or self.profiles_dir is None:
             return None
         return self.profiles_dir / self.profile / PROFILE_FILE
+
+    @property
+    def signature_file(self) -> Path | None:
+        """This profile's signature image, if uploaded: next to its cvs/ folder."""
+        for suffix in (".png", ".jpg"):
+            path = self.cv_path.parent.parent / (SIGNATURE_STEM + suffix)
+            if path.is_file():
+                return path
+        return None
 
     @property
     def news_source(self) -> str:

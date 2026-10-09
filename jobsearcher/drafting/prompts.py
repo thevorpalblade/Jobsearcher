@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from jobsearcher.config import LetterStyle
 from jobsearcher.models import Contact, Job
 from jobsearcher.ranking.ranker import JobAssessment
 
 # Bump when a prompt or schema changes in a way that should invalidate cached drafts.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 DRAFT_SYSTEM = """\
 You write job application documents for one candidate, using only the CVs you are given. \
@@ -67,8 +68,29 @@ def cv_context(cvs: list[tuple[str, str]]) -> str:
     return "\n".join(parts)
 
 
-def salutation(contact: Contact | None) -> str:
-    return f"Dear {contact.name}," if contact and contact.name else "Dear Hiring Manager,"
+def salutation(contact: Contact | None, greeting: str = "Dear") -> str:
+    if contact and contact.name:
+        return f"{greeting} {contact.name},"
+    # "Dear Hiring Manager," but "To the Hiring Manager,"
+    return (
+        f"{greeting} Hiring Manager," if greeting == "Dear" else f"{greeting} the Hiring Manager,"
+    )
+
+
+def letterhead(style: LetterStyle | None, regarding: str, date: str) -> list[str]:
+    """The letterhead the letter starts with, when the profile wants one."""
+    if style is None or not style.header:
+        return []
+    return [
+        "",
+        "Start the cover letter with this letterhead, one item per line (single line breaks, "
+        "no blank lines between them), then a blank line and the salutation:",
+        "1. Her name in bold, exactly as in the base CV's heading",
+        '2. Her email and phone number from the CV, separated by " | " (when the CV has more '
+        "than one number, pick one as her standing instructions say)",
+        f"3. Re: {regarding}",
+        f"4. {date}",
+    ]
 
 
 def _instruction_lines(standing: str, instructions: str) -> list[str]:
@@ -87,6 +109,8 @@ def ad_prompt(
     instructions: str,
     max_ad_chars: int = 12_000,
     standing: str = "",
+    style: LetterStyle | None = None,
+    date: str = "",
 ) -> str:
     lines = [
         "Write a tailored CV and cover letter for this job.",
@@ -99,7 +123,9 @@ def ad_prompt(
         lines.append(f"Location: {place}")
     if job.deadline:
         lines.append(f"Application deadline: {job.deadline.date().isoformat()}")
-    lines += ["", f"Salutation to use: {salutation(contact)}"]
+    lines += letterhead(style, job.title, date)
+    greeting = style.greeting if style else "Dear"
+    lines += ["", f"Salutation to use: {salutation(contact, greeting)}"]
     if contact and contact.name:
         role = f" ({contact.role})" if contact.role else ""
         lines.append(f"The ad names this contact person: {contact.name}{role}.")
@@ -127,6 +153,8 @@ def spontaneous_prompt(
     contact: Contact | None,
     instructions: str,
     standing: str = "",
+    style: LetterStyle | None = None,
+    date: str = "",
 ) -> str:
     lines = [
         "Write a tailored CV and a SPONTANEOUS (unsolicited) application cover letter to this "
@@ -134,7 +162,8 @@ def spontaneous_prompt(
         "specific vacancy.",
         "",
         f"Company: {company}",
-        f"Salutation to use: {salutation(contact)}",
+        f"Salutation to use: {salutation(contact, style.greeting if style else 'Dear')}",
+        *letterhead(style, "<the kind of role she is writing about>", date),
         "",
         "Why now: recent news about the company. Use only what is stated here, as the reason "
         "for writing, and don't add details about the news from your own knowledge:",

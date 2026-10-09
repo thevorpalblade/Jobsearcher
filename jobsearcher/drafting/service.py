@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
 from jobsearcher import cvs as cv_files
 from jobsearcher.companies.config import Company
-from jobsearcher.config import DEFAULT_PROFILE, Config
+from jobsearcher.config import DEFAULT_PROFILE, Config, LetterStyle
 from jobsearcher.drafting import prompts
 from jobsearcher.drafting.core import Draft, Renderer, Request, _safe, generate_draft
 from jobsearcher.drafting.render import render_files
@@ -55,6 +56,17 @@ def drafts_dir(config: Config) -> Path:
     profiles; data/drafts/ for a setup without them)."""
     drafts = config.data_dir / "drafts"
     return drafts if config.profile == DEFAULT_PROFILE else drafts / config.profile
+
+
+def long_date(day: date | None = None) -> str:
+    """The letterhead's date, e.g. "October 9, 2026" (the letters are in English)."""
+    day = day or date.today()
+    return f"{day:%B} {day.day}, {day.year}"
+
+
+def letter_renderer(config: Config) -> Renderer:
+    """Word and PDF files in this profile's letter font, with its signature if uploaded."""
+    return partial(render_files, font=config.letter.font, signature=config.signature_file)
 
 
 def _safe_key(key: str) -> str:
@@ -111,9 +123,12 @@ def job_request(
     instructions: str = "",
     contact: Contact | None = None,
     standing: str = "",
+    style: LetterStyle | None = None,
+    today: str = "",
 ) -> Request:
     """`contact`: whom to address (default: a named person from the ad); `standing`: the
-    profile's instructions for every draft."""
+    profile's instructions for every draft; `style`: its letters' look; `today`: the date
+    for the letterhead."""
     assessment = None
     if ranking_json:
         try:
@@ -125,16 +140,19 @@ def job_request(
         job.content_hash,
         contact.name if contact and contact.name else "",
         standing.strip(),
+        style.model_dump_json() if style else "",
     ]
     if assessment:
         identity += assessment.matched_requirements + ["|"] + assessment.missing_requirements
     return Request(
         key=job.id,
-        prompt=prompts.ad_prompt(job, assessment, contact, instructions, standing=standing),
+        prompt=prompts.ad_prompt(
+            job, assessment, contact, instructions, standing=standing, style=style, date=today
+        ),
         identity=identity,
         instructions=instructions,
         addressed_to=contact.name if contact else None,
-        sources=[job.description, job.title, job.company or ""],
+        sources=[job.description, job.title, job.company or "", today],
     )
 
 
@@ -145,6 +163,8 @@ def company_request(
     instructions: str = "",
     contact: Contact | None = None,
     standing: str = "",
+    style: LetterStyle | None = None,
+    today: str = "",
 ) -> Request:
     if not signals:
         raise DraftError(
@@ -154,13 +174,18 @@ def company_request(
     return Request(
         key=COMPANY_PREFIX + company.slug,
         prompt=prompts.spontaneous_prompt(
-            company.name, signals, target_roles, contact, instructions, standing
+            company.name, signals, target_roles, contact, instructions, standing, style, today
         ),
-        identity=[company.name, contact.name if contact and contact.name else "", standing.strip()]
+        identity=[
+            company.name,
+            contact.name if contact and contact.name else "",
+            standing.strip(),
+            style.model_dump_json() if style else "",
+        ]
         + [s["summary"] for s in signals],
         instructions=instructions,
         addressed_to=contact.name if contact else None,
-        sources=[s["summary"] + " " + s["title"] for s in signals],
+        sources=[s["summary"] + " " + s["title"] for s in signals] + [today],
     )
 
 
@@ -193,7 +218,13 @@ def draft_job(
     latest = store.latest_ranking(job_id)
     contact = _letter_contact(config, store, job_id, job)
     request = job_request(
-        job, latest[0] if latest else None, instructions, contact, config.draft_instructions
+        job,
+        latest[0] if latest else None,
+        instructions,
+        contact,
+        config.draft_instructions,
+        config.letter,
+        long_date(),
     )
     llms = llms or make_llms(config, store)
     return generate_draft(
@@ -203,7 +234,7 @@ def draft_job(
         llms.draft,
         llms.check,
         drafts_dir(config),
-        render or render_files,
+        render or letter_renderer(config),
         trigger=trigger,
         fallback_llm=llms.fallback,
         force=force,
@@ -224,7 +255,14 @@ def draft_company(
     signals = company_signals(store, company)
     contact = _letter_contact(config, store, COMPANY_PREFIX + company.slug, None, company)
     request = company_request(
-        company, signals, roles, instructions, contact, config.draft_instructions
+        company,
+        signals,
+        roles,
+        instructions,
+        contact,
+        config.draft_instructions,
+        config.letter,
+        long_date(),
     )
     llms = llms or make_llms(config, store)
     return generate_draft(
@@ -234,7 +272,7 @@ def draft_company(
         llms.draft,
         llms.check,
         drafts_dir(config),
-        render or render_files,
+        render or letter_renderer(config),
         fallback_llm=llms.fallback,
         force=force,
     )

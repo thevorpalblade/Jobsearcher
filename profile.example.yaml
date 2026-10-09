@@ -27,6 +27,13 @@ search:
 # They can't add facts: drafts still only say what the CVs say.
 draft_instructions: ""
 
+# How cover letters look. A signature is uploaded on the Settings page (stored as
+# signature.png or .jpg next to this file) and goes above the signed name.
+letter:
+  font: "Arial"        # the letter's font; the CV keeps its own
+  greeting: "Dear"     # "To" gives "To Anna Svensson," / "To the Hiring Manager,"
+  header: false        # true: name; email | phone; "Re: <the role>"; today's date
+
 # This candidate's own models and budget (Settings → Models and keys edits this).
 # Anything left out comes from config.yaml. Profiles not in config.yaml's
 # llm.server_key_profiles use their own API keys (set on that page, stored in

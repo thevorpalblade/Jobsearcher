@@ -669,6 +669,31 @@ def delete_cv(request: Request, name: str, state: State) -> Response:
     return htmx_redirect("/settings")
 
 
+@router.get("/settings/signature")
+def signature_image(state: State) -> FileResponse:
+    path = state.config.signature_file
+    if path is None:
+        raise HTTPException(404)
+    return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/settings/signature", dependencies=[Depends(require_htmx)])
+def upload_signature(
+    request: Request, state: State, file: Annotated[UploadFile, File()]
+) -> Response:
+    try:
+        cvs.save_signature(state.config.cv_path, file.file.read(cvs.MAX_SIGNATURE_BYTES + 1))
+    except cvs.CvError as exc:
+        return _result(request, state, False, str(exc))
+    return htmx_redirect("/settings?signature=1")
+
+
+@router.post("/settings/signature/delete", dependencies=[Depends(require_htmx)])
+def delete_signature(state: State) -> Response:
+    cvs.delete_signature(state.config.cv_path)
+    return htmx_redirect("/settings")
+
+
 # config.yaml is the whole system's (sources, models, schedule): the admin's to edit.
 ADMIN_FILES = {"config"}
 

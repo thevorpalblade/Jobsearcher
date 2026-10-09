@@ -49,6 +49,12 @@ Swedish requirement), her standing instructions (`draft_instructions` in profile
 for every draft, e.g. which phone number to use where) and her optional instructions
 for this draft. Chat context isn't used.
 
+The letter's look is profile.yaml's `letter:` section: `font`, `greeting` ("To" gives
+"To the Hiring Manager,") and `header` (a letterhead: name, email | phone, "Re: <role>",
+today's date, which is passed to the model and counted as a known figure). A signature
+image uploaded on Settings (`signature.png|jpg` next to the profile's `cvs/`) goes above
+the letter's last line, the signed name, in the Word and PDF files.
+
 ## The hard rule: never invent experience
 
 1. The generation prompt forbids new employers, titles, dates, numbers, skills,

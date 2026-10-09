@@ -1,14 +1,14 @@
 import shutil
 import threading
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from conftest import make_assessment, make_job
+from conftest import make_assessment, make_job, tiny_png
 
 from jobsearcher.companies.config import Company
-from jobsearcher.config import Config
+from jobsearcher.config import Config, LetterStyle
 from jobsearcher.drafting.core import (
     Claim,
     DraftContent,
@@ -29,6 +29,7 @@ from jobsearcher.drafting.service import (
     draft_job,
     job_request,
     load_cvs,
+    long_date,
 )
 from jobsearcher.llm import LLMError, LLMResult, LLMUsage
 from jobsearcher.models import Contact
@@ -225,6 +226,23 @@ def test_standing_instructions_go_into_every_draft_and_its_cache_key():
     assert rule in company_request(company, signal, [], standing=rule).prompt
 
 
+def test_letter_style_sets_the_greeting_and_the_letterhead():
+    contact = Contact(name="Anna Svensson", provenance="x")
+    job = make_job(1, "HR Business Partner", contacts=[contact])
+    style = LetterStyle(greeting="To", header=True)
+    today = long_date(date(2026, 10, 9))
+    assert today == "October 9, 2026"
+    req = job_request(job, None, style=style, today=today)
+    assert "Salutation to use: To Anna Svensson," in req.prompt
+    assert "3. Re: HR Business Partner" in req.prompt and "4. October 9, 2026" in req.prompt
+    assert today in req.sources  # the date isn't flagged as an invented figure
+    anon = job_request(make_job(2, "J"), None, style=style)
+    assert "To the Hiring Manager," in anon.prompt
+    plain = job_request(job, None)
+    assert "Dear Anna Svensson," in plain.prompt and "letterhead" not in plain.prompt
+    assert draft_hash(plain, [("m", "CV")], "opus") != draft_hash(req, [("m", "CV")], "opus")
+
+
 # --- the service with a real store and files --------------------------------------------------
 
 
@@ -310,6 +328,25 @@ def test_markdown_to_docx_structure(tmp_path):
     markdown_to_docx(CV, "cv", tmp_path / "c.docx")
     texts = [p.text for p in docx.Document(str(tmp_path / "c.docx")).paragraphs]
     assert texts[:2] == ["Alex Example", "EXPERIENCE"]  # name; sections in capitals
+
+
+def test_letter_font_and_signature(tmp_path):
+    import docx
+
+    signature = tmp_path / "signature.png"
+    signature.write_bytes(tiny_png())
+    letter = "**Alex Example**\nRe: Buyer\n\nTo Anna,\n\nHello.\n\nSincerely,\nAlex Example"
+    render_files(tmp_path / "v", CV, letter, font="Times New Roman", signature=signature)
+    document = docx.Document(str(tmp_path / "v" / "letter.docx"))
+    assert document.styles["Normal"].font.name == "Times New Roman"
+    assert {r.font.name for p in document.paragraphs for r in p.runs if r.text.strip()} == {
+        "Times New Roman"
+    }
+    last = document.paragraphs[-1]
+    assert last.text == "Sincerely,\n\nAlex Example"  # the image sits between the lines
+    assert len(document.inline_shapes) == 1
+    cv = docx.Document(str(tmp_path / "v" / "cv.docx"))
+    assert cv.styles["Normal"].font.name == "Arial" and not cv.inline_shapes
 
 
 @pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
