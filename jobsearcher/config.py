@@ -91,6 +91,7 @@ class Provider(StrEnum):
     ANTHROPIC = "anthropic"  # Claude models, pay-per-token API key
     NVIDIA = "nvidia"  # models on NVIDIA's serverless endpoints (e.g. GLM), OpenAI-compatible API
     ZAI = "zai"  # GLM models from Z.ai (their maker), pay per token, OpenAI-compatible API
+    GEMINI = "gemini"  # Google's Gemini API (free tier or paid), OpenAI-compatible endpoint
     OLLAMA = "ollama"  # a model on this machine through Ollama's OpenAI-compatible API
     CLAUDE_CODE = "claude_code"  # Claude via the Claude Code CLI on a Claude subscription
 
@@ -159,6 +160,7 @@ class LLMConfig(BaseModel):
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     ollama_base_url: str = "http://localhost:11434/v1"
     zai_base_url: str = "https://api.z.ai/api/paas/v4"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     # NVIDIA's free hosted API allows about 40 requests a minute per key, shared by every
     # model, and answers 429 beyond it. Every NVIDIA request (retries included, from
     # ranking, news classification and draft checks alike) is spaced to stay under this;
@@ -169,6 +171,9 @@ class LLMConfig(BaseModel):
     moonshot_requests_per_minute: int = 0
     # Z.ai doesn't publish its paid limits; 0 = no limiter (a 429 still pauses and retries).
     zai_requests_per_minute: int = 0
+    # Gemini's free tier allows about 10-15 requests a minute per project (AI Studio shows
+    # the live quota); 0 = no limiter, e.g. on a paid plan.
+    gemini_requests_per_minute: int = 10
     # Profiles that use the keys in .env and may use claude_code and ollama (the admin's
     # own subscription and GPU). Other profiles bring their own keys (secrets.env in
     # their folder) and use pay-per-token providers. A setup without profiles uses .env.
@@ -247,6 +252,7 @@ KEY_ENV = {
     Provider.ANTHROPIC: "ANTHROPIC_API_KEY",
     Provider.NVIDIA: "NVIDIA_API_KEY",
     Provider.ZAI: "ZAI_API_KEY",
+    Provider.GEMINI: "GEMINI_API_KEY",
 }
 SECRETS_FILE = "secrets.env"
 

@@ -88,6 +88,21 @@ def make_llm(config: Config, role: Role, tracker: BudgetTracker) -> BudgetedLLM:
             max_retries=spec.max_retries,
             limiter=limiter_for("zai", config.llm.zai_requests_per_minute, key),
         )
+    elif spec.provider == Provider.GEMINI:
+        from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(
+            spec.model,
+            base_url=config.llm.gemini_base_url,
+            api_key=key,
+            label="Gemini",
+            max_tokens=spec.max_tokens,
+            extra_body=spec.extra_body,
+            enforce_schema=spec.enforce_schema,
+            timeout_s=spec.timeout_s,
+            max_retries=spec.max_retries,
+            limiter=limiter_for("gemini", config.llm.gemini_requests_per_minute, key),
+        )
     elif spec.provider == Provider.OLLAMA:
         from jobsearcher.llm.openai_compatible import OpenAICompatibleLLM
 

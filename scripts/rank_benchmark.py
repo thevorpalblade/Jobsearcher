@@ -235,12 +235,13 @@ def cmd_run(config: Config, args: argparse.Namespace) -> None:
         model=args.model,
         effort=args.effort,
         extra_body=extra,
-        enforce_schema=args.provider in ("moonshot", "nvidia", "ollama"),
+        enforce_schema=args.provider in ("moonshot", "nvidia", "ollama", "gemini"),
         timeout_s=args.timeout,
         max_retries=1,
     )
     if args.rpm is not None:
         config.llm.moonshot_requests_per_minute = args.rpm
+        config.llm.gemini_requests_per_minute = args.rpm
     if args.no_thinking:
         # Claude Code reads this; Haiku otherwise thinks for 3-9k tokens per job (60-90 s).
         os.environ["MAX_THINKING_TOKENS"] = "0"
@@ -374,7 +375,7 @@ def main() -> None:
     r.add_argument("--effort")
     r.add_argument("--extra", help="extra request fields as JSON (OpenAI-compatible providers)")
     r.add_argument("--timeout", type=float, default=600)
-    r.add_argument("--rpm", type=int, help="Moonshot requests per minute")
+    r.add_argument("--rpm", type=int, help="requests per minute (Moonshot, Gemini)")
     r.add_argument("--no-thinking", action="store_true", help="claude_code: thinking off")
     c = sub.add_parser("compare")
     c.add_argument("--reference", default="opus-5.5")

@@ -312,3 +312,15 @@ def test_grounding_models_default_to_a_quick_ranking_model(monkeypatch):
     assert make_llm(config, "grounding_fallback", tracker).model == "haiku"
     config.llm.grounding = ModelRole(provider=Provider.NVIDIA, model="other", timeout_s=30)
     assert make_llm(config, "grounding", tracker).client.client.timeout == 30
+
+
+def test_make_llm_gemini(monkeypatch):
+    from jobsearcher.config import Config, ModelRole, Provider
+    from jobsearcher.llm import make_llm
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    config = Config()
+    config.llm.ranking = ModelRole(provider=Provider.GEMINI, model="gemini-flash-latest")
+    llm = make_llm(config, "ranking", tracker=None)
+    assert str(llm.client.client.base_url).startswith("https://generativelanguage.googleapis.com/")
+    assert llm.client.label == "Gemini" and llm.client.limiter is not None  # free-tier pace
