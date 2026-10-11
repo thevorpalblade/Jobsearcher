@@ -81,6 +81,13 @@ class EurojobsConfig(BaseModel):
     expire_after_days: int = 60
 
 
+class ArbeitsagenturConfig(BaseModel):
+    # Germany's Bundesagentur für Arbeit job board, in the profiles' German places.
+    enabled: bool = False
+    radius_km: int = 25  # around each city
+    max_results: int = 300  # per keyword and place
+
+
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
@@ -91,6 +98,7 @@ class SourcesConfig(BaseModel):
     # its sitemap, one page a second). Off by default: it's UK-only.
     environmentjob: bool = False
     eurojobs: EurojobsConfig = Field(default_factory=EurojobsConfig)
+    arbeitsagentur: ArbeitsagenturConfig = Field(default_factory=ArbeitsagenturConfig)
 
 
 class CompaniesSettings(BaseModel):

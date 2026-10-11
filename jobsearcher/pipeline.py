@@ -41,7 +41,7 @@ def matches_filters(job: Job, search: SearchConfig) -> bool:
     # Sources without a county (company feeds, LinkedIn) get it from the city, so
     # "Stockholm" matches Södertälje for them too, as it does for Platsbanken.
     county = job.region or county_of(job.location) or ""
-    place = fold(f"{job.location or ''} {county}")
+    place = fold(f"{job.location or ''} {county} {job.near or ''}")
     # Each entry by its other names too ("München" also matches "Munich"), accents aside.
     return any(fold(term) in place for loc in search.locations for term in match_terms(loc))
 

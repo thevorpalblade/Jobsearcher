@@ -60,6 +60,8 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
 - `jobsearcher/regions.py`: the search plan: each source searches the countries of the
   profiles' regions it covers (`jobsearcher regions` prints it); places outside a
   profile's first country get its role names only, in the slow pass after ranking
+- `jobsearcher/sources/arbeitsagentur.py`: Germany's Bundesagentur für Arbeit board (public
+  API, fixed public key), searched around the profiles' German cities
 - `jobsearcher/sources/jobspy_source.py`: LinkedIn/Indeed via JobSpy (optional `jobspy` extra);
   these jobs expire by age, not by absence
 - `benchmarks/ranking/` + `scripts/rank_benchmark.py`: a fixed job set and every ranking model's

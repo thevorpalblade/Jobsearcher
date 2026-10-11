@@ -31,7 +31,7 @@ class FakeClient:
             )
         return self.routes[url]
 
-    def get_json(self, url, params=None):
+    def get_json(self, url, params=None, headers=None):
         return self._get(url, params)
 
     def get_text(self, url, params=None):

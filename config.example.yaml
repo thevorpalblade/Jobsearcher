@@ -31,6 +31,10 @@ sources:
   # eurojobs.com (needs the board's written permission), in the regions' countries.
   eurojobs:
     enabled: false
+  # Germany's Bundesagentur für Arbeit job board (public API), in the German places.
+  arbeitsagentur:
+    enabled: false
+    radius_km: 25          # around each city
     max_pages: 3           # per keyword and country (50 ads a page, newest first)
     search_interval_s: 40  # its search locks out after ~30 quick requests; searched
                            # after the rest of a run is ranked, as it takes hours

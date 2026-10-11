@@ -209,3 +209,77 @@ def test_eurojobs_searches_countries_and_reads_job_pages():
     assert second.remote and second.location is None
     assert f"{BASE}/jobs/2/x-2" not in client.requests  # the keyword isn't in its card
     assert f"{BASE}/jobs/4/x-4" not in client.requests
+
+
+def test_arbeitsagentur_searches_german_places_and_opens_matching_ads():
+    import base64
+
+    from test_companies import FakeClient
+
+    from jobsearcher.config import ArbeitsagenturConfig, SearchConfig
+    from jobsearcher.pipeline import matches_filters
+    from jobsearcher.regions import SearchArea, Target
+    from jobsearcher.sources.arbeitsagentur import BASE, ArbeitsagenturSource
+
+    def hit(ref, title, occupation, place, **extra):
+        return {
+            "referenznummer": ref, "stellenangebotsTitel": title, "hauptberuf": occupation,
+            "firma": "Beispiel GmbH", "datumErsteVeroeffentlichung": "2026-10-05",
+            "arbeitszeitVollzeit": True, "entfernung": 13,
+            "stellenlokationen": [{"adresse": {"ort": place, "region": "BAYERN"}}], **extra,
+        }  # fmt: skip
+
+    def details(ref, text):
+        return f"{BASE}/pc/v4/jobdetails/{base64.b64encode(ref.encode()).decode()}", {
+            "stellenangebotsBeschreibung": text
+        }
+
+    client = FakeClient(
+        dict(
+            [
+                (
+                    f"{BASE}/pc/v6/jobs",
+                    {
+                        "maxErgebnisse": 3,
+                        "ergebnisliste": [
+                            hit(
+                                "1-S",
+                                "Personalreferent (m/w/d)",
+                                "HR Business Partner",
+                                "Haar, Kreis München",
+                                gehaltsspanneVon=55000.0,
+                                gehaltsspanneBis=65000.0,
+                            ),
+                            hit("2-S", "Restaurantleitung", "Restaurantfachmann/-frau", "München"),
+                            hit(
+                                "3-S",
+                                "HR Business Partner",
+                                "Personalreferent/in",
+                                "München",
+                                externeURL="https://example.de/jobs/3",
+                            ),
+                        ],
+                    },
+                ),  # fmt: skip
+                details("1-S", "Wir suchen Sie. Kontakt: hr@beispiel.de"),
+                details("3-S", "Ihre Aufgaben ..."),
+            ]
+        )
+    )
+    targets = [
+        Target(area=SearchArea(country="DE", place="Munich"), keywords=["HR Business Partner"], primary=False),
+        Target(area=SearchArea(country="SE"), keywords=["HR Business Partner"], primary=True),
+    ]  # fmt: skip
+    source = ArbeitsagenturSource(client, ArbeitsagenturConfig(enabled=True), targets)
+    first, second = list(source.search("hr business partner"))
+    # Matched by the agency's occupation for the ad, though the title is German.
+    assert first.title == "Personalreferent (m/w/d)" and first.company == "Beispiel GmbH"
+    assert first.location == "Haar, Kreis München" and first.region == "Bayern, Germany"
+    assert first.salary == "55000 – 65000 EUR" and first.employment_type == "full time"
+    assert [c.email for c in first.contacts] == ["hr@beispiel.de"]
+    assert second.apply_url == "https://example.de/jobs/3"  # an ad from another board
+    restaurant = base64.b64encode(b"2-S").decode()
+    assert f"{BASE}/pc/v4/jobdetails/{restaurant}" not in client.requests  # not opened
+    # A suburb is kept for a region naming the city it was found near.
+    assert matches_filters(first, SearchConfig(locations=["München"], include_remote=False))
+    assert list(source.search("Change Manager")) == []  # not wanted in Germany

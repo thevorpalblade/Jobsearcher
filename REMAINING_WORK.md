@@ -220,6 +220,12 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       country). A profile's first country gets all its keywords; its places elsewhere
       its role names, in the slow pass after ranking. The filter also knows places by
       their other names ("München" = "Munich").
+- [x] Germany: the Bundesagentur für Arbeit board (2026-10-11), its public API around
+      the German cities (`sources.arbeitsagentur`); opens only ads naming the keyword in
+      the title or occupation. English role names miss German-titled ads unless the
+      agency's occupation matches: German aliases in ranking.yaml would help.
+- [ ] EURES (EU portal; public employment services' jobs, incl. Italy and Ireland):
+      find its current search API (the old jv-search address is gone) and add it.
 - [ ] Search regions: cities abroad aren't mapped to their region/county, so "Bavaria"
       is unknown (write "Munich" or "Germany"); add GeoNames admin regions if needed.
 - [x] eurojobs.com (2026-10-11, with the board's written permission): searches each

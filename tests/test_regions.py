@@ -96,6 +96,11 @@ def test_sources_search_the_countries_they_cover(monkeypatch):
     config.sources.eurojobs.enabled = False
     assert not has_slow_sources(config, uk) and has_slow_sources(config, sweden)
 
+    config.sources.arbeitsagentur.enabled = True  # Germany's board: only with a German place
+    assert "arbeitsagentur" not in names(enabled_sources(config, sweden))
+    berlin = search_plan([_profile(["Uppsala", "Berlin"], ["HR"])])
+    assert "arbeitsagentur" in names(enabled_sources(config, berlin))
+
 
 def test_jobspy_searches_each_area_that_wants_the_keyword(monkeypatch):
     import jobsearcher.sources.jobspy_source as module

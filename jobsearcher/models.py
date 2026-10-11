@@ -53,6 +53,9 @@ class Job(BaseModel):
     company_url: str | None = None  # the employer's own website, when the source gives it
     location: str | None = None
     region: str | None = None
+    # The searched city this job is near (within the radius of a search around it), for
+    # the location filter: a suburb abroad ("Haar" near "Munich") has no county table.
+    near: str | None = None
     remote: bool | None = None
     description: str = ""
     language: str | None = None

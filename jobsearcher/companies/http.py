@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 # ATS APIs are made for machine access and have no robots.txt worth reading.
 _API_HOSTS = {
+    "rest.arbeitsagentur.de",
     "api.lever.co",
     "boards-api.greenhouse.io",
     "api.smartrecruiters.com",

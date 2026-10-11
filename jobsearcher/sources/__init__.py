@@ -29,6 +29,16 @@ def enabled_sources(config: Config, plan: SearchPlan | None = None) -> list[Sour
         from jobsearcher.sources.environmentjob import EnvironmentJobSource
 
         sources.append(EnvironmentJobSource(PoliteClient.from_config(config)))
+    if config.sources.arbeitsagentur.enabled and "DE" in plan.countries:
+        # A quick API: all its German places in the main run, abroad or not.
+        from jobsearcher.companies.http import PoliteClient
+        from jobsearcher.sources.arbeitsagentur import ArbeitsagenturSource
+
+        sources.append(
+            ArbeitsagenturSource(
+                PoliteClient.from_config(config), config.sources.arbeitsagentur, plan.targets
+            )
+        )
     jobspy = config.sources.jobspy
     if jobspy.sites:
         from jobsearcher.sources.jobspy_source import JobSpySource, available
