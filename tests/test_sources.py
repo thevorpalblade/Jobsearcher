@@ -141,3 +141,67 @@ def test_environmentjob_reads_the_sitemap_and_job_pages():
     fetched = len(client.requests)
     list(source.search("ecologist"))
     assert len(client.requests) == fetched  # the board is read once per run
+
+
+def test_eurojobs_searches_countries_and_reads_job_pages():
+    from test_companies import FakeClient
+
+    from jobsearcher.config import EurojobsConfig
+    from jobsearcher.sources.eurojobs import BASE, EurojobsSource
+
+    def card(job_id, title, snippet, posted):
+        return f"""<article class="ej-job-result ej-job-result--basic">
+            <a href="{BASE}/jobs/{job_id}/x-{job_id}" class="ej-job-result__title">{title}</a>
+            <span><strong>Location:</strong> Somewhere</span>
+            <span><strong>Posted:</strong> {posted}</span><p>{snippet}</p></article>"""
+
+    def job_page(title, location, employer):
+        def field(label, value):
+            return (f'<div class="small text-muted">{label}</div>'
+                    f'<div class="fw-semibold text-dark">{value}</div>')  # fmt: skip
+
+        return (
+            f'<h1 class="ej-job-detail-title display-6">{title}</h1><h2>Job information</h2>'
+            + field("Location", location) + field("Company", "Agency AB")
+            + field("Client / Employer", employer) + field("Employment type", "full_time")
+            + field("Posted", "10.10.2026") + field("Closing date", "25.11.2026")
+            + '<section><h2>Job description</h2><div class="ej-job-detail-section-content">'
+            "Lead the project. Contact: "
+            '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" '
+            # "anna@ex.seRecruiter", XORed with 0x42 as Cloudflare does
+            + 'data-cfemail="42' + bytes(b ^ 0x42 for b in b"anna@ex.seRecruiter").hex()
+            + '">[email&#160;protected]</a></div></section>'
+            + field("Company", "Company info, not the ad")
+        )  # fmt: skip
+
+    from datetime import datetime
+
+    today = datetime.now().strftime("%d.%m.%Y")
+    next_url = f"{BASE}/jobs?q=project+manager&country=198&page=2"
+    client = FakeClient(
+        {
+            f"{BASE}/browse/countries": f'<a href="{BASE}/jobs?country=198" '
+            'class="ej-browse-page-card"><span>Sweden</span> 9,924 Jobs</a>',
+            # Page 1 (the client ignores the query): a match, a non-match, then page 2.
+            f"{BASE}/jobs": card(1, "Project Manager", "Lead projects.", today)
+            + card(2, "Chef", "Manage a kitchen project.", today)
+            + f'<a href="{next_url.replace("&", "&amp;")}" rel="next">Next</a>',
+            next_url: card(1, "Project Manager", "Lead projects.", today)  # seen already
+            + card(3, "Senior project manager", "", today)
+            + card(4, "Project manager", "", "01.01.2020"),  # too old: not opened
+            f"{BASE}/jobs/1/x-1": job_page("Project Manager", "Gothenburg, Sweden", "Volvo"),
+            f"{BASE}/jobs/3/x-3": job_page("Senior project manager", "Remote", "Acme"),
+        }
+    )
+    sleeps = []
+    config = EurojobsConfig(countries=["sweden", "Narnia"])
+    source = EurojobsSource(client, config, sleep=sleeps.append, clock=lambda: 100.0)
+    first, second = list(source.search("project manager"))
+    assert sleeps == [config.search_interval_s]  # between the two search pages
+    assert first.title == "Project Manager" and first.company == "Volvo"
+    assert first.location == "Göteborg" and first.region is None  # the filter finds the county
+    assert first.employment_type == "full time" and first.deadline.day == 25
+    assert [c.email for c in first.contacts] == ["anna@ex.se"]
+    assert second.remote and second.location is None
+    assert f"{BASE}/jobs/2/x-2" not in client.requests  # the keyword isn't in its card
+    assert f"{BASE}/jobs/4/x-4" not in client.requests

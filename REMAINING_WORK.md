@@ -213,9 +213,14 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       page's JobPosting data, one page a second (~180 jobs, ~3 min a run);
       `sources.environmentjob`. Its jobs are kept only for a profile whose region matches
       (e.g. "United Kingdom", "Scotland", "London").
-- [ ] eurojobs.com: not added. Its acceptable-use terms forbid bots and scrapers without
-      written permission, and its robots.txt blocks AI crawlers by name. Its own job
-      alerts (email) are the allowed way in.
+- [x] eurojobs.com (2026-10-11, with the board's written permission): searches each
+      keyword in the countries in `sources.eurojobs.countries`, newest first, and reads
+      the pages of ads naming the keyword (HTML; no JobPosting data). Its search allows
+      ~30 requests, then locks out for 15-20 min, so searches are 40 s apart and it
+      runs as a "slow source" after the rest of a run is ranked (hours for 41
+      keywords x 5 countries). Its jobs expire at their closing date or by age.
+- [ ] eurojobs: ask the board for a higher search limit or a feed, then lower
+      `search_interval_s`.
 - [ ] JobSpy: watch for LinkedIn rate limiting (429) as volume grows; Glassdoor
       and Google Jobs are supported but untested.
 - [ ] Dedupe can't merge the same ad under different titles across sources

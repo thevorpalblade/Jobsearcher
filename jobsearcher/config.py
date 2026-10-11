@@ -65,6 +65,22 @@ class JobSpyConfig(BaseModel):
     pause_s: float = 5.0  # between searches on one site, against rate limiting
 
 
+class EurojobsConfig(BaseModel):
+    # eurojobs.com, with the board's written permission: the countries to search, by
+    # name as on eurojobs.com/browse/countries (e.g. "Sweden", "United Kingdom").
+    # Empty: off.
+    countries: list[str] = Field(default_factory=list)
+    max_pages: int = 3  # per keyword and country, 50 ads a page, newest first
+    # Its search allows about 30 requests, then locks out for 15-20 minutes, so search
+    # pages are this far apart (job pages only at the crawl pace). A run of 200
+    # searches takes over 2 hours: it runs after the rest of a run is ranked.
+    search_interval_s: float = 40.0
+    max_age_days: int = 3  # older ads aren't read (the daemon runs daily)
+    # Searches only show recent ads, so a job not seen again isn't gone: it expires
+    # at its closing date, or this long after it was posted.
+    expire_after_days: int = 60
+
+
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
@@ -74,6 +90,7 @@ class SourcesConfig(BaseModel):
     # environmentjob.co.uk: UK environmental and conservation jobs (about 180, read from
     # its sitemap, one page a second). Off by default: it's UK-only.
     environmentjob: bool = False
+    eurojobs: EurojobsConfig = Field(default_factory=EurojobsConfig)
 
 
 class CompaniesSettings(BaseModel):

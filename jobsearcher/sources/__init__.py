@@ -36,4 +36,17 @@ def enabled_sources(config: Config) -> list[SourceAdapter]:
     return sources
 
 
-__all__ = ["SourceAdapter", "PlatsbankenSource", "JobTechLinksSource", "enabled_sources"]
+def slow_sources(config: Config) -> list[SourceAdapter]:
+    """Sources that take hours under their rate limits (eurojobs): searched after the
+    rest of a run has been ranked, so they don't hold it up."""
+    if not config.sources.eurojobs.countries:
+        return []
+    from jobsearcher.companies.http import PoliteClient
+    from jobsearcher.sources.eurojobs import EurojobsSource
+
+    return [EurojobsSource(PoliteClient.from_config(config), config.sources.eurojobs)]
+
+
+__all__ = [
+    "SourceAdapter", "PlatsbankenSource", "JobTechLinksSource", "enabled_sources", "slow_sources",
+]  # fmt: skip

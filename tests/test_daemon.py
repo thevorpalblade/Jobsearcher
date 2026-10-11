@@ -20,8 +20,8 @@ class Script:
         self.rank, self.signals = list(rank), list(signals)
 
         def make(name, queue=None, fixed=0):
-            def command(config, args):
-                self.calls.append(name)
+            def command(config, args, which="all"):
+                self.calls.append(name if which != "slow" else "slow search")
                 return queue.pop(0) if queue is not None else fixed
 
             return command
@@ -47,6 +47,13 @@ def test_a_stalled_ranking_is_retried_until_it_finishes(monkeypatch):
     # One pass (search, rank, signals), then retries: rank + leftover classification only.
     assert script.run() == ["search", "rank", "signals", "rank", "signals", "rank", "signals"]
     assert script.sleeps == [1800, 1800]  # 30 minutes between attempts
+
+
+def test_slow_sources_are_searched_after_the_rest_is_ranked(monkeypatch):
+    script = Script(monkeypatch, rank=(0, 0), signals=(0,))
+    script.config.sources.eurojobs.countries = ["Sweden"]
+    # Its new jobs are ranked then (the earlier ones' rankings are cached).
+    assert script.run() == ["search", "rank", "signals", "slow search", "rank"]
 
 
 def test_retries_are_capped_and_never_search_again(monkeypatch):

@@ -28,8 +28,9 @@ _API_HOSTS = {
     "api.gdeltproject.org",
 }
 # Hosts that ask for a slower pace than min_interval_s.
-# (GDELT asks for at most one request every 5 s, and counts strictly.)
-_HOST_INTERVALS = {"api.gdeltproject.org": 6.0}
+# (GDELT asks for at most one request every 5 s, and counts strictly; eurojobs.com
+# answers 429 after about a minute at one a second.)
+_HOST_INTERVALS = {"api.gdeltproject.org": 6.0, "www.eurojobs.com": 3.0}
 
 
 class RobotsDisallowed(httpx.HTTPError):

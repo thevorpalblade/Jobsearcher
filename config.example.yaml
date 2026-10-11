@@ -26,6 +26,15 @@ sources:
   jobtech_links: true
   companies: true          # careers-site feeds of the companies in companies.yaml
   environmentjob: false    # environmentjob.co.uk: UK environmental and conservation jobs
+  # eurojobs.com (needs the board's written permission): countries to search, named
+  # as on eurojobs.com/browse/countries. Empty: off.
+  eurojobs:
+    countries: []          # e.g. ["Sweden", "United Kingdom"]
+    max_pages: 3           # per keyword and country (50 ads a page, newest first)
+    search_interval_s: 40  # its search locks out after ~30 quick requests; searched
+                           # after the rest of a run is ranked, as it takes hours
+    max_age_days: 3        # older ads aren't read (the daemon runs daily)
+    expire_after_days: 60  # after posting, unless the ad's closing date comes first
   # LinkedIn and Indeed (also glassdoor, google) via JobSpy: pip install '.[jobspy]'.
   # Scrapes the sites' public pages without a login, against their terms of service;
   # keep the volume low. Searches the same keywords as the other sources.

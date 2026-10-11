@@ -21,8 +21,11 @@ from jobsearcher.store import Store
 log = logging.getLogger("jobsearcher")
 
 
-def cmd_search(config: Config, args: argparse.Namespace) -> int:
-    """One search for every profile: the job pool is shared."""
+def cmd_search(config: Config, args: argparse.Namespace, which: str = "all") -> int:
+    """One search for every profile: the job pool is shared. `which`: "fast" (every
+    source but the slow ones), "slow" (only those, e.g. eurojobs) or "all"."""
+    from jobsearcher.sources import enabled_sources, slow_sources
+
     profiles = all_profiles(config)
     keywords = profiles_keywords(profiles)
     if not keywords:
@@ -32,10 +35,22 @@ def cmd_search(config: Config, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    sources = (enabled_sources(config) if which != "slow" else []) + (
+        slow_sources(config) if which != "fast" else []
+    )
     store = Store(config.db_path, profile=config.profile)
-    report = run_search(config, store, keywords=keywords, profiles=profiles)
+    report = run_search(
+        config,
+        store,
+        sources=sources,
+        keywords=keywords,
+        # The company feeds are part of the fast search.
+        companies=[] if which == "slow" else None,
+        profiles=profiles,
+    )
+    label = "search" if which == "all" else f"search ({which})"
     print(
-        f"search: {len(keywords)} keywords, fetched={report.fetched} "
+        f"{label}: {len(keywords)} keywords, fetched={report.fetched} "
         f"filtered_out={report.filtered_out} new={report.new} updated={report.updated} "
         f"expired={report.expired} open_total={store.count_jobs(JobStatus.OPEN)}"
     )
@@ -103,11 +118,13 @@ def _profiles(config: Config, args: argparse.Namespace) -> list[Config]:
 def run_pipeline(config: Config, args: argparse.Namespace, search: bool = True) -> tuple[int, bool]:
     """One full pass: search (once, for every profile; skipped with `search=False`), then
     for each profile rank and news signals (fetched weekly; leftovers are classified
-    every pass). Returns (exit status, retry): retry is True when ranking or news
-    classification stopped for any profile because the provider kept failing."""
+    every pass). Slow sources (eurojobs) are searched last and their jobs ranked then,
+    so they don't hold up the rest. Returns (exit status, retry): retry is True when
+    ranking or news classification stopped for any profile because the provider kept
+    failing."""
     from jobsearcher.signals.run import due
 
-    search_status = cmd_search(config, args) if search else 0
+    search_status = cmd_search(config, args, which="fast") if search else 0
     if search_status == 2:
         return search_status, False
     status, retry = search_status, False
@@ -132,6 +149,12 @@ def run_pipeline(config: Config, args: argparse.Namespace, search: bool = True) 
             cmd_contacts(profile, argparse.Namespace(job_id=None, company=None))
         except Exception:
             log.exception("Contact lookups failed")
+    if search and config.sources.eurojobs.countries:  # the slow sources
+        status = max(status, cmd_search(config, args, which="slow"))
+        for profile in _profiles(config, args):
+            rank_status = cmd_rank(profile, args)
+            retry = retry or rank_status == RETRY
+            status = max(status, 0 if rank_status == RETRY else rank_status)
     return status, retry
 
 
