@@ -181,7 +181,9 @@ def test_eurojobs_searches_countries_and_reads_job_pages():
     client = FakeClient(
         {
             f"{BASE}/browse/countries": f'<a href="{BASE}/jobs?country=198" '
-            'class="ej-browse-page-card"><span>Sweden</span> 9,924 Jobs</a>',
+            'class="ej-browse-page-card"><img src="/assets/flags/se.svg"> Sweden 9,924 Jobs</a>'
+            f'<a href="{BASE}/jobs?country=56" '
+            'class="ej-browse-page-card"><img src="/assets/flags/de.svg"> Germany</a>',
             # Page 1 (the client ignores the query): a match, a non-match, then page 2.
             f"{BASE}/jobs": card(1, "Project Manager", "Lead projects.", today)
             + card(2, "Chef", "Manage a kitchen project.", today)
@@ -194,8 +196,10 @@ def test_eurojobs_searches_countries_and_reads_job_pages():
         }
     )
     sleeps = []
-    config = EurojobsConfig(countries=["sweden", "Narnia"])
-    source = EurojobsSource(client, config, sleep=sleeps.append, clock=lambda: 100.0)
+    config = EurojobsConfig(enabled=True)
+    # Germany only wants another keyword; eurojobs has no jobs in Narnia ("NA").
+    countries = {"SE": ["Project Manager"], "DE": ["HR Generalist"], "NA": ["Project Manager"]}
+    source = EurojobsSource(client, config, countries, sleep=sleeps.append, clock=lambda: 100.0)
     first, second = list(source.search("project manager"))
     assert sleeps == [config.search_interval_s]  # between the two search pages
     assert first.title == "Project Manager" and first.company == "Volvo"

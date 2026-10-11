@@ -61,7 +61,7 @@ consulting assignments" dislike.
   sources:
     jobspy:
       sites: [linkedin, indeed]   # empty = off; also glassdoor, google
-      location: Sweden            # the location filter then keeps your cities
+      # (2026-10-11: where it searches now comes from the profiles' regions, regions.py)
       hours_old: 168              # only ads posted in the last week, each run
       results_per_search: 25
       max_age_days: 30            # expire ads this old (see below)

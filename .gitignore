@@ -11,7 +11,7 @@ config.yaml
 ranking.yaml
 companies.yaml
 .env
-data/
+/data/
 cvs/
 profiles/
 *.whl

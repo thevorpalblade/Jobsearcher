@@ -213,8 +213,17 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       page's JobPosting data, one page a second (~180 jobs, ~3 min a run);
       `sources.environmentjob`. Its jobs are kept only for a profile whose region matches
       (e.g. "United Kingdom", "Scotland", "London").
+- [x] Search regions (2026-10-11): each profile's places resolve to countries
+      (`places.resolve`, GeoNames table), and every source switched on searches the
+      countries it covers (`regions.py`; `jobsearcher regions`): Platsbanken/JobTech in
+      Sweden, environmentjob in the UK, eurojobs by country, LinkedIn/Indeed by city (or
+      country). A profile's first country gets all its keywords; its places elsewhere
+      its role names, in the slow pass after ranking. The filter also knows places by
+      their other names ("München" = "Munich").
+- [ ] Search regions: cities abroad aren't mapped to their region/county, so "Bavaria"
+      is unknown (write "Munich" or "Germany"); add GeoNames admin regions if needed.
 - [x] eurojobs.com (2026-10-11, with the board's written permission): searches each
-      keyword in the countries in `sources.eurojobs.countries`, newest first, and reads
+      keyword in the countries of the profiles' regions, newest first, and reads
       the pages of ads naming the keyword (HTML; no JobPosting data). Its search allows
       ~30 requests, then locks out for 15-20 min, so searches are 40 s apart and it
       runs as a "slow source" after the rest of a run is ranked (hours for 41

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_region.html" import region %}
 {% block title %}Settings · Jobsearcher{% endblock %}
 {% block content %}
 <h1>Settings</h1>
@@ -82,6 +83,9 @@
       <span>Your name, extra search keywords, excluded words and region, standing instructions for every application draft, and the cover letter's font, greeting and letterhead. Edited as YAML.</span>
     </a>
     {% endif %}
+  </div>
+  {{ region(places) }}
+  <div class="cards">
     {% if user and user.is_admin %}
     <a class="card link-card" href="/settings/files/config">
       <strong>General (config.yaml)</strong>

@@ -12,7 +12,7 @@ from jobsearcher.companies.crawl import CompanyCrawlReport, crawl_feeds, resolve
 from jobsearcher.companies.http import PoliteClient
 from jobsearcher.config import Config, SearchConfig
 from jobsearcher.models import Job
-from jobsearcher.places import county_of
+from jobsearcher.places import county_of, fold, match_terms
 from jobsearcher.sources import SourceAdapter, enabled_sources
 from jobsearcher.store import Store
 
@@ -41,8 +41,9 @@ def matches_filters(job: Job, search: SearchConfig) -> bool:
     # Sources without a county (company feeds, LinkedIn) get it from the city, so
     # "Stockholm" matches Södertälje for them too, as it does for Platsbanken.
     county = job.region or county_of(job.location) or ""
-    place = f"{job.location or ''} {county}".lower()
-    return any(loc.lower() in place for loc in search.locations)
+    place = fold(f"{job.location or ''} {county}")
+    # Each entry by its other names too ("München" also matches "Munich"), accents aside.
+    return any(fold(term) in place for loc in search.locations for term in match_terms(loc))
 
 
 def search_keywords(config: Config) -> list[str]:
@@ -152,7 +153,7 @@ def run_search(
     # JobSpy sites and eurojobs only return recent ads, so their jobs expire by age
     # instead (and eurojobs' by their closing date).
     by_age = set(config.sources.jobspy.sites)
-    eurojobs = {"eurojobs"} if config.sources.eurojobs.countries else set()
+    eurojobs = {"eurojobs"} if config.sources.eurojobs.enabled else set()
     report.expired = store.expire_jobs(
         config.search.expire_after_days, now=started, skip_sources=skip | by_age | eurojobs
     )

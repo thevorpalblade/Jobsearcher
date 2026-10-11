@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_region.html" import region %}
 {% block title %}Suggested settings · Jobsearcher{% endblock %}
 {% block content %}
 <p><a href="/interview">← Back to the interview</a></p>
@@ -47,7 +48,8 @@
   <section>
     <h2>Where</h2>
     {% if not has_profile %}<p class="help">This setup keeps the search region in config.yaml, so it isn't saved from here.</p>{% endif %}
-    <label>Places (one per line, as in job ads) <textarea name="locations" rows="3">{{ proposal.locations | join("\n") }}</textarea></label>
+    <label>Places (one per line: cities, regions or countries) <textarea name="locations" rows="3">{{ proposal.locations | join("\n") }}</textarea></label>
+    {{ region(places) }}
     {{ now(search.locations | join(", ")) }}
     <label class="check"><input type="hidden" name="include_remote" value="0"><input type="checkbox" name="include_remote" value="1" {{ "checked" if proposal.include_remote }}> Remote jobs elsewhere are fine</label>
     <label>Extra search words <textarea name="keywords" rows="2">{{ proposal.keywords | join("\n") }}</textarea></label>

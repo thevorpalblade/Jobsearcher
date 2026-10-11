@@ -54,8 +54,6 @@ class JobSpyConfig(BaseModel):
     sites: list[Literal["linkedin", "indeed", "glassdoor", "google"]] = Field(
         default_factory=list
     )  # empty: off
-    location: str = "Sweden"  # the search.locations filter then keeps your cities
-    country_indeed: str = "sweden"
     # These sites only return recent ads, so each run asks for the last `hours_old`.
     hours_old: int = 168
     results_per_search: int = 20
@@ -63,13 +61,15 @@ class JobSpyConfig(BaseModel):
     # asked for), so these jobs expire by age instead.
     max_age_days: int = 30
     pause_s: float = 5.0  # between searches on one site, against rate limiting
+    # Searches outside a profile's first country (regions.py) run after the rest of a
+    # run is ranked, further apart: LinkedIn rate-limits quickly.
+    slow_pause_s: float = 30.0
 
 
 class EurojobsConfig(BaseModel):
-    # eurojobs.com, with the board's written permission: the countries to search, by
-    # name as on eurojobs.com/browse/countries (e.g. "Sweden", "United Kingdom").
-    # Empty: off.
-    countries: list[str] = Field(default_factory=list)
+    # eurojobs.com, with the board's written permission. It searches the countries of
+    # the profiles' regions (regions.py).
+    enabled: bool = False
     max_pages: int = 3  # per keyword and country, 50 ads a page, newest first
     # Its search allows about 30 requests, then locks out for 15-20 minutes, so search
     # pages are this far apart (job pages only at the crawl pace). A run of 200

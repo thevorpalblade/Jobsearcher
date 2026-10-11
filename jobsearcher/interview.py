@@ -74,8 +74,11 @@ job title variant for it they agreed on, in Swedish and English (lower case is f
 - situation, seniority, languages: short sentences in English, as a brief for a \
 recruiter.
 - likes, dislikes, dealbreakers: short phrases in English.
-- locations: the places they'd work, as written in Swedish job ads (e.g. "Stockholm", \
-"Göteborg", "Uppsala"); include_remote: whether remote jobs elsewhere are fine.
+- locations: the places they'd work: cities, regions or whole countries, in Sweden or \
+abroad (e.g. "Stockholm", "Göteborg", "Dublin", "Scotland", "Germany"); name a country \
+when they'd take a job anywhere in it, and write a small town abroad as "Town, Country". \
+Every job source covering those countries searches there. include_remote: whether \
+remote jobs elsewhere are fine.
 - keywords: extra search words beyond the role titles (often none). exclude_keywords: \
 words that rule an ad out (e.g. "konsultuppdrag"), only if they asked for that.
 - companies: the employers they named (suggested false) and the suggestions they \

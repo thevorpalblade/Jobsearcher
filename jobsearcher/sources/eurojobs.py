@@ -35,9 +35,8 @@ NAME = "eurojobs"
 _CARD = re.compile(r'<article class="ej-job-result[^"]*">(.*?)</article>', re.S)
 _CARD_LINK = re.compile(r'href="([^"]+/jobs/(\d+)/[^"]*)"\s+class="ej-job-result__title">', re.S)
 _NEXT = re.compile(r'<a[^>]+href="([^"]+)"[^>]*rel="next"|<a[^>]+rel="next"[^>]*href="([^"]+)"')
-_COUNTRY = re.compile(
-    r'country=(\d+)" class="ej-browse-page-card">(.*?)</a>', re.S
-)  # on /browse/countries
+# On /browse/countries: each country's id, and its flag (named by ISO code).
+_COUNTRY = re.compile(r'country=(\d+)" class="ej-browse-page-card">.*?/flags/([a-z]{2})\.svg', re.S)
 _FIELD = re.compile(
     r'<div class="small text-muted">\s*([^<]*?)\s*</div>\s*'
     r'<div class="fw-semibold[^"]*">\s*([^<]*?)\s*</div>',
@@ -75,12 +74,8 @@ def _date(value: str | None) -> datetime | None:
 
 
 def parse_countries(page: str) -> dict[str, str]:
-    """{"sweden": "198", ...} from /browse/countries (the search takes the site's ids)."""
-    countries = {}
-    for country_id, card in _COUNTRY.findall(page):
-        name = re.sub(r"\s+[\d,]+\s+Jobs?$", "", _text(card))
-        countries[name.casefold()] = country_id
-    return countries
+    """{"SE": "198", ...} from /browse/countries (the search takes the site's ids)."""
+    return {flag.upper(): country_id for country_id, flag in _COUNTRY.findall(page)}
 
 
 def parse_results(page: str) -> list[tuple[str, str, str, datetime | None]]:
@@ -151,38 +146,39 @@ class EurojobsSource:
         self,
         client: PoliteClient,
         config: EurojobsConfig,
+        countries: dict[str, list[str]],
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.client = client
         self.config = config
+        # {ISO code: the keywords wanted there} (regions.SearchPlan.by_country)
+        self.countries = {c: {k.casefold() for k in words} for c, words in countries.items()}
         self._sleep, self._clock = sleep, clock
         self._last_search: float | None = None
-        self._country_ids: list[str] | None = None
+        self._country_ids: dict[str, str] | None = None
         self._jobs: dict[str, Job | None] = {}  # job pages read this run, by id
 
-    def country_ids(self) -> list[str]:
+    def country_ids(self) -> dict[str, str]:
+        """{ISO code: the site's id} for the countries searched that it has."""
         if self._country_ids is None:
             known = parse_countries(self.client.get_text(f"{BASE}/browse/countries"))
-            self._country_ids = []
-            for name in self.config.countries:
-                if name.casefold() in known:
-                    self._country_ids.append(known[name.casefold()])
-                else:
-                    log.warning(
-                        "%s: unknown country %r (see %s/browse/countries)", NAME, name, BASE
-                    )
+            self._country_ids = {c: known[c] for c in self.countries if known.get(c)}
+            if missing := sorted(set(self.countries) - set(self._country_ids)):
+                log.info("%s: no jobs in %s", NAME, ", ".join(missing))
         return self._country_ids
 
     def search(self, keyword: str, published_after: datetime | None = None) -> Iterator[Job]:
-        """The newest jobs in the chosen countries naming `keyword` as a whole word or
-        phrase (case-insensitive)."""
+        """The newest jobs naming `keyword` as a whole word or phrase (case-insensitive),
+        in the countries where it's wanted."""
         pattern = re.compile(rf"(?<!\w){re.escape(keyword)}(?!\w)", re.I)
         oldest = datetime.now(UTC) - timedelta(days=self.config.max_age_days)
         if published_after and published_after > oldest:
             oldest = published_after
         seen: set[str] = set()  # an ad can be on two pages as new ones arrive
-        for country_id in self.country_ids():
+        for country, country_id in self.country_ids().items():
+            if keyword.casefold() not in self.countries[country]:
+                continue
             url: str | None = f"{BASE}/jobs"
             params: dict | None = {
                 "q": keyword,

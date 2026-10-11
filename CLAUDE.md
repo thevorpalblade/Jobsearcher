@@ -18,7 +18,7 @@ pytest                 # all tests run offline; keep it that way
 ruff check . && ruff format --check .
 jobsearcher draft <job id> [--instructions "..."] [--cv NAME]   # or --company NAME; jobsearcher drafts
 deploy/install-systemd.sh   # run the daemon + web UI as systemd user services (restart after code changes)
-jobsearcher --help     # search | rank | run | list | show | occupations | companies | signals | llm-check | budget | daemon | web
+jobsearcher --help     # search | rank | run | list | show | occupations | companies | signals | llm-check | budget | regions | daemon | web
 jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), jobs (/jobs), chat with Claude Code
 ```
 
@@ -55,7 +55,11 @@ jobsearcher web        # local web UI on http://127.0.0.1:8080: dashboard (/), j
   SmartRecruiters, Workday, SuccessFactors, ReachMee, Jobylon) plus `jsonld.py`, a generic
   reader for job ads with schema.org JobPosting data
 - `jobsearcher/places.py`: municipality -> county, so the location filter treats every source
-  like Platsbanken (which gives the county)
+  like Platsbanken (which gives the county); and any region entry -> its country and English
+  name (`data/cities.tsv`, from GeoNames via `scripts/build_places.py`)
+- `jobsearcher/regions.py`: the search plan: each source searches the countries of the
+  profiles' regions it covers (`jobsearcher regions` prints it); places outside a
+  profile's first country get its role names only, in the slow pass after ranking
 - `jobsearcher/sources/jobspy_source.py`: LinkedIn/Indeed via JobSpy (optional `jobspy` extra);
   these jobs expire by age, not by absence
 - `benchmarks/ranking/` + `scripts/rank_benchmark.py`: a fixed job set and every ranking model's

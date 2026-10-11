@@ -574,3 +574,11 @@ def render_markdown(text: str) -> Markup:
 
         _MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False, "breaks": True})
     return Markup(_MARKDOWN.render(text or ""))  # noqa: S704  (html is disabled above)
+
+
+def region_places(locations: list[str]) -> list[tuple[str, str | None]]:
+    """(entry, where it's searched: "Munich, Germany", or None when unknown) for each
+    place in a search region: shown next to it, so a wrong or unknown place shows."""
+    from jobsearcher.places import resolve
+
+    return [(entry, place.describe() if (place := resolve(entry)) else None) for entry in locations]

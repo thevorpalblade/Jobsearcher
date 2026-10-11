@@ -26,10 +26,11 @@ sources:
   jobtech_links: true
   companies: true          # careers-site feeds of the companies in companies.yaml
   environmentjob: false    # environmentjob.co.uk: UK environmental and conservation jobs
-  # eurojobs.com (needs the board's written permission): countries to search, named
-  # as on eurojobs.com/browse/countries. Empty: off.
+  # Where each source searches comes from the profiles' regions (search.locations):
+  # a source runs in the countries it covers (see `jobsearcher regions`).
+  # eurojobs.com (needs the board's written permission), in the regions' countries.
   eurojobs:
-    countries: []          # e.g. ["Sweden", "United Kingdom"]
+    enabled: false
     max_pages: 3           # per keyword and country (50 ads a page, newest first)
     search_interval_s: 40  # its search locks out after ~30 quick requests; searched
                            # after the rest of a run is ranked, as it takes hours
@@ -37,14 +38,15 @@ sources:
     expire_after_days: 60  # after posting, unless the ad's closing date comes first
   # LinkedIn and Indeed (also glassdoor, google) via JobSpy: pip install '.[jobspy]'.
   # Scrapes the sites' public pages without a login, against their terms of service;
-  # keep the volume low. Searches the same keywords as the other sources.
+  # keep the volume low. Searches each profile's first country with all its keywords,
+  # its places elsewhere with its role names only, after the rest is ranked.
   jobspy:
     sites: []                # e.g. [linkedin, indeed]; empty = off
-    location: Sweden         # search.locations then keeps your cities
     hours_old: 168           # ads from the last week, each run
     results_per_search: 20
     max_age_days: 30         # these jobs expire by age (older ads aren't re-fetched)
     pause_s: 5               # between searches, against rate limiting
+    slow_pause_s: 30         # between searches abroad (LinkedIn rate-limits quickly)
 
 # How the crawler presents itself (company sites, ATS feeds, news). Per-host pacing
 # always applies. For a personal, low-volume setup you may prefer:

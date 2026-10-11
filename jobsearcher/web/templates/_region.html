@@ -1,0 +1,6 @@
+{# How each place of a search region is understood (views.region_places). #}
+{% macro region(places) %}
+{% if places %}<p class="help">Searched as:
+  {% for entry, where in places %}{% if where %}{{ entry }}{% if where != entry ~ ", Sweden" and where != entry %} → {{ where }}{% endif %}{% else %}<strong>{{ entry }}: unknown place</strong> (write “City, Country”, or name the country){% endif %}{{ "; " if not loop.last }}{% endfor %}.
+  Every job source that covers these countries searches there.</p>{% endif %}
+{% endmacro %}

@@ -23,11 +23,18 @@ log = logging.getLogger("jobsearcher")
 
 def cmd_search(config: Config, args: argparse.Namespace, which: str = "all") -> int:
     """One search for every profile: the job pool is shared. `which`: "fast" (every
-    source but the slow ones), "slow" (only those, e.g. eurojobs) or "all"."""
+    source but the slow ones), "slow" (only those, e.g. eurojobs) or "all". Where each
+    source searches comes from the profiles' regions (regions.py)."""
+    from jobsearcher.ranking.config import unique_casefold
+    from jobsearcher.regions import search_plan
     from jobsearcher.sources import enabled_sources, slow_sources
 
     profiles = all_profiles(config)
-    keywords = profiles_keywords(profiles)
+    plan = search_plan(profiles)
+    if plan.unknown:
+        log.warning("Unknown places in the search region: %s", ", ".join(plan.unknown))
+    # Searches abroad use the role names, which a name like "A / B" splits into parts.
+    keywords = unique_casefold(profiles_keywords(profiles) + plan.keywords())
     if not keywords:
         print(
             "No keywords: set search.keywords (config.yaml or a profile.yaml) or "
@@ -35,8 +42,8 @@ def cmd_search(config: Config, args: argparse.Namespace, which: str = "all") -> 
             file=sys.stderr,
         )
         return 2
-    sources = (enabled_sources(config) if which != "slow" else []) + (
-        slow_sources(config) if which != "fast" else []
+    sources = (enabled_sources(config, plan) if which != "slow" else []) + (
+        slow_sources(config, plan) if which != "fast" else []
     )
     store = Store(config.db_path, profile=config.profile)
     report = run_search(
@@ -118,11 +125,13 @@ def _profiles(config: Config, args: argparse.Namespace) -> list[Config]:
 def run_pipeline(config: Config, args: argparse.Namespace, search: bool = True) -> tuple[int, bool]:
     """One full pass: search (once, for every profile; skipped with `search=False`), then
     for each profile rank and news signals (fetched weekly; leftovers are classified
-    every pass). Slow sources (eurojobs) are searched last and their jobs ranked then,
-    so they don't hold up the rest. Returns (exit status, retry): retry is True when
-    ranking or news classification stopped for any profile because the provider kept
-    failing."""
+    every pass). Slow sources (eurojobs, LinkedIn/Indeed abroad) are searched last and
+    their jobs ranked then, so they don't hold up the rest. Returns (exit status,
+    retry): retry is True when ranking or news classification stopped for any profile
+    because the provider kept failing."""
+    from jobsearcher.regions import search_plan
     from jobsearcher.signals.run import due
+    from jobsearcher.sources import has_slow_sources
 
     search_status = cmd_search(config, args, which="fast") if search else 0
     if search_status == 2:
@@ -149,7 +158,7 @@ def run_pipeline(config: Config, args: argparse.Namespace, search: bool = True) 
             cmd_contacts(profile, argparse.Namespace(job_id=None, company=None))
         except Exception:
             log.exception("Contact lookups failed")
-    if search and config.sources.eurojobs.countries:  # the slow sources
+    if search and has_slow_sources(config, search_plan(all_profiles(config))):
         status = max(status, cmd_search(config, args, which="slow"))
         for profile in _profiles(config, args):
             rank_status = cmd_rank(profile, args)
@@ -439,6 +448,35 @@ def cmd_llm_check(config: Config, args: argparse.Namespace) -> int:
             f"({u.input_tokens} in / {u.output_tokens} out, {cost})"
         )
     return status
+
+
+def cmd_regions(config: Config, args: argparse.Namespace) -> int:
+    """Where each source searches, from every profile's region (regions.py)."""
+    from jobsearcher.pipeline import search_keywords
+    from jobsearcher.places import resolve
+    from jobsearcher.regions import search_plan
+    from jobsearcher.sources import enabled_sources, slow_sources
+
+    profiles = all_profiles(config)
+    for profile in profiles:
+        places = [
+            f"{entry} -> {place.describe()}" if (place := resolve(entry)) else f"{entry} -> ?"
+            for entry in profile.search.locations
+        ]
+        note = "" if search_keywords(profile) else " (nothing to search for yet)"
+        print(f"{profile.profile}: {'; '.join(places) or 'no region (all of Sweden)'}{note}")
+    plan = search_plan(profiles)
+    print("\nSearched areas:")
+    for target in plan.targets:
+        when = "main run" if target.primary else "after ranking"
+        print(f"  {target.area.label()} ({when}): {len(target.keywords)} keywords")
+    fast = [s.name for s in enabled_sources(config, plan)]
+    slow = [s.name for s in slow_sources(config, plan)]
+    print(f"\nMain run: {', '.join(fast) or '-'}\nAfter ranking: {', '.join(slow) or '-'}")
+    if plan.unknown:
+        print(f"\nUnknown places (only filtered on): {', '.join(plan.unknown)}")
+        print('Write them as "City, Country", or name the country.')
+    return 0
 
 
 def cmd_budget(config: Config, args: argparse.Namespace) -> int:
@@ -835,6 +873,7 @@ def cmd_daemon(config: Config, args: argparse.Namespace) -> int:
 # Commands that work on every profile (or none) rather than one.
 SHARED_COMMANDS = {
     "search", "run", "daemon", "web", "users", "profiles", "migrate-profiles", "budget",
+    "regions",
 }  # fmt: skip
 
 
@@ -893,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("llm-check", help="send a tiny test request to each configured model")
     sub.add_parser("budget", help="show LLM spend this month")
+    sub.add_parser("regions", help="where each job source searches (from the profiles' regions)")
 
     p_web = sub.add_parser("web", help="serve the local web UI")
     p_web.add_argument("--host", help="interface to bind (default: web.host in config.yaml)")
@@ -965,6 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
         "drafts": cmd_drafts,
         "llm-check": cmd_llm_check,
         "budget": cmd_budget,
+        "regions": cmd_regions,
         "daemon": cmd_daemon,
         "web": cmd_web,
         "migrate-profiles": cmd_migrate_profiles,

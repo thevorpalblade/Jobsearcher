@@ -595,6 +595,7 @@ def settings_page(request: Request, state: State, store: ReadStore) -> HTMLRespo
         cvs=cvs.list_cvs(master),
         master=master,
         files=files,
+        places=views.region_places(state.config.search.locations),
         upload_types=", ".join(cvs.UPLOAD_TYPES),
         max_mb=cvs.MAX_UPLOAD_BYTES // 1024 // 1024,
     )
@@ -1389,6 +1390,7 @@ def interview_review(request: Request, state: State, store: ReadStore) -> Respon
         proposal=current.proposal,
         rc=rc,
         search=state.config.search,
+        places=views.region_places(current.proposal.locations),
         has_profile=state.config.profile_file is not None,
     )
 

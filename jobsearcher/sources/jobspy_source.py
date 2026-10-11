@@ -18,6 +18,8 @@ from typing import Any
 from jobsearcher.config import JobSpyConfig
 from jobsearcher.contacts import extract_contacts_from_text
 from jobsearcher.models import Job, SourceRef, make_job_id
+from jobsearcher.places import HOME, country_code, country_name
+from jobsearcher.regions import SearchArea, Target
 from jobsearcher.sources.ats.common import swedish_name
 
 log = logging.getLogger(__name__)
@@ -40,10 +42,17 @@ def _value(row: dict[str, Any], key: str) -> Any:
 
 
 def split_location(text: str | None) -> tuple[str | None, str | None]:
-    """("Gothenburg, Västra Götaland County, Sweden") -> ("Göteborg", "Västra Götaland")."""
+    """("Gothenburg, Västra Götaland County, Sweden") -> ("Göteborg", "Västra Götaland");
+    abroad the country stays in the region, for a region like "Ireland":
+    ("Dublin, County Dublin, Ireland") -> ("Dublin", "County Dublin, Ireland")."""
     if not text:
         return None, None
     parts = [p.strip() for p in str(text).split(",") if p.strip()]
+    country = country_code(parts[-1]) if parts else None
+    if country and len(parts) == 1:
+        return None, country_name(country)  # the whole country
+    if country and country != HOME:
+        return parts[0], ", ".join(parts[1:-1] + [country_name(country)])
     city = parts[0] if parts else None
     if city:
         city = swedish_name(city)
@@ -79,37 +88,69 @@ def parse_row(row: dict[str, Any], site: str) -> Job | None:
     )
 
 
+def indeed_country(code: str) -> str | None:
+    """JobSpy's name for a country's Indeed site ("IE" -> "ireland"); None if Indeed
+    has none there."""
+    try:
+        from jobspy.model import Country
+    except ImportError:  # tests: no JobSpy
+        return country_name(code).lower()
+    for country in Country:
+        names, codes = country.value[0], country.value[1]
+        if codes.split(":")[-1] == code.lower() and country.name not in ("US_CANADA", "WORLDWIDE"):
+            return names.split(",")[0]
+    return None
+
+
 class JobSpySource:
-    """One JobSpy site as a keyword-searchable source (name = the site)."""
+    """One JobSpy site as a keyword-searchable source (name = the site), searched in
+    the plan's areas (regions.py) that want the keyword; no targets: all of Sweden."""
 
     def __init__(
         self,
         site: str,
         settings: JobSpyConfig,
+        targets: list[Target] | None = None,
+        pause_s: float | None = None,
         scrape: Callable[..., Any] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.name = site
         self.settings = settings
+        self.targets = targets
+        self.pause_s = settings.pause_s if pause_s is None else pause_s
         self._scrape = scrape
         self._sleep = sleep
         self._searched = False
 
     def search(self, keyword: str, published_after: datetime | None = None) -> Iterator[Job]:
+        if self.targets is None:
+            areas = [SearchArea(country=HOME)]
+        else:
+            areas = [t.area for t in self.targets if t.wants(keyword)]
+        for area in areas:
+            yield from self._search_area(keyword, area)
+
+    def _search_area(self, keyword: str, area: SearchArea) -> Iterator[Job]:
+        indeed = indeed_country(area.country)
+        # Indeed is a site per country: in one without it, there's nothing to search.
+        if indeed is None and self.name in ("indeed", "glassdoor"):
+            return
         if self._scrape is None:
             from jobspy import scrape_jobs
 
             self._scrape = scrape_jobs
         if self._searched:
-            self._sleep(self.settings.pause_s)  # gentler on the site's rate limits
+            self._sleep(self.pause_s)  # gentler on the site's rate limits
         self._searched = True
         frame = self._scrape(
             site_name=[self.name],
             search_term=keyword,
-            location=self.settings.location,
+            # LinkedIn takes "Dublin, Ireland"; Indeed a place on its country's site.
+            location=area.label() if self.name == "linkedin" else (area.place or area.label()),
             results_wanted=self.settings.results_per_search,
             hours_old=self.settings.hours_old,
-            country_indeed=self.settings.country_indeed,
+            country_indeed=indeed or "worldwide",
             linkedin_fetch_description=True,
             description_format="markdown",
         )

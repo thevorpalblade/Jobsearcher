@@ -41,7 +41,10 @@ def test_parse_row_maps_and_normalises():
     assert (contact.email, contact.provenance) == ("anna.andersson@acme.se", "linkedin:ad_text")
     assert parse_row({**_row(2), "title": NAN}, "linkedin") is None
     assert split_location("Stockholm, Stockholm County, Sweden") == ("Stockholm", "Stockholm")
-    assert split_location("Sweden") == ("Sweden", None)
+    assert split_location("Sweden") == (None, "Sweden")  # the whole country
+    # Abroad, the country stays in the region (for a region like "Ireland").
+    assert split_location("Dublin, County Dublin, Ireland") == ("Dublin", "County Dublin, Ireland")
+    assert split_location("Munich, BY, DE") == ("Munich", "BY, Germany")
     assert split_location(None) == (None, None)
 
 

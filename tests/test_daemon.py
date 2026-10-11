@@ -51,7 +51,7 @@ def test_a_stalled_ranking_is_retried_until_it_finishes(monkeypatch):
 
 def test_slow_sources_are_searched_after_the_rest_is_ranked(monkeypatch):
     script = Script(monkeypatch, rank=(0, 0), signals=(0,))
-    script.config.sources.eurojobs.countries = ["Sweden"]
+    script.config.sources.eurojobs.enabled = True
     # Its new jobs are ranked then (the earlier ones' rankings are cached).
     assert script.run() == ["search", "rank", "signals", "slow search", "rank"]
 
