@@ -173,6 +173,17 @@ def _cities() -> dict[str, list[tuple[int, int, str, str]]]:
     return found
 
 
+@lru_cache(maxsize=1)
+def _nuts() -> dict[str, str]:
+    lines = (_DATA / "nuts.tsv").read_text(encoding="utf-8").splitlines()
+    return dict(line.split("\t") for line in lines if line and not line.startswith("#"))
+
+
+def nuts_name(code: str | None) -> str | None:
+    """An EU statistical region's name: "IE061" -> "Dublin", "ITI43" -> "Roma"."""
+    return _nuts().get(code.upper()) if code else None
+
+
 def country_name(code: str) -> str:
     return _countries()[0].get(code, code)
 

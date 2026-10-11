@@ -88,6 +88,16 @@ class ArbeitsagenturConfig(BaseModel):
     max_results: int = 300  # per keyword and place
 
 
+class EuresConfig(BaseModel):
+    # EURES, the EU's job portal (public employment services' ads, e.g. Ireland's,
+    # Italy's, Switzerland's), in the regions' countries. Sweden and Germany are left to
+    # Platsbanken and the Arbeitsagentur when those are on (EURES copies their ads).
+    enabled: bool = False
+    max_pages: int = 3  # per keyword and country, 50 ads a page, newest first
+    max_age_days: int = 3  # older ads aren't read (the daemon runs daily)
+    expire_after_days: int = 60  # after posting (its ads give no closing date)
+
+
 class SourcesConfig(BaseModel):
     platsbanken: bool = True
     jobtech_links: bool = True
@@ -99,6 +109,7 @@ class SourcesConfig(BaseModel):
     environmentjob: bool = False
     eurojobs: EurojobsConfig = Field(default_factory=EurojobsConfig)
     arbeitsagentur: ArbeitsagenturConfig = Field(default_factory=ArbeitsagenturConfig)
+    eures: EuresConfig = Field(default_factory=EuresConfig)
 
 
 class CompaniesSettings(BaseModel):

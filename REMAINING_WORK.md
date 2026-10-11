@@ -224,8 +224,12 @@ LinkedIn + Indeed via JobSpy, a Workday adapter, and a generic JSON-LD reader.
       the German cities (`sources.arbeitsagentur`); opens only ads naming the keyword in
       the title or occupation. English role names miss German-titled ads unless the
       agency's occupation matches: German aliases in ranking.yaml would help.
-- [ ] EURES (EU portal; public employment services' jobs, incl. Italy and Ireland):
-      find its current search API (the old jv-search address is gone) and add it.
+- [x] EURES (2026-10-11): the EU portal's public search API
+      (/eures/api/jv-searchengine/public/jv-search/search), in the regions' countries
+      except Sweden and Germany (Platsbanken's and the Arbeitsagentur's copies); newest
+      ads, phrase-filtered; NUTS region names for places. Slow (~6 s a page), so after
+      ranking. Its firewall drops curl_cffi's Chrome imitation, so it uses plain httpx.
+      Italy has few ads there (~4,600 in all).
 - [ ] Search regions: cities abroad aren't mapped to their region/county, so "Bavaria"
       is unknown (write "Munich" or "Germany"); add GeoNames admin regions if needed.
 - [x] eurojobs.com (2026-10-11, with the board's written permission): searches each

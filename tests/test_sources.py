@@ -283,3 +283,51 @@ def test_arbeitsagentur_searches_german_places_and_opens_matching_ads():
     # A suburb is kept for a region naming the city it was found near.
     assert matches_filters(first, SearchConfig(locations=["München"], include_remote=False))
     assert list(source.search("Change Manager")) == []  # not wanted in Germany
+
+
+def test_eures_reads_the_newest_ads_and_names_their_regions():
+    from datetime import UTC, datetime, timedelta
+
+    from jobsearcher.config import EuresConfig
+    from jobsearcher.sources.eures import SEARCH, EuresSource
+
+    now = datetime.now(UTC)
+
+    def ad(n, title, text, days_old, regions=("IE061",), employer="Acme Ltd"):
+        posted = int((now - timedelta(days=days_old)).timestamp() * 1000)
+        return {
+            "id": f"ad{n}", "title": title, "description": text, "creationDate": posted,
+            "locationMap": {"IE": list(regions)}, "positionScheduleCodes": ["fulltime"],
+            "employer": {"name": employer},
+        }  # fmt: skip
+
+    class Client:
+        def __init__(self, pages):
+            self.pages, self.bodies = pages, []
+
+        def post_json(self, url, body, headers=None):
+            assert url == SEARCH
+            self.bodies.append(body)
+            return {"jvs": self.pages[body["page"] - 1]}
+
+    full_page = [ad(1, "Project Manager", "Lead projects, mail jobs@acme.ie", 0)]
+    full_page += [ad(i, "Chef", "Kitchen\\-work", 1) for i in range(2, 51)]  # escaped Markdown
+    client = Client(
+        [
+            full_page,
+            [
+                ad(60, "Senior project manager", "", 2, regions=[None], employer="Confidential"),
+                ad(61, "Project Manager", "", 30),  # too old: the rest are older still
+            ],
+        ]
+    )
+    countries = {"IE": ["Project Manager"], "IT": ["HR Generalist"]}
+    source = EuresSource(client, EuresConfig(max_age_days=7), countries)
+    first, second = list(source.search("project manager"))
+    assert first.title == "Project Manager" and first.company == "Acme Ltd"
+    assert (first.location, first.region) == ("Dublin", "Eastern and Midland, Ireland")
+    assert [c.email for c in first.contacts] == ["jobs@acme.ie"]
+    assert first.employment_type == "full time"
+    assert (second.location, second.region, second.company) == (None, "Ireland", None)
+    assert [b["page"] for b in client.bodies] == [1, 2]
+    assert client.bodies[0]["locationCodes"] == ["ie"]  # Italy doesn't want this keyword

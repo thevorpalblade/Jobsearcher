@@ -101,6 +101,10 @@ def test_sources_search_the_countries_they_cover(monkeypatch):
     berlin = search_plan([_profile(["Uppsala", "Berlin"], ["HR"])])
     assert "arbeitsagentur" in names(enabled_sources(config, berlin))
 
+    config.sources.eures.enabled = True  # after ranking; Sweden is left to Platsbanken
+    [eures] = [s for s in slow_sources(config, sweden) if s.name == "eures"]
+    assert list(eures.countries) == ["IE"]
+
 
 def test_jobspy_searches_each_area_that_wants_the_keyword(monkeypatch):
     import jobsearcher.sources.jobspy_source as module

@@ -157,13 +157,15 @@ class PoliteClient:
         self._last[host] = self._clock()
 
     @classmethod
-    def from_config(cls, config: Config) -> PoliteClient:
+    def from_config(cls, config: Config, browser: bool = True) -> PoliteClient:
+        """A client with the user's crawl settings. `browser=False`: never imitate
+        Chrome's TLS (EURES's firewall drops the imitation's POSTs)."""
         polite = cls(
             min_interval_s=config.companies.min_request_interval_s,
             user_agent=config.crawl.user_agent_string,
             respect_robots=config.crawl.respect_robots,
         )
-        if config.crawl.user_agent == "chrome":
+        if config.crawl.user_agent == "chrome" and browser:
             transport = browser_transport()
             if transport is None:
                 log.info("curl_cffi not installed: sending a Chrome User-Agent header only")

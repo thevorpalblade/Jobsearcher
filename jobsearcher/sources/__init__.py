@@ -52,9 +52,9 @@ def enabled_sources(config: Config, plan: SearchPlan | None = None) -> list[Sour
 
 
 def slow_sources(config: Config, plan: SearchPlan | None = None) -> list[SourceAdapter]:
-    """Sources that take hours under their rate limits, searched after the rest of a
-    run has been ranked so they don't hold it up: eurojobs, and LinkedIn/Indeed outside
-    each profile's first country (regions.py)."""
+    """Slow sources (rate limits, slow APIs), searched after the rest of a run has
+    been ranked so they don't hold it up: eurojobs, EURES, and LinkedIn/Indeed
+    outside each profile's first country (regions.py)."""
     plan = plan or SearchPlan()
     sources: list[SourceAdapter] = []
     if config.sources.eurojobs.enabled:
@@ -65,6 +65,21 @@ def slow_sources(config: Config, plan: SearchPlan | None = None) -> list[SourceA
         sources.append(
             EurojobsSource(PoliteClient.from_config(config), config.sources.eurojobs, countries)
         )
+    if config.sources.eures.enabled:
+        # Slow to answer (~6 s a page). Its Swedish and German ads copy Platsbanken's
+        # and the Arbeitsagentur's, so those countries are left to them when they're on.
+        covered = {"SE"} if config.sources.platsbanken else set()
+        covered |= {"DE"} if config.sources.arbeitsagentur.enabled else set()
+        countries = {c: k for c, k in plan.by_country().items() if c not in covered}
+        if countries:
+            from jobsearcher.companies.http import PoliteClient
+            from jobsearcher.sources.eures import EuresSource
+
+            sources.append(
+                EuresSource(
+                    PoliteClient.from_config(config, browser=False), config.sources.eures, countries
+                )
+            )
     jobspy = config.sources.jobspy
     abroad = [t for t in plan.targets if not t.primary]
     if jobspy.sites and abroad:
@@ -79,8 +94,10 @@ def slow_sources(config: Config, plan: SearchPlan | None = None) -> list[SourceA
 
 
 def has_slow_sources(config: Config, plan: SearchPlan) -> bool:
-    return config.sources.eurojobs.enabled or bool(
-        config.sources.jobspy.sites and any(not t.primary for t in plan.targets)
+    return (
+        config.sources.eurojobs.enabled
+        or config.sources.eures.enabled
+        or bool(config.sources.jobspy.sites and any(not t.primary for t in plan.targets))
     )
 
 

@@ -150,19 +150,20 @@ def run_search(
         skip.update(crawl.failed)
 
     # A failed source's jobs weren't re-seen this run; don't expire them because of it.
-    # JobSpy sites and eurojobs only return recent ads, so their jobs expire by age
-    # instead (and eurojobs' by their closing date).
-    by_age = set(config.sources.jobspy.sites)
-    eurojobs = {"eurojobs"} if config.sources.eurojobs.enabled else set()
+    # JobSpy sites, eurojobs and EURES only return recent ads, so their jobs expire by
+    # age instead (and by a closing date, where the ad has one).
+    sources_cfg = config.sources
+    by_age: dict[str, int] = {
+        site: sources_cfg.jobspy.max_age_days for site in sources_cfg.jobspy.sites
+    }
+    if sources_cfg.eurojobs.enabled:
+        by_age["eurojobs"] = sources_cfg.eurojobs.expire_after_days
+    if sources_cfg.eures.enabled:
+        by_age["eures"] = sources_cfg.eures.expire_after_days
     report.expired = store.expire_jobs(
-        config.search.expire_after_days, now=started, skip_sources=skip | by_age | eurojobs
+        config.search.expire_after_days, now=started, skip_sources=skip | set(by_age)
     )
-    if by_age:
-        report.expired += store.expire_by_age(
-            by_age, config.sources.jobspy.max_age_days, now=started
-        )
-    if eurojobs:
-        report.expired += store.expire_by_age(
-            eurojobs, config.sources.eurojobs.expire_after_days, now=started
-        )
+    for days in sorted(set(by_age.values())):
+        same = {source for source, d in by_age.items() if d == days}
+        report.expired += store.expire_by_age(same, days, now=started)
     return report
